@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 import llm
 import memory
+from src import tenant
 
 ROOT = Path(__file__).parent
 app = FastAPI(title="Ace HVAC AI Receptionist")
@@ -69,10 +70,13 @@ class ChatIn(BaseModel):
     message: str
 
 
-def _run_pipeline(caller: dict, user_message: str) -> dict:
-    """Shared brain: load memory → Claude → save turn → return response."""
+def _run_pipeline(caller: dict, user_message: str, client: dict = None) -> dict:
+    """Shared brain: load memory → Claude → save turn → return response.
+    `client` is the tenant config; if None, falls back to default."""
+    if client is None:
+        client = tenant.load_default()
     history = caller.get("conversation", [])
-    result = llm.chat(caller, user_message, history)
+    result = llm.chat(caller, user_message, history, client=client)
 
     memory.append_turn(caller["id"], "user", user_message,
                        intent=result.intent, priority=result.priority)
@@ -242,12 +246,17 @@ def _stt_lang(lang: str) -> str:
 
 DTMF_LANG = {"1": "en", "2": "es", "3": "hi", "4": "gu"}
 
-LANG_GREETINGS = {
-    "en": "Hey, this is Joanna from Ace HVAC— what's going on?",
-    "es": "Hola, habla Joanna de Ace HVAC— en que te puedo ayudar?",
-    "hi": "Hey, main Joanna, Ace HVAC se— kya hua batao?",
-    "gu": "Hey, hu Joanna, Ace HVAC thi— shu thayum kahejo?",
-}
+def _greeting_for(client: dict, lang: str) -> str:
+    """Per-client greeting. Uses client['name']; Joanna is the persona name
+    (hardcoded — same AI answers for every client)."""
+    company = client["name"]
+    if lang == "es":
+        return f"Hola, habla Joanna de {company}— en que te puedo ayudar?"
+    if lang == "hi":
+        return f"Hey, main Joanna, {company} se— kya hua batao?"
+    if lang == "gu":
+        return f"Hey, hu Joanna, {company} thi— shu thayum kahejo?"
+    return f"Hey, this is Joanna from {company}— what's going on?"
 
 
 def _respond(vr, message: str, lang: str):
@@ -269,10 +278,11 @@ def _respond(vr, message: str, lang: str):
 # ── Voice endpoints ───────────────────────────────────────────────────
 
 @app.post("/voice/incoming")
-def voice_incoming(From: str = Form(...)):
+def voice_incoming(From: str = Form(...), To: str = Form(default="")):
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
 
+    client = tenant.load_client_by_number(To)
     caller = memory.get_or_create_by_phone(From)
     saved_lang = caller.get("language")
     vr = VoiceResponse()
@@ -280,15 +290,16 @@ def voice_incoming(From: str = Form(...)):
     # Returning caller with known language — skip menu, greet directly
     if saved_lang and saved_lang in VOICE_MAP:
         first_name = (caller.get("name") or "").split(" ")[0]
+        company = client["name"]
         if caller.get("type") == "return" and first_name:
-            greeting = f"Hey {first_name}! It's Joanna from Ace HVAC— what's going on?"
+            greeting = f"Hey {first_name}! It's {company}— what's going on?"
         else:
-            greeting = LANG_GREETINGS.get(saved_lang, LANG_GREETINGS["en"])
+            greeting = _greeting_for(client, saved_lang)
         _respond(vr, greeting, saved_lang)
         return _twiml(str(vr))
 
     # New caller — language selection (only time this ever happens)
-    vr.say("Hey, thanks for calling Ace HVAC and Plumbing.", voice=_voice_for("en"))
+    vr.say(f"Hey, thanks for calling {client['name']}.", voice=_voice_for("en"))
     vr.say("For English, press 1.", voice=_voice_for("en"))
     vr.say("Para espanol, presione 2.", voice=_voice_for("es"))
     vr.say("Hindi ke liye 3 dabaayein.", voice=_voice_for("hi"))
@@ -300,16 +311,18 @@ def voice_incoming(From: str = Form(...)):
 
 
 @app.post("/voice/setlang")
-def voice_setlang(From: str = Form(...), Digits: str = Form(default="1")):
+def voice_setlang(From: str = Form(...), Digits: str = Form(default="1"),
+                  To: str = Form(default="")):
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
 
+    client = tenant.load_client_by_number(To)
     lang = DTMF_LANG.get(Digits, DEFAULT_LANG)
     caller = memory.get_or_create_by_phone(From)
     memory.update_caller(caller["id"], language=lang)
 
     vr = VoiceResponse()
-    _respond(vr, LANG_GREETINGS.get(lang, LANG_GREETINGS["en"]), lang)
+    _respond(vr, _greeting_for(client, lang), lang)
     return _twiml(str(vr))
 
 
@@ -317,7 +330,9 @@ def voice_setlang(From: str = Form(...), Digits: str = Form(default="1")):
 def voice_gather(From: str = Form(...),
                  SpeechResult: str = Form(default=""),
                  Digits: str = Form(default=""),
-                 Language: str = Form(default="")):
+                 Language: str = Form(default=""),
+                 To: str = Form(default=""),
+                 CallSid: str = Form(default="")):
     """ONE endpoint, ONE gather per response. No chains, no redirects."""
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
@@ -330,6 +345,7 @@ def voice_gather(From: str = Form(...),
         vr.redirect("/voice/incoming", method="POST")
         return _twiml(str(vr))
 
+    client = tenant.load_client_by_number(To)
     caller = memory.get_or_create_by_phone(From)
     lang = (Language[:2] if Language else "") or caller.get("language") or DEFAULT_LANG
     if lang != caller.get("language"):
@@ -343,11 +359,11 @@ def voice_gather(From: str = Form(...),
         return _twiml(str(vr))
 
     # ── The entire flow: speech → Claude → one response → one gather ──
-    result = _run_pipeline(caller, SpeechResult)
+    result = _run_pipeline(caller, SpeechResult, client=client)
 
     if result["priority"] == "high":
         vr.say(result["reply"], voice=_voice_for(lang))
-        on_call = os.environ.get("ON_CALL_NUMBER")
+        on_call = client.get("escalation_phone") or os.environ.get("ON_CALL_NUMBER")
         if on_call:
             vr.say("Hang tight— connecting you now.", voice=_voice_for(lang))
             vr.dial(on_call)

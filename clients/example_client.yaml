@@ -1,0 +1,33 @@
+# Worked example — septic service company
+# Use this as a reference when onboarding a new client.
+id: bobs_septic
+name: "Bob's Septic Service"
+owner_name: "Bob Miller"
+inbound_number: "+15551234567"
+escalation_phone: "+15559876543"
+services: "Septic pumping, repairs, installations, emergency service"
+pricing_summary: "Pumping from $475. Emergency service available 24/7."
+service_area: "Lancaster County and surrounding areas"
+hours: "Mon-Fri 8am-5pm, emergency 24/7"
+emergency_keywords:
+  - flooding
+  - backing up
+  - overflow
+  - sewage
+  - burst
+plan:
+  tier: "starter"
+  monthly_price: 297
+  included_calls: 250
+  included_minutes: 500
+  overage_rate_per_call: 0.75
+  max_call_duration_seconds: 240
+  max_call_duration_emergency: 360
+  voice_tier_main: "premium"
+  voice_tier_transactional: "flash"
+  robocall_gate: false
+  sms_max_per_call: 3
+integrations:
+  calendar: null
+  crm: null
+default_language: "en"

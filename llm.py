@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 load_dotenv()
-client = anthropic.Anthropic()
+_anthropic = anthropic.Anthropic()
 MODEL = "claude-haiku-4-5"
 
 
@@ -20,16 +20,30 @@ class ChatResponse(BaseModel):
     priority: Literal["low", "high"]
 
 
-SYSTEM_TEMPLATE = """You're Joanna, receptionist at Ace HVAC & Plumbing. Real phone call.
+SYSTEM_TEMPLATE = """You're Joanna, receptionist at {company_name}. Real phone call.
 
 ONE sentence only. Stop after your first thought. 5-12 words. Never two sentences.
 Vary openings. Casual, mid-thought, contractions. Never sound like a bot.
 Stay on whatever topic the caller is on. Match their language. JSON fields in English.
-Emergency (burst/flood/leak/gas/no heat/fire/smoke/CO): direct + priority="high".
+Emergency ({emergency_keywords}): direct + priority="high".
 
 CALLER:
 {memory}
 """
+
+
+def _render_system_prompt(caller: Optional[dict], client: Optional[dict]) -> str:
+    """Fill the system prompt with tenant-specific slots and caller memory.
+    In Section B this will be replaced with a file-based template renderer."""
+    if client is None:
+        # Late import to avoid circular dep (llm is imported by main which imports tenant)
+        from src import tenant as _t
+        client = _t.load_default()
+    return SYSTEM_TEMPLATE.format(
+        company_name=client.get("name", "this service"),
+        emergency_keywords="/".join(client.get("emergency_keywords") or []),
+        memory=_format_memory(caller),
+    )
 
 RECOVER_ADDENDUM = "\nCalling them back after missed call. Open casual, one sentence, trail off."
 
@@ -71,10 +85,12 @@ _FALLBACK = ChatResponse(
 
 
 def chat(caller: Optional[dict], user_message: str,
-         conversation: Optional[list] = None) -> ChatResponse:
-    system = SYSTEM_TEMPLATE.format(memory=_format_memory(caller))
+         conversation: Optional[list] = None,
+         client: Optional[dict] = None) -> ChatResponse:
+    """client: tenant config dict; if None, uses default tenant at render time."""
+    system = _render_system_prompt(caller, client)
     messages = _build_messages(conversation or [], user_message)
-    response = client.beta.messages.parse(
+    response = _anthropic.beta.messages.parse(
         model=MODEL,
         max_tokens=80,
         system=system,
@@ -84,10 +100,11 @@ def chat(caller: Optional[dict], user_message: str,
     return response.parsed_output or _FALLBACK
 
 
-def recover(caller: Optional[dict]) -> ChatResponse:
-    system = SYSTEM_TEMPLATE.format(memory=_format_memory(caller)) + RECOVER_ADDENDUM
+def recover(caller: Optional[dict],
+            client: Optional[dict] = None) -> ChatResponse:
+    system = _render_system_prompt(caller, client) + RECOVER_ADDENDUM
     messages = [{"role": "user", "content": "(generate missed-call opening)"}]
-    response = client.beta.messages.parse(
+    response = _anthropic.beta.messages.parse(
         model=MODEL,
         max_tokens=80,
         system=system,

@@ -1,0 +1,56 @@
+# ═══════════════════════════════════════════════════════════════════════
+# CLIENT CONFIG TEMPLATE
+# Copy to clients/<id>.yaml and fill in. `id` and `inbound_number` must
+# match the intended Twilio number. Restart the server after editing.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Short snake_case ID — used in file names, logs, metrics
+# (starts with _ to mark as template; rename when copying)
+id: _template
+
+# Display name (used in greetings, prompts)
+name: "Example Company"
+owner_name: "Owner Name"
+
+# Twilio number that routes to this client (E.164 format)
+# Leave empty only for templates/defaults
+inbound_number: ""
+
+# Number the AI transfers to for emergencies / human escalation (E.164)
+escalation_phone: "+15559876543"
+
+# Free-text services list (inserted into system prompt)
+services: "Description of services offered, keep short"
+pricing_summary: "Ballpark pricing info"
+service_area: "Geographic service area"
+hours: "Mon-Fri 8am-5pm, emergency 24/7"
+
+# Words that, if heard, trigger emergency handling (lowercase)
+emergency_keywords:
+  - flooding
+  - burst
+  - gas leak
+  - no heat
+  - fire
+
+# Plan + billing configuration
+plan:
+  tier: "starter"                         # starter | pro | enterprise
+  monthly_price: 297                      # USD
+  included_calls: 250                     # calls/month before overage
+  included_minutes: 500                   # minutes/month before overage
+  overage_rate_per_call: 0.75             # USD per call over included
+  max_call_duration_seconds: 240          # hard cap (4 min)
+  max_call_duration_emergency: 360        # emergency override (6 min)
+  voice_tier_main: "premium"              # voice for main conversation
+  voice_tier_transactional: "flash"       # voice for "Got it" / "Goodbye"
+  robocall_gate: false                    # require DTMF "1" to connect
+  sms_max_per_call: 3                     # SMS cap per conversation
+
+# Optional integrations (leave null if unused)
+integrations:
+  calendar: null                          # future: google_calendar etc.
+  crm: null                               # future: jobber, housecall, etc.
+
+# Default language (en, es, hi, gu, etc.)
+default_language: "en"

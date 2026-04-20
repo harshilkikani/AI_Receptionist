@@ -1,0 +1,33 @@
+# Fallback used when an inbound number doesn't match any specific client.
+# Greets generically and prompts the caller to check they've dialed the right number.
+id: _default
+name: "this service"
+owner_name: "the owner"
+inbound_number: ""
+escalation_phone: ""
+services: "general service"
+pricing_summary: "Pricing varies by service."
+service_area: "local area"
+hours: "business hours"
+emergency_keywords:
+  - flooding
+  - burst
+  - gas leak
+  - fire
+  - emergency
+plan:
+  tier: "starter"
+  monthly_price: 0
+  included_calls: 0
+  included_minutes: 0
+  overage_rate_per_call: 0
+  max_call_duration_seconds: 240
+  max_call_duration_emergency: 360
+  voice_tier_main: "premium"
+  voice_tier_transactional: "flash"
+  robocall_gate: false
+  sms_max_per_call: 3
+integrations:
+  calendar: null
+  crm: null
+default_language: "en"

@@ -5,3 +5,7 @@ pydantic
 python-dotenv
 python-multipart
 twilio
+
+# Added by margin-protection-refactor:
+pyyaml       # client config files (clients/*.yaml)
+pytest       # tests/

@@ -1,0 +1,40 @@
+# Current live client — do NOT change id or inbound_number without also
+# updating Twilio webhooks for +18449403274.
+id: ace_hvac
+name: "Ace HVAC & Plumbing"
+owner_name: "the owner"
+inbound_number: "+18449403274"
+escalation_phone: ""                  # set via ON_CALL_NUMBER env for now
+services: "HVAC, plumbing, furnace repair, AC install, water heater service"
+pricing_summary: "Service call $129. AC install $4800-8500 depending on size."
+service_area: "Residential, local area"
+hours: "Mon-Fri 8am-5pm, emergency 24/7"
+emergency_keywords:
+  - burst
+  - flood
+  - flooding
+  - leak
+  - leaking
+  - gushing
+  - gas
+  - no heat
+  - fire
+  - smoke
+  - carbon monoxide
+  - no hot water
+plan:
+  tier: "starter"
+  monthly_price: 297
+  included_calls: 250
+  included_minutes: 500
+  overage_rate_per_call: 0.75
+  max_call_duration_seconds: 240
+  max_call_duration_emergency: 360
+  voice_tier_main: "premium"
+  voice_tier_transactional: "flash"
+  robocall_gate: false
+  sms_max_per_call: 3
+integrations:
+  calendar: null
+  crm: null
+default_language: "en"
