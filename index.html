@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ace HVAC & Plumbing — AI Receptionist Demo</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #e5e7eb;
+    --text: #0f172a;
+    --muted: #64748b;
+    --brand: #2563eb;
+    --brand-soft: #eff6ff;
+    --ai-bubble: #e9edf2;
+    --user-bubble: #2563eb;
+    --user-text: #ffffff;
+    --danger: #dc2626;
+    --danger-soft: #fef2f2;
+    --warn: #d97706;
+    --ok: #059669;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 280px 1fr 300px;
+    grid-template-rows: 56px 1fr;
+    grid-template-areas:
+      "header header header"
+      "sidebar chat memory";
+    height: 100vh;
+  }
+  header {
+    grid-area: header;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 12px;
+  }
+  header .logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--brand);
+    color: white;
+    display: grid; place-items: center;
+    font-weight: 700;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; margin-left: 4px; }
+
+  /* Sidebar: missed calls */
+  aside.sidebar {
+    grid-area: sidebar;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+  }
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding: 16px 16px 8px;
+    font-weight: 600;
+  }
+  .call {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .call:hover { background: var(--brand-soft); }
+  .call.active { background: var(--brand-soft); border-left: 3px solid var(--brand); padding-left: 13px; }
+  .call .name { font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .call .phone { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .call .preview { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .badge.new     { background: #f1f5f9; color: var(--muted); }
+  .badge.return  { background: #ecfdf5; color: var(--ok); }
+  .badge.urgent  { background: #fee2e2; color: var(--danger); }
+
+  /* Chat */
+  main.chat {
+    grid-area: chat;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    position: relative;
+  }
+  .chat-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .chat-header .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--brand); color: white;
+    display: grid; place-items: center; font-weight: 600;
+  }
+  .chat-header .info .n { font-weight: 600; }
+  .chat-header .info .p { font-size: 12px; color: var(--muted); }
+
+  .emergency-banner {
+    background: var(--danger);
+    color: white;
+    padding: 10px 20px;
+    font-weight: 600;
+    font-size: 13px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    animation: slideDown 0.3s ease;
+  }
+  .emergency-banner.show { display: flex; }
+  @keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 70%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    animation: pop 0.2s ease;
+  }
+  @keyframes pop {
+    from { transform: scale(0.95); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  .msg.ai {
+    background: var(--ai-bubble);
+    color: var(--text);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+  .msg.user {
+    background: var(--user-bubble);
+    color: var(--user-text);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-meta {
+    font-size: 10px;
+    color: var(--muted);
+    margin: 2px 6px;
+  }
+  .msg-meta.user { align-self: flex-end; }
+  .typing {
+    align-self: flex-start;
+    background: var(--ai-bubble);
+    padding: 12px 16px;
+    border-radius: 18px;
+    display: none;
+  }
+  .typing.show { display: block; }
+  .typing span {
+    display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted);
+    margin: 0 2px;
+    animation: bounce 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.15s; }
+  .typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-6px); opacity: 1; }
+  }
+
+  .composer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    gap: 10px;
+  }
+  .composer input {
+    flex: 1;
+    padding: 11px 16px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 14px;
+    outline: none;
+    font-family: inherit;
+  }
+  .composer input:focus { border-color: var(--brand); }
+  .composer button {
+    background: var(--brand);
+    color: white;
+    border: none;
+    padding: 0 20px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Memory panel */
+  aside.memory {
+    grid-area: memory;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 0 0 20px;
+  }
+  .mem-block { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .mem-block .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .mem-block .value { font-size: 13px; line-height: 1.5; }
+  .mem-block .value.empty { color: var(--muted); font-style: italic; }
+  .pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .pill.p-low  { background: #ecfdf5; color: var(--ok); }
+  .pill.p-med  { background: #fef3c7; color: var(--warn); }
+  .pill.p-high { background: #fee2e2; color: var(--danger); }
+  .history-item {
+    padding: 8px 10px;
+    background: #f8fafc;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .history-item .date { color: var(--muted); font-size: 10px; }
+
+  .empty-state {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    text-align: center;
+    padding: 40px;
+  }
+  .empty-state h2 { margin: 0 0 8px; color: var(--text); font-size: 18px; }
+  .empty-state p { margin: 0; font-size: 13px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">A</div>
+    <h1>Ace HVAC & Plumbing</h1>
+    <span class="sub">· AI Receptionist</span>
+  </header>
+
+  <aside class="sidebar">
+    <div class="section-title">Missed Calls (3)</div>
+    <div id="call-list"></div>
+  </aside>
+
+  <main class="chat">
+    <div id="chat-header" class="chat-header" style="display:none;">
+      <div class="avatar" id="chat-avatar">?</div>
+      <div class="info">
+        <div class="n" id="chat-name"></div>
+        <div class="p" id="chat-phone"></div>
+      </div>
+    </div>
+    <div id="emergency-banner" class="emergency-banner">
+      ⚠ EMERGENCY DETECTED — Routing to on-call technician
+    </div>
+    <div id="messages" class="messages">
+      <div class="empty-state">
+        <div>
+          <h2>Select a missed call</h2>
+          <p>Click a caller on the left to trigger the AI recovery message.<br/>
+             Then try typing things like <em>"my pipe just burst"</em> or <em>"what's your pricing?"</em></p>
+        </div>
+      </div>
+    </div>
+    <form id="composer" class="composer" style="display:none;">
+      <input id="input" autocomplete="off" placeholder="Type a message..." />
+      <button type="submit">Send</button>
+    </form>
+  </main>
+
+  <aside class="memory">
+    <div class="section-title">Caller Memory</div>
+    <div id="memory-content">
+      <div class="mem-block">
+        <div class="value empty">No caller selected</div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ─── API helpers ──────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    let msg = `${res.status} ${path}`;
+    try {
+      const j = JSON.parse(body);
+      if (j.detail) msg = j.detail;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+// ─── State ────────────────────────────────────────────────────────────────
+const state = {
+  currentCallerId: null,
+  callers: {},      // id -> caller record (populated from /missed-calls)
+  local: {},        // id -> [{role, text, intent, priority}] for THIS session
+  openedOnce: {},   // id -> true once we've triggered recovery
+};
+
+// ─── Load missed callers from backend ─────────────────────────────────────
+async function loadCallers() {
+  const list = await api("/missed-calls");
+  state.callers = {};
+  list.forEach(c => { state.callers[c.id] = c; });
+  renderCallList();
+}
+
+// ─── Render: call list ────────────────────────────────────────────────────
+function renderCallList() {
+  const el = document.getElementById("call-list");
+  el.innerHTML = "";
+  Object.values(state.callers).forEach(c => {
+    const div = document.createElement("div");
+    div.className = "call" + (state.currentCallerId === c.id ? " active" : "");
+    const badgeClass = c.type === "new" ? "new" : c.id === "dave" ? "urgent" : "return";
+    const badgeText  = c.type === "new" ? "New" : c.id === "dave" ? "Priority" : "Return";
+    div.innerHTML = `
+      <div class="name">${escapeHtml(c.name)} <span class="badge ${badgeClass}">${badgeText}</span></div>
+      <div class="phone">${escapeHtml(c.phone)}</div>
+      <div class="preview">${escapeHtml(c.preview || "")}</div>
+    `;
+    div.onclick = () => openCaller(c.id);
+    el.appendChild(div);
+  });
+}
+
+// ─── Render: memory panel ─────────────────────────────────────────────────
+function renderMemory(callerId) {
+  const el = document.getElementById("memory-content");
+  if (!callerId) {
+    el.innerHTML = `<div class="mem-block"><div class="value empty">No caller selected</div></div>`;
+    return;
+  }
+  const c = state.callers[callerId];
+  if (!c) return;
+  const history = c.history || [];
+  const intent   = c.lastIntent;
+  const priority = c.lastPriority;
+  const priorityPill = intent
+    ? `<span class="pill p-${priority === 'high' ? 'high' : 'low'}">${intent} · ${priority || 'low'}</span>`
+    : `<span class="value empty">—</span>`;
+
+  el.innerHTML = `
+    <div class="mem-block">
+      <div class="label">Caller</div>
+      <div class="value"><strong>${escapeHtml(c.name)}</strong><br/>${escapeHtml(c.phone)}</div>
+    </div>
+    <div class="mem-block">
+      <div class="label">Address</div>
+      <div class="value ${c.address ? "" : "empty"}">${escapeHtml(c.address || "Unknown — new lead")}</div>
+    </div>
+    <div class="mem-block">
+      <div class="label">Equipment on File</div>
+      <div class="value ${c.equipment ? "" : "empty"}">${escapeHtml(c.equipment || "None on file")}</div>
+    </div>
+    <div class="mem-block">
+      <div class="label">Current Intent / Priority</div>
+      <div class="value">${priorityPill}</div>
+    </div>
+    <div class="mem-block">
+      <div class="label">Call History (${history.length})</div>
+      <div class="value">
+        ${history.length
+          ? history.map(h => `<div class="history-item"><div class="date">${escapeHtml(h.date)}</div>${escapeHtml(h.note)}</div>`).join("")
+          : `<span class="empty">No prior calls</span>`}
+      </div>
+    </div>
+    <div class="mem-block">
+      <div class="label">Notes</div>
+      <div class="value ${c.notes ? "" : "empty"}">${escapeHtml(c.notes || "None")}</div>
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[ch]));
+}
+
+// ─── Chat rendering ───────────────────────────────────────────────────────
+function renderMessages(callerId) {
+  const box = document.getElementById("messages");
+  box.innerHTML = "";
+  const turns = state.local[callerId] || [];
+  turns.forEach(t => {
+    const m = document.createElement("div");
+    // Backend uses "assistant"; CSS uses "ai"
+    m.className = "msg " + (t.role === "assistant" || t.role === "ai" ? "ai" : "user");
+    m.textContent = t.text;
+    box.appendChild(m);
+  });
+  const typing = document.createElement("div");
+  typing.className = "typing";
+  typing.id = "typing";
+  typing.innerHTML = "<span></span><span></span><span></span>";
+  box.appendChild(typing);
+  box.scrollTop = box.scrollHeight;
+}
+
+function appendLocal(callerId, role, text, meta = {}) {
+  state.local[callerId] = state.local[callerId] || [];
+  state.local[callerId].push({ role, text, ...meta });
+  renderMessages(callerId);
+}
+
+function showTyping(show) {
+  const t = document.getElementById("typing");
+  if (t) t.className = "typing" + (show ? " show" : "");
+  const box = document.getElementById("messages");
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+function setEmergency(on) {
+  document.getElementById("emergency-banner").className =
+    "emergency-banner" + (on ? " show" : "");
+}
+
+// ─── Actions ──────────────────────────────────────────────────────────────
+async function openCaller(id) {
+  state.currentCallerId = id;
+  const c = state.callers[id];
+  if (!c) return;
+
+  document.getElementById("chat-header").style.display = "flex";
+  document.getElementById("composer").style.display = "flex";
+  document.getElementById("chat-avatar").textContent = c.name[0];
+  document.getElementById("chat-name").textContent = c.name;
+  document.getElementById("chat-phone").textContent = c.phone;
+  setEmergency(false);
+  renderCallList();
+  renderMemory(id);
+  renderMessages(id);
+
+  // First open? Trigger real recovery call via Claude.
+  if (!state.openedOnce[id]) {
+    state.openedOnce[id] = true;
+    state.local[id] = [];
+    renderMessages(id);
+    showTyping(true);
+    try {
+      const r = await api(`/recover/${id}`, { method: "POST" });
+      showTyping(false);
+      appendLocal(id, "assistant", r.reply);
+      state.callers[id] = r.caller;
+      renderMemory(id);
+    } catch (err) {
+      showTyping(false);
+      appendLocal(id, "assistant", `[error contacting Claude: ${err.message}]`);
+    }
+  }
+}
+
+async function handleUserMessage(text) {
+  const id = state.currentCallerId;
+  if (!id) return;
+
+  appendLocal(id, "user", text);
+  showTyping(true);
+
+  try {
+    const r = await api("/chat", {
+      method: "POST",
+      body: JSON.stringify({ caller_id: id, message: text }),
+    });
+    showTyping(false);
+    appendLocal(id, "assistant", r.reply);
+    state.callers[id] = r.caller;
+    if (r.priority === "high") setEmergency(true);
+    renderMemory(id);
+  } catch (err) {
+    showTyping(false);
+    appendLocal(id, "assistant", `[error contacting Claude: ${err.message}]`);
+  }
+}
+
+// ─── Wire up ──────────────────────────────────────────────────────────────
+document.getElementById("composer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  handleUserMessage(text);
+});
+
+loadCallers().catch(err => {
+  document.getElementById("call-list").innerHTML =
+    `<div style="padding:16px;color:#dc2626">Backend not reachable.<br/>Start: <code>uvicorn main:app --reload</code></div>`;
+});
+</script>
+</body>
+</html>
