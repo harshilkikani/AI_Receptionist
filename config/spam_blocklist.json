@@ -1,0 +1,6 @@
+{
+  "_comment": "Known spam/robocaller numbers. Update as you find them. E.164 format only. area_codes_high_risk = 3-digit US area codes to reject outright (use sparingly — high false-positive risk).",
+  "numbers": [],
+  "area_codes_high_risk": [],
+  "updated_at": "2026-04-13"
+}

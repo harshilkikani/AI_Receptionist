@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 import llm
 import memory
-from src import tenant, usage, call_timer
+from src import tenant, usage, call_timer, spam_filter
 
 import logging
 logging.basicConfig(
@@ -311,6 +311,20 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
     client = tenant.load_client_by_number(To)
     usage.start_call(CallSid, client["id"], From, To)
     call_timer.record_start(CallSid, client["id"])
+
+    # Spam filter layer 1: caller-ID blocklist (before any LLM cost)
+    number_check = spam_filter.check_number(From, client["id"], CallSid)
+    if number_check["reject"]:
+        log.info("spam_number rejected call_sid=%s from=%s reason=%s",
+                 CallSid, From, number_check["reason"])
+        vr = VoiceResponse()
+        vr.say("Thanks, we're not taking calls from this number. Goodbye.",
+               voice=_voice_for("en"))
+        vr.hangup()
+        usage.end_call(CallSid, outcome="spam_number")
+        call_timer.record_end(CallSid)
+        return _twiml(str(vr))
+
     caller = memory.get_or_create_by_phone(From)
     saved_lang = caller.get("language")
     vr = VoiceResponse()
@@ -385,6 +399,26 @@ def voice_gather(From: str = Form(...),
     if not SpeechResult.strip():
         _respond(vr, "Sorry, didn't catch that— what was that?", lang)
         return _twiml(str(vr))
+
+    # ── Spam filter layer 2: phrase detection (first 15s) ──────────────
+    timer_pre = call_timer.check(CallSid, client, caller_speech="")
+    phrase_check = spam_filter.check_phrases(
+        transcript=SpeechResult,
+        seconds_since_start=timer_pre["elapsed"],
+        client_id=client["id"],
+        call_sid=CallSid,
+        from_phone=From,
+    )
+    if phrase_check["reject"]:
+        log.info("spam_phrase rejected call_sid=%s phrase=%s",
+                 CallSid, phrase_check.get("phrase"))
+        vr2 = VoiceResponse()
+        vr2.say("Thanks, we're not interested. Goodbye.",
+                voice=_voice_for(lang))
+        vr2.hangup()
+        usage.end_call(CallSid, outcome="spam_phrase")
+        call_timer.record_end(CallSid)
+        return _twiml(str(vr2))
 
     # ── Call duration check (Section A) ─────────────────────────────────
     timer = call_timer.check(CallSid, client, caller_speech=SpeechResult)

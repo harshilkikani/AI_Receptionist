@@ -158,3 +158,55 @@ kill switch: hard_wrapup (bypasses enforcement)
 ```
 
 **Risk:** High on rollout (can truncate live calls). Mitigation: default shadow mode. Operator enables `ENFORCE_CALL_DURATION_CAP=true` only after observing `logs` for a day. Emergency calls get the longer cap automatically once `priority='high'` fires.
+
+---
+
+## Section C — Spam + Junk Filtering _(complete)_
+
+**Files added:**
+- `config/spam_blocklist.json` — caller-ID blocklist + high-risk area codes
+- `config/spam_phrases.json` — spam phrases + override keywords (service/address/emergency)
+- `src/spam_filter.py` — two-layer filter with override bypass + rejection logging
+
+**Files modified:**
+- `main.py` — `/voice/incoming` runs `spam_filter.check_number` before any LLM call; `/voice/gather` runs `spam_filter.check_phrases` in the first 15s of the call. Both return early with polite goodbye if rejected.
+
+**Two filter layers:**
+
+1. **Number blocklist** (pre-LLM, zero cost to reject):
+   - Normalized phone comparison against `config/spam_blocklist.json::numbers`
+   - Area code comparison against `area_codes_high_risk`
+   - Match → "Thanks, we're not taking calls from this number. Goodbye." + hangup
+
+2. **Phrase detection** (during first 15s of transcript):
+   - Scan SpeechResult for any phrase in `spam_phrases` list
+   - **CRITICAL override**: if caller ALSO said any of the `override_keywords` (plumbing/hvac/address/emergency/etc.), bypass the filter entirely — this prevents rejecting legit service calls that happen to contain a spam-flagged word
+   - Match → "Thanks, we're not interested. Goodbye." + hangup
+
+3. **Silence timeout** (≥5s no speech): implemented in `check_silence` but not wired into the default flow yet — Twilio's speechTimeout="auto" already catches most silence. Retained in `spam_filter.py` for explicit opt-in.
+
+**Rejection logging:** all rejections append a JSON line to `logs/rejected_calls.jsonl`:
+```json
+{"layer":"phrase","reason":"spam_phrase_detected","phrase":"google business listing",
+ "from":"+1...","client_id":"ace_hvac","call_sid":"CA...","transcript_first_200":"...",
+ "ts":1744000000,"enforced":true}
+```
+
+Audit weekly to tune false positives.
+
+**Feature flag:** `ENFORCE_SPAM_FILTER`. When false, all matches are LOGGED but call proceeds normally. Use this for the first few days to calibrate the phrase list.
+
+**Test results (manual smoke):**
+```
+spam phrase (no override):     reject=True  ✓
+service keyword:               reject=False ✓ (override_keyword='plumbing')
+spam + address override:       reject=False ✓ (override_keyword='street')
+emergency override:            reject=False ✓ (override_keyword='flood')
+past 15s window:               reject=False ✓ (filter window expired)
+kill switch:                   reject=False ✓ (logs only)
+blocklisted number:            reject=True  ✓
+high-risk area code (555):     reject=True  ✓
+normal number:                 reject=False ✓
+```
+
+**Risk:** Medium — wrong rejections = lost revenue. Override keywords are generous by design. Shadow mode default lets operator tune before enforcing.

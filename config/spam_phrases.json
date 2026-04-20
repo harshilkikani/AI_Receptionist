@@ -1,0 +1,37 @@
+{
+  "_comment": "Phrases that, if heard in the first 15 seconds of a call, classify it as spam. If ANY override_keyword from service/address/emergency is ALSO present, spam filter is bypassed. Audit logs/rejected_calls.jsonl weekly.",
+
+  "spam_phrases": [
+    "google business listing",
+    "google my business",
+    "google listing",
+    "merchant services",
+    "credit card processing",
+    "solar panels",
+    "solar quote",
+    "seo services",
+    "rank your website",
+    "seo company",
+    "business insurance",
+    "workers comp",
+    "final notice",
+    "last chance",
+    "extended warranty",
+    "energy audit",
+    "utility rebate",
+    "health insurance plan",
+    "irs",
+    "auto warranty"
+  ],
+
+  "override_keywords": [
+    "plumbing", "plumber", "leak", "leaking", "burst", "pipe",
+    "septic", "sewage", "drain", "toilet", "shower",
+    "hvac", "furnace", "ac", "air conditioning", "heating",
+    "water heater", "boiler", "heat pump",
+    "flood", "flooding", "emergency", "gas smell", "gas leak",
+    "no heat", "no water", "no hot water", "backing up",
+    "address", "street", "avenue", "road", "drive",
+    "schedule", "appointment", "estimate", "quote"
+  ]
+}
