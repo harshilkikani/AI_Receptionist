@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 import llm
 import memory
-from src import tenant, usage, call_timer, spam_filter
+from src import tenant, usage, call_timer, spam_filter, sms_limiter
 
 import logging
 logging.basicConfig(
@@ -488,28 +488,58 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
     memory.append_turn(caller["id"], "assistant", result.reply,
                        intent=result.intent, priority=result.priority)
 
+    # SMS rate-limit check before sending (Section D)
+    sms_decision = sms_limiter.should_send(CallSid, client, result.reply)
+    if not sms_decision["allow"]:
+        log.info("recovery_sms_blocked call_sid=%s reason=%s",
+                 CallSid, sms_decision["reason"])
+        return {"ok": True, "action": "sms_blocked",
+                "reason": sms_decision["reason"],
+                "message": sms_decision["body"]}
+
     tw = _twilio_client()
     tw_number = os.environ.get("TWILIO_NUMBER")
     if tw and tw_number:
-        tw.messages.create(to=From, from_=tw_number, body=result.reply)
-        usage.log_sms(CallSid, client["id"], From, result.reply, direction="outbound")
-        return {"ok": True, "action": "sms_sent", "message": result.reply}
+        tw.messages.create(to=From, from_=tw_number, body=sms_decision["body"])
+        usage.log_sms(CallSid, client["id"], From, sms_decision["body"],
+                      direction="outbound")
+        return {"ok": True, "action": "sms_sent",
+                "message": sms_decision["body"]}
 
     # Creds not configured — still returned the generated message so you can
     # verify the flow without real Twilio credentials
-    return {"ok": True, "action": "generated_only", "message": result.reply}
+    return {"ok": True, "action": "generated_only",
+            "message": sms_decision["body"]}
 
 
 @app.post("/sms/incoming")
-def sms_incoming(From: str = Form(...), Body: str = Form(...)):
-    """Two-way SMS. Replies to a recovery message flow through here and
-    reuse the same pipeline as the web chat."""
+def sms_incoming(From: str = Form(...), Body: str = Form(...),
+                 To: str = Form(default=""),
+                 MessageSid: str = Form(default="")):
+    """Two-way SMS. Replies flow through the same pipeline as voice,
+    but with SMS-specific rate limiting."""
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
 
+    client = tenant.load_client_by_number(To)
     caller = memory.get_or_create_by_phone(From)
-    result = _run_pipeline(caller, Body)
+
+    # Log the inbound message toward this "conversation" (keyed by phone)
+    sms_conv_key = f"SMS_{memory.normalize_phone(From)}"
+    usage.log_sms(sms_conv_key, client["id"], From, Body, direction="inbound")
+
+    # Run the LLM
+    result = _run_pipeline(caller, Body, client=client, call_sid=sms_conv_key)
+
+    # Rate-limit check
+    sms_decision = sms_limiter.should_send(sms_conv_key, client, result["reply"])
 
     mr = MessagingResponse()
-    mr.message(result["reply"])
+    if sms_decision["allow"]:
+        mr.message(sms_decision["body"])
+        usage.log_sms(sms_conv_key, client["id"], From, sms_decision["body"],
+                      direction="outbound")
+    else:
+        log.info("inbound_sms_reply_blocked reason=%s", sms_decision["reason"])
+        # Empty TwiML = no outbound reply
     return _twiml(str(mr))

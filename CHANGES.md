@@ -210,3 +210,30 @@ normal number:                 reject=False ✓
 ```
 
 **Risk:** Medium — wrong rejections = lost revenue. Override keywords are generous by design. Shadow mode default lets operator tune before enforcing.
+
+---
+
+## Section D — SMS Rate Limiting _(complete)_
+
+**Files added:**
+- `src/sms_limiter.py` — `cap_length(body)`, `should_send(call_sid, client, body)`
+
+**Files modified:**
+- `main.py` — `/voice/status` (missed-call recovery SMS) and `/sms/incoming` (two-way SMS) both check `sms_limiter.should_send` before `tw.messages.create`. Every outbound SMS is logged via `usage.log_sms`.
+
+**Policy:**
+- Per-call cap from `client.plan.sms_max_per_call` (default 3)
+- Body auto-truncated to 320 chars (2 segments) at word boundary where possible
+- SMS conversations keyed by `SMS_<phone_digits>` — shared counter across two-way thread
+
+**Feature flag:** `ENFORCE_SMS_CAP`. When false, cap reached → logged only, SMS still sent.
+
+**Test (smoke):**
+```
+msg 0-2: allow=True  ✓
+msg 4:   allow=False, reason=sms_cap_reached ✓
+long body (400 chars): truncated to 320 ✓
+kill switch: allow=True (not enforcing) ✓
+```
+
+**Risk:** Low. Rate-limiting SMS is additive — worst case operator turns flag off and everything flows as before.
