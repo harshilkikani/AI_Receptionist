@@ -124,3 +124,37 @@ print(usage.margin_for(tenant.load_client_by_number('+18449403274')))
 ```
 
 **Risk:** Low. All writes are append-only; no destructive mutations. If `data/usage.db` is corrupted, `logs/rejected_calls.jsonl` and Twilio's own call logs remain the source of truth for operational data.
+
+---
+
+## Section A — Call Duration Hard Cap _(complete)_
+
+**Files added:**
+- `src/call_timer.py` — in-memory call tracker. Public API: `record_start`, `record_end`, `mark_emergency`, `check(call_sid, client, caller_speech)`, `snapshot()`.
+
+**Files modified:**
+- `main.py` — `/voice/incoming` now calls `call_timer.record_start`. `/voice/gather` consults `call_timer.check` before the LLM; passes `wrap_up_mode` into `_run_pipeline` → `llm.chat_with_usage`. On `action='force_end'`, plays a polite owner-callback goodbye and hangs up. On emergency intent, calls `call_timer.mark_emergency` to extend cap to 360s for any subsequent turns. `/voice/status` clears timer state on call end.
+- `llm.py` already supported `wrap_up_mode` parameter from Section B.
+
+**Thresholds (configurable per-client via `plan.max_call_duration_seconds` / `max_call_duration_emergency`):**
+- **Soft wrap-up cue** injected at `cap - 60` seconds (180s for default 240s cap)
+- **Hard wrap-up cue** injected at `cap - 15` seconds (225s)
+- **Force end** at cap (240s) — when `ENFORCE_CALL_DURATION_CAP=true`
+- **Grace period** of +15s if caller is actively giving address/phone/name (detected via digit-heavy speech + keywords like "address", "phone number")
+- **Emergency calls** use `max_call_duration_emergency` (default 360s)
+
+**Feature flag:** `ENFORCE_CALL_DURATION_CAP` (default false → logs `action='force_end'` but still returns `hard_wrapup` so the AI closes the call on its own). Combined with global `MARGIN_PROTECTION_ENABLED` kill — if either is off, enforcement is bypassed.
+
+**Test:** The test in `tests/test_call_timer.py` (Section K) covers: normal, soft/hard thresholds, force_end under enforcement, grace period, emergency extension, kill switch bypass. Smoke-tested manually:
+```
+100s elapsed: normal
+185s elapsed: soft_wrapup
+230s elapsed: hard_wrapup
+250s no-enforce: hard_wrapup (logs only)
+250s enforce: force_end
+245s critical info: soft_wrapup (grace activated)
+emergency 250s: normal (cap=360)
+kill switch: hard_wrapup (bypasses enforcement)
+```
+
+**Risk:** High on rollout (can truncate live calls). Mitigation: default shadow mode. Operator enables `ENFORCE_CALL_DURATION_CAP=true` only after observing `logs` for a day. Emergency calls get the longer cap automatically once `priority='high'` fires.

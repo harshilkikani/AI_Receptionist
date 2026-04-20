@@ -22,7 +22,14 @@ from pydantic import BaseModel
 
 import llm
 import memory
-from src import tenant, usage
+from src import tenant, usage, call_timer
+
+import logging
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger("receptionist")
 
 ROOT = Path(__file__).parent
 app = FastAPI(title="Ace HVAC AI Receptionist")
@@ -303,6 +310,7 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
 
     client = tenant.load_client_by_number(To)
     usage.start_call(CallSid, client["id"], From, To)
+    call_timer.record_start(CallSid, client["id"])
     caller = memory.get_or_create_by_phone(From)
     saved_lang = caller.get("language")
     vr = VoiceResponse()
@@ -378,15 +386,37 @@ def voice_gather(From: str = Form(...),
         _respond(vr, "Sorry, didn't catch that— what was that?", lang)
         return _twiml(str(vr))
 
+    # ── Call duration check (Section A) ─────────────────────────────────
+    timer = call_timer.check(CallSid, client, caller_speech=SpeechResult)
+    log.info(
+        "call_timer call_sid=%s elapsed=%.1fs cap=%ds action=%s enforce=%s",
+        CallSid, timer["elapsed"], timer["cap"],
+        timer["action"], timer["enforcement_active"],
+    )
+
+    # Past cap and enforcement active → skip LLM entirely, end politely
+    if timer["action"] == "force_end":
+        owner = client.get("owner_name", "the owner")
+        goodbye = f"Okay— {owner} will call you back within the hour. Talk soon."
+        vr.say(goodbye, voice=_voice_for(lang))
+        vr.hangup()
+        usage.end_call(CallSid, outcome="duration_capped")
+        call_timer.record_end(CallSid)
+        return _twiml(str(vr))
+
     # ── The entire flow: speech → Claude → one response → one gather ──
-    result = _run_pipeline(caller, SpeechResult, client=client, call_sid=CallSid)
+    result = _run_pipeline(caller, SpeechResult, client=client,
+                           call_sid=CallSid, wrap_up_mode=timer["wrap_up_mode"])
 
     if result["priority"] == "high":
+        # Mark the call as emergency — extends cap to 360s for any subsequent turns
+        call_timer.mark_emergency(CallSid)
         vr.say(result["reply"], voice=_voice_for(lang))
         on_call = client.get("escalation_phone") or os.environ.get("ON_CALL_NUMBER")
         if on_call:
             vr.say("Hang tight— connecting you now.", voice=_voice_for(lang))
             vr.dial(on_call)
+            usage.end_call(CallSid, outcome="emergency_transfer", emergency=True)
         else:
             vr.say("Got a tech being paged— they'll call you back in ten.", voice=_voice_for(lang))
         return _twiml(str(vr))
@@ -412,6 +442,7 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
             "canceled": "canceled",
         }
         usage.end_call(CallSid, outcome=outcome_map.get(CallStatus, CallStatus))
+        call_timer.record_end(CallSid)
 
     # Missed call recovery — SMS flow
     if CallStatus not in ("no-answer", "busy", "failed"):
