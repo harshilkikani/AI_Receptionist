@@ -130,6 +130,17 @@ def chat(caller: Optional[dict], user_message: str,
          wrap_up_mode: Optional[str] = None) -> ChatResponse:
     """Main LLM call. `client` is tenant config (dict). `wrap_up_mode` is
     set by the call timer when approaching duration caps."""
+    reply, _usage = chat_with_usage(caller, user_message, conversation,
+                                    client, wrap_up_mode)
+    return reply
+
+
+def chat_with_usage(caller: Optional[dict], user_message: str,
+                    conversation: Optional[list] = None,
+                    client: Optional[dict] = None,
+                    wrap_up_mode: Optional[str] = None):
+    """Same as chat(), but also returns (input_tokens, output_tokens)
+    so callers can log usage. Use this in the voice/SMS request path."""
     system = _render_system_prompt(caller, client, wrap_up_mode=wrap_up_mode)
     messages = _build_messages(conversation or [], user_message)
     response = _anthropic.beta.messages.parse(
@@ -139,7 +150,8 @@ def chat(caller: Optional[dict], user_message: str,
         messages=messages,
         output_format=ChatResponse,
     )
-    return response.parsed_output or _FALLBACK
+    usage = last_token_usage(response)
+    return (response.parsed_output or _FALLBACK), usage
 
 
 def recover(caller: Optional[dict],

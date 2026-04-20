@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 import llm
 import memory
-from src import tenant
+from src import tenant, usage
 
 ROOT = Path(__file__).parent
 app = FastAPI(title="Ace HVAC AI Receptionist")
@@ -70,13 +70,31 @@ class ChatIn(BaseModel):
     message: str
 
 
-def _run_pipeline(caller: dict, user_message: str, client: dict = None) -> dict:
+def _run_pipeline(caller: dict, user_message: str, client: dict = None,
+                  call_sid: str = "", wrap_up_mode: str = None) -> dict:
     """Shared brain: load memory → Claude → save turn → return response.
-    `client` is the tenant config; if None, falls back to default."""
+    `client` is the tenant config; if None, falls back to default.
+    `call_sid` is the Twilio CallSid (empty for web chat / SMS)."""
     if client is None:
         client = tenant.load_default()
     history = caller.get("conversation", [])
-    result = llm.chat(caller, user_message, history, client=client)
+
+    result, (in_tok, out_tok) = llm.chat_with_usage(
+        caller, user_message, history,
+        client=client, wrap_up_mode=wrap_up_mode,
+    )
+
+    # Track LLM + TTS usage (TTS char count = length of reply, since Polly
+    # bills by synthesized character)
+    usage.log_turn(
+        call_sid=call_sid,
+        client_id=client.get("id", "_default"),
+        role="assistant",
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+        tts_chars=len(result.reply),
+        intent=result.intent,
+    )
 
     memory.append_turn(caller["id"], "user", user_message,
                        intent=result.intent, priority=result.priority)
@@ -278,11 +296,13 @@ def _respond(vr, message: str, lang: str):
 # ── Voice endpoints ───────────────────────────────────────────────────
 
 @app.post("/voice/incoming")
-def voice_incoming(From: str = Form(...), To: str = Form(default="")):
+def voice_incoming(From: str = Form(...), To: str = Form(default=""),
+                   CallSid: str = Form(default="")):
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
 
     client = tenant.load_client_by_number(To)
+    usage.start_call(CallSid, client["id"], From, To)
     caller = memory.get_or_create_by_phone(From)
     saved_lang = caller.get("language")
     vr = VoiceResponse()
@@ -359,7 +379,7 @@ def voice_gather(From: str = Form(...),
         return _twiml(str(vr))
 
     # ── The entire flow: speech → Claude → one response → one gather ──
-    result = _run_pipeline(caller, SpeechResult, client=client)
+    result = _run_pipeline(caller, SpeechResult, client=client, call_sid=CallSid)
 
     if result["priority"] == "high":
         vr.say(result["reply"], voice=_voice_for(lang))
@@ -377,14 +397,29 @@ def voice_gather(From: str = Form(...),
 
 
 @app.post("/voice/status")
-def voice_status(From: str = Form(...), CallStatus: str = Form(...)):
-    """Twilio StatusCallback. If the call ended in no-answer / busy / failed,
-    fire a recovery SMS using the same Claude recovery function as the web UI."""
+def voice_status(From: str = Form(...), CallStatus: str = Form(...),
+                 To: str = Form(default=""), CallSid: str = Form(default=""),
+                 CallDuration: str = Form(default="0")):
+    """Twilio StatusCallback. Records call end in the usage tracker, and for
+    missed calls fires a recovery SMS."""
+    # End the call record for any terminal status
+    if CallStatus in ("completed", "no-answer", "busy", "failed", "canceled"):
+        outcome_map = {
+            "completed": "normal",
+            "no-answer": "no_answer",
+            "busy": "busy",
+            "failed": "failed",
+            "canceled": "canceled",
+        }
+        usage.end_call(CallSid, outcome=outcome_map.get(CallStatus, CallStatus))
+
+    # Missed call recovery — SMS flow
     if CallStatus not in ("no-answer", "busy", "failed"):
         return {"ok": True, "action": "none"}
 
+    client = tenant.load_client_by_number(To)
     caller = memory.get_or_create_by_phone(From)
-    result = llm.recover(caller)
+    result = llm.recover(caller, client=client)
     memory.append_turn(caller["id"], "assistant", result.reply,
                        intent=result.intent, priority=result.priority)
 
@@ -392,6 +427,7 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...)):
     tw_number = os.environ.get("TWILIO_NUMBER")
     if tw and tw_number:
         tw.messages.create(to=From, from_=tw_number, body=result.reply)
+        usage.log_sms(CallSid, client["id"], From, result.reply, direction="outbound")
         return {"ok": True, "action": "sms_sent", "message": result.reply}
 
     # Creds not configured — still returned the generated message so you can

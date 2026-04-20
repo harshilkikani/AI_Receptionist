@@ -78,3 +78,49 @@ print('OK')
 ```
 
 **Risk:** Medium. The prompt grew from ~50 words to ~500 words. Input token cost per call rose ~10x (from ~50 tokens to ~500). Still tiny in absolute terms (~$0.0015 → $0.015 per 1M calls), but worth noting on the rate card. Prior prompt can be restored via `prompts/_deprecated/v1_inline.md`.
+
+---
+
+## Section E — Usage Tracking + Rate Card _(complete)_
+
+**Files added:**
+- `config/rate_card.json` — per-unit costs (LLM tokens, TTS chars, Twilio minutes, SMS segments, monthly number fee). Each field has a `_c_<name>` sibling comment key explaining it (JSON doesn't support comments natively).
+- `src/usage.py` — SQLite-backed tracker (stdlib `sqlite3`, no deps). Schema: `calls`, `turns`, `sms`. Public API: `start_call`, `end_call`, `log_turn`, `log_sms`, `sms_count_for_call`, `monthly_summary(client_id, month)`, `margin_for(client)`, `recent_calls`.
+
+**Files modified:**
+- `llm.py` — Added `chat_with_usage()` that returns `(ChatResponse, (input_tokens, output_tokens))`. `chat()` still works for non-voice callers that don't need token counts.
+- `main.py` — `_run_pipeline` now accepts `call_sid` and logs each LLM turn with input/output tokens + TTS char count. `/voice/incoming` records `start_call`, `/voice/status` records `end_call` with outcome mapping.
+
+**Storage:** SQLite at `data/usage.db` (created on first write). WAL mode for safe concurrent reads. Indexed on `(client_id, month)` for fast monthly aggregation.
+
+**Cost formula (in `monthly_summary`):**
+```
+cost = (in_tokens/1000 * input_rate)
+     + (out_tokens/1000 * output_rate)
+     + (tts_chars/1000 * synthesis_rate)
+     + total_minutes * (stt + platform_voice + twilio_inbound rates)
+     + sms_segments * sms_rate
+     + twilio_number_monthly  (flat once per month)
+```
+
+**Margin formula:** `revenue (from client.plan.monthly_price) - cost`
+
+**Design decisions:**
+- SQLite over Postgres (spec constraint + zero deps + single-machine demo).
+- Autocommit `isolation_level=None` — no explicit transactions, each write is atomic.
+- Threading lock around DB operations (FastAPI runs sync handlers in a threadpool).
+- Tracking is ALWAYS ON (not feature-flagged) — it's data collection only, no enforcement.
+- Rate card is JSON (machine-edited by scripts later) per PLAN, with sibling `_c_*` comment keys for human readers.
+
+**Test:**
+```bash
+python -c "
+from src import usage, tenant
+usage.start_call('CA_test_1', 'ace_hvac', '+14155550142', '+18449403274')
+usage.log_turn('CA_test_1', 'ace_hvac', 'assistant', 520, 45, 80, 'Scheduling')
+usage.end_call('CA_test_1', outcome='normal')
+print(usage.margin_for(tenant.load_client_by_number('+18449403274')))
+"
+```
+
+**Risk:** Low. All writes are append-only; no destructive mutations. If `data/usage.db` is corrupted, `logs/rejected_calls.jsonl` and Twilio's own call logs remain the source of truth for operational data.

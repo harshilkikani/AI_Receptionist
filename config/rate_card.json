@@ -1,0 +1,27 @@
+{
+  "_comment": "Per-unit platform costs used to calculate margin. Update to match your actual vendor pricing. Prices in USD.",
+
+  "llm_input_per_1k_tokens": 0.003,
+  "_c_llm_input": "Cost per 1,000 INPUT tokens to Claude (Haiku 4.5 current: $0.80/M input). Lower this for Haiku-only workloads.",
+
+  "llm_output_per_1k_tokens": 0.015,
+  "_c_llm_output": "Cost per 1,000 OUTPUT tokens. Haiku 4.5 current: $4.00/M output.",
+
+  "voice_synthesis_per_1k_chars": 0.15,
+  "_c_voice_syn": "TTS cost per 1,000 characters. Polly Neural currently ~$16/M chars via Twilio markup. Adjust when switching to ElevenLabs.",
+
+  "stt_per_minute": 0.012,
+  "_c_stt": "Speech-to-text cost per minute. Twilio enhanced STT is ~$0.012/min.",
+
+  "platform_voice_per_minute": 0.07,
+  "_c_platform_voice": "Catch-all platform/voice minute charge. Adjust if voice provider bills separately.",
+
+  "twilio_inbound_per_minute": 0.014,
+  "_c_twilio_inbound": "Twilio inbound toll-free or local per-minute rate (~$0.014/min US local, higher for toll-free).",
+
+  "twilio_number_monthly": 1.15,
+  "_c_twilio_number": "Monthly fee per Twilio number ($1.15 US local, $2.00 toll-free).",
+
+  "sms_per_segment": 0.008,
+  "_c_sms": "Per SMS segment (160 chars). Twilio US: ~$0.0083/segment outbound."
+}
