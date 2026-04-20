@@ -46,3 +46,35 @@ python -c "from src import tenant; print(tenant.load_client_by_number('+10000000
 ```
 
 **Risk:** Medium. Every voice webhook is now client-aware. Live number `+18449403274` is explicitly configured in `clients/ace_hvac.yaml` to preserve current behavior. Default fallback keeps generic phrasing if routing misses.
+
+---
+
+## Section B — System Prompt Refactor (templated) _(complete)_
+
+**Files added:**
+- `prompts/receptionist_core.md` — full templated prompt with slots: `{{company_name}}`, `{{owner_name}}`, `{{services}}`, `{{pricing_summary}}`, `{{service_area}}`, `{{hours}}`, `{{escalation_phone}}`, `{{emergency_keywords}}`, `{{memory}}`
+- `prompts/_deprecated/v1_inline.md` — prior inline prompt, kept for rollback
+
+**Files modified:**
+- `llm.py` — Reads `prompts/receptionist_core.md` on first use, renders substitutions per call. Added `wrap_up_mode` param (`None`, `'soft'`, `'hard'`) that injects call-timer wrap-up cues. Added `reload_prompt()` and `last_token_usage()` helpers.
+
+**Design notes:**
+- Template loads once per process, cached.
+- `{{var}}` substitution is a simple `str.replace` loop — avoids Jinja2 dependency.
+- Wrap-up mode appends a `[SYSTEM: ...]` block rather than modifying the template itself. Keeps the core prompt clean.
+- Prompt enforces: 2-sentence max, one-acknowledgment rule, batched info collection, early-exit paths (wrong number / hours / directions), explicit do-not list, wrap-up cues for duration cap.
+
+**Test:**
+```bash
+python -c "
+import os; os.environ.setdefault('ANTHROPIC_API_KEY','x')
+import llm
+from src import tenant
+p = llm._render_system_prompt(None, tenant.load_client_by_number('+18449403274'))
+assert 'Ace HVAC & Plumbing' in p
+assert '{{company_name}}' not in p
+print('OK')
+"
+```
+
+**Risk:** Medium. The prompt grew from ~50 words to ~500 words. Input token cost per call rose ~10x (from ~50 tokens to ~500). Still tiny in absolute terms (~$0.0015 → $0.015 per 1M calls), but worth noting on the rate card. Prior prompt can be restored via `prompts/_deprecated/v1_inline.md`.
