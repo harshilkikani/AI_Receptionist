@@ -153,7 +153,11 @@ def chat(body: ChatIn):
     caller = memory.get_caller(body.caller_id)
     if not caller:
         raise HTTPException(404, "caller not found")
-    return _run_pipeline(caller, body.message)
+    # Web chat has no inbound number — use single-tenant fallback
+    # (load_client_by_number("") returns the sole real tenant if exactly one
+    # is configured, otherwise _default)
+    client = tenant.load_client_by_number("")
+    return _run_pipeline(caller, body.message, client=client)
 
 
 @app.post("/recover/{caller_id}")
@@ -164,7 +168,8 @@ def recover(caller_id: str):
     if not caller:
         raise HTTPException(404, "caller not found")
 
-    result = llm.recover(caller)
+    client = tenant.load_client_by_number("")
+    result = llm.recover(caller, client=client)
     memory.append_turn(caller_id, "assistant", result.reply,
                        intent=result.intent, priority=result.priority)
 

@@ -22,10 +22,39 @@ def test_normalized_phone_matches_across_formats():
 
 
 def test_template_client_does_not_route():
-    """Clients with IDs starting with _ must never match by inbound number."""
-    # Even if _template had a real number, it shouldn't route
-    c = tenant.load_client_by_number("")  # empty
+    """Clients with IDs starting with _ must never match by inbound number.
+    Also: when phone is empty AND only one real tenant exists, fall back
+    to that tenant (single-tenant convenience for web chat / tests)."""
+    c = tenant.load_client_by_number("")
+    # In this repo, ace_hvac is the only real tenant with an inbound number
+    # (example_client has inbound_number="" by design), so empty → ace_hvac
+    assert c["id"] == "ace_hvac"
+
+
+def test_empty_phone_with_multiple_real_tenants_falls_to_default(tmp_path, monkeypatch):
+    """If two real tenants are configured, empty phone → _default (can't
+    guess which one the caller meant)."""
+    # Create a fresh clients dir with TWO real tenants
+    clients_dir = tmp_path / "clients"
+    clients_dir.mkdir()
+    (clients_dir / "_default.yaml").write_text(
+        "id: _default\nname: 'fallback'\ninbound_number: ''\n"
+        "plan: {max_call_duration_seconds: 240, max_call_duration_emergency: 360, sms_max_per_call: 3}\n"
+    )
+    (clients_dir / "a.yaml").write_text(
+        "id: a\nname: 'A'\ninbound_number: '+19990001111'\n"
+        "plan: {max_call_duration_seconds: 240, max_call_duration_emergency: 360, sms_max_per_call: 3}\n"
+    )
+    (clients_dir / "b.yaml").write_text(
+        "id: b\nname: 'B'\ninbound_number: '+19990002222'\n"
+        "plan: {max_call_duration_seconds: 240, max_call_duration_emergency: 360, sms_max_per_call: 3}\n"
+    )
+    monkeypatch.setattr(tenant, "CLIENTS_DIR", clients_dir)
+    tenant.reload()
+    c = tenant.load_client_by_number("")
     assert c["id"] == "_default"
+    # But an unambiguous match still routes
+    assert tenant.load_client_by_number("+19990002222")["id"] == "b"
 
 
 def test_plan_shape_present():

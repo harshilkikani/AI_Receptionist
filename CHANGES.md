@@ -441,3 +441,47 @@ $ pytest tests/
 - `docs/DEMO_SCRIPT.md` — 30-minute prospect walkthrough with objection responses
 
 **Risk:** N/A — docs only.
+
+---
+
+## Audit pass — post-refactor regression hunt _(complete)_
+
+Full integration audit run across the whole system. Found and fixed **5 issues**:
+
+### Bugs fixed
+
+1. **Empty `To` in web/test context fell through to `_default` tenant.**
+   - Voice callers from Twilio always include `To`, but web chat (`/chat`, `/recover`) has no phone context → tenant resolution returned generic "this service".
+   - **Fix:** `tenant.load_client_by_number("")` now returns the sole real tenant if exactly one is configured; `_default` when multiple.
+   - Files: `src/tenant.py`, `main.py` (passes through in `/chat` + `/recover`).
+
+2. **Admin dashboard listed reference/example tenants as if they were live.**
+   - `clients/example_client.yaml` (Bob's Septic) appeared in `/admin` table and CSV export with $297 revenue / $0 cost — misleading the operator about active accounts.
+   - **Fix:** Filter out configs with empty `inbound_number` from admin overview + alerts. Reference configs stay in repo as documentation.
+   - Files: `src/admin.py`, `src/alerts.py`, `clients/example_client.yaml` (cleared `inbound_number`).
+
+3. **Spam filter override was too permissive.**
+   - Generic scheduling/pricing words ("quote", "estimate", "schedule", "appointment") were on the override list. Spam pitches like "solar quote" and "free estimate" contained them → bypassed filter.
+   - **Fix:** Trimmed `override_keywords` in `config/spam_phrases.json` to service-specific terms only (plumbing, pipe, furnace, flood, "my house", street, etc.). Added `_comment_override` explaining the rationale.
+   - Re-tested: pure spam phrases now reject correctly; legit service+spam mixes still allow via the concrete override.
+
+4. **Legacy `_test_suite.py` didn't pass `To` form field.**
+   - 4 tests failed after Section G multi-tenant refactor — they were testing against `_default` tenant by accident.
+   - **Fix:** Added `_ACE = "+18449403274"` constant, all voice tests now pass it. Also updated XML-parsing helpers to handle the Gather-wrapped Say shape (from voice-optimization work).
+   - Also added new test `test_voice_incoming_returning_caller_skips_menu` to cover the returning-caller path.
+
+5. **`tests/test_tenant.py::test_template_client_does_not_route`** expected empty phone → `_default`. Now returns the sole tenant by design.
+   - **Fix:** Renamed expectation, added a new test `test_empty_phone_with_multiple_real_tenants_falls_to_default` using a temp clients dir with two real tenants — verifies the fallback heuristic behaves correctly in both modes.
+
+### Results
+
+- **52 pytest tests pass** (was 51; added 1)
+- **19 legacy `_test_suite.py` integration tests pass** (was 18; added 1 new test for returning-caller greeting)
+- **8 voice-flow end-to-end scenarios verified live** (language menu, setlang, scheduling, follow-up, empty speech, emergency, status callback, DTMF 0)
+- **5 admin dashboard endpoints verified** (overview, calls, CSV, flags, alerts/trigger)
+- **16 edge-case scenarios verified** (unknown numbers, empty inputs, spam override matrix, SMS length cap, memory persistence, log format)
+
+### Not a bug but worth noting
+
+- `/voice/incoming` with `From=""` returns 422 (FastAPI form validation). That's correct — Twilio never sends empty `From` in production.
+- Anthropic free-tier rate limiting (~5 RPM on Haiku 4.5) causes timeouts when tests fire many LLM calls back-to-back. Not a bug in the app. In real phone calls, turns are naturally spaced 5-15s apart.

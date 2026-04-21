@@ -94,9 +94,22 @@ def _fallback_hardcoded_default() -> dict:
 
 def load_client_by_number(phone: str) -> dict:
     """Return the client config that matches the given inbound (To) number.
-    Falls back to default if no match."""
+    Falls back to the single real tenant if exactly one exists and no
+    phone was provided (dev convenience); otherwise the generic default."""
     if not phone:
+        # Dev convenience: if there's exactly ONE real tenant configured,
+        # use it. Production Twilio always sends To, so this only fires
+        # in test scripts / curl invocations. Beats silent fallback to
+        # the generic "this service" greeting.
+        real_tenants = [
+            c for c in _all_clients().values()
+            if not (c.get("id") or "").startswith("_")
+            and (c.get("inbound_number") or "")
+        ]
+        if len(real_tenants) == 1:
+            return real_tenants[0]
         return load_default()
+
     target = _normalize_phone(phone)
     for client in _all_clients().values():
         # IDs starting with _ (e.g. _template, _default) never route

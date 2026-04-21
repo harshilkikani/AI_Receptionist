@@ -128,8 +128,11 @@ def _margin_row(margin: dict) -> str:
 @router.get("/", response_class=HTMLResponse)
 def overview(user=Depends(_check_auth)):
     rows = []
-    active_clients = [c for c in tenant.list_all()
-                      if not (c.get("id") or "").startswith("_")]
+    active_clients = [
+        c for c in tenant.list_all()
+        if not (c.get("id") or "").startswith("_")
+        and (c.get("inbound_number") or "")  # skip reference configs
+    ]
     for c in active_clients:
         m = usage.margin_for(c)
         rows.append(_margin_row(m))
@@ -184,8 +187,11 @@ def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)
 @router.get("/export.csv")
 def export_csv(month: Optional[str] = None, user=Depends(_check_auth)):
     """CSV export of per-client monthly metrics — for overage billing."""
-    active_clients = [c for c in tenant.list_all()
-                      if not (c.get("id") or "").startswith("_")]
+    active_clients = [
+        c for c in tenant.list_all()
+        if not (c.get("id") or "").startswith("_")
+        and (c.get("inbound_number") or "")  # skip reference configs
+    ]
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([

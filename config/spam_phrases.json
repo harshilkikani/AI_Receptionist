@@ -24,14 +24,15 @@
     "auto warranty"
   ],
 
+  "_comment_override": "Override keywords must be SPECIFIC — generic scheduling words like 'quote' / 'estimate' were removed because spam scripts also use them ('solar quote', 'free estimate'). Stick to concrete service-need words + address markers + emergency signals.",
   "override_keywords": [
     "plumbing", "plumber", "leak", "leaking", "burst", "pipe",
-    "septic", "sewage", "drain", "toilet", "shower",
-    "hvac", "furnace", "ac", "air conditioning", "heating",
-    "water heater", "boiler", "heat pump",
+    "septic", "sewage", "drain", "toilet", "shower", "sink", "faucet",
+    "hvac", "furnace", "ac unit", "air conditioner", "air conditioning",
+    "heating", "water heater", "boiler", "heat pump", "thermostat",
     "flood", "flooding", "emergency", "gas smell", "gas leak",
     "no heat", "no water", "no hot water", "backing up",
-    "address", "street", "avenue", "road", "drive",
-    "schedule", "appointment", "estimate", "quote"
+    "address", "street", "avenue", "road", "boulevard",
+    "my house", "our house", "my home"
   ]
 }

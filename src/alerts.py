@@ -205,7 +205,11 @@ def send_digest_now() -> dict:
         return {"sent": False, "reason": "disabled"}
     events = []
     for client in tenant.list_all():
-        if (client.get("id") or "").startswith("_"):
+        cid = client.get("id") or ""
+        if cid.startswith("_"):
+            continue
+        # Skip reference configs that have no actual inbound number
+        if not (client.get("inbound_number") or ""):
             continue
         events.append(evaluate_client(client))
     subject, body, payload = _format_digest(events)

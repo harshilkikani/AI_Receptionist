@@ -1,9 +1,12 @@
 # Worked example — septic service company
 # Use this as a reference when onboarding a new client.
+# inbound_number is intentionally empty — this is a REFERENCE config, not
+# a live-routed tenant. Operator copies this file + sets a real Twilio
+# number in the copy.
 id: bobs_septic
 name: "Bob's Septic Service"
 owner_name: "Bob Miller"
-inbound_number: "+15551234567"
+inbound_number: ""
 escalation_phone: "+15559876543"
 services: "Septic pumping, repairs, installations, emergency service"
 pricing_summary: "Pumping from $475. Emergency service available 24/7."

@@ -127,42 +127,74 @@ print("\n[2] Twilio endpoints (XML structure)")
 def parse_twiml(body):
     return ET.fromstring(body)
 
+def _find_say_text(root):
+    """Find the first <Say>'s text whether it's at Response level or
+    nested inside a Gather (barge-in pattern)."""
+    for el in root.iter("Say"):
+        if el.text:
+            return el.text
+    return ""
+
+
+# Real Twilio always sends the dialed number via `To`. Include it in all
+# voice tests so tenant routing resolves to ace_hvac (not _default).
+_ACE = "+18449403274"
+
+
 def test_voice_incoming_known_caller():
-    # Sarah's phone is (415) 555-0142
-    code, body = http("POST", "/voice/incoming", form={"From": "+14155550142"})
+    # Sarah's phone is (415) 555-0142 — but first call, no language saved yet
+    # → language menu plays. Assert the menu content.
+    code, body = http("POST", "/voice/incoming",
+                      form={"From": "+14155550142", "To": _ACE})
     assert code == 200, (code, body)
     root = parse_twiml(body)
     assert root.tag == "Response"
-    say = root.find("Say")
-    assert say is not None
-    assert "Sarah" in say.text, f"expected Sarah greeting, got {say.text!r}"
-    gather = root.find("Gather")
-    assert gather is not None
-    assert gather.attrib.get("input") == "speech"
-    return f"greets by name, gathers speech"
+    all_say_text = " ".join(el.text for el in root.iter("Say") if el.text).lower()
+    assert "ace hvac" in all_say_text, f"expected Ace HVAC in greeting, got {all_say_text!r}"
+    assert "press 1" in all_say_text, "language menu not shown on first call"
+    return "greets + language menu"
 
-def test_voice_incoming_new_caller():
-    code, body = http("POST", "/voice/incoming", form={"From": "+15558881234"})
+
+def test_voice_incoming_returning_caller_skips_menu():
+    # Set the caller's language so /voice/incoming skips menu and greets directly
+    http("POST", "/memory/sarah", body={"address": "42 Oak Street"})
+    # Force-set language
+    import urllib.parse
+    http("POST", "/voice/setlang",
+         form={"From": "+14155550142", "To": _ACE, "Digits": "1"})
+    code, body = http("POST", "/voice/incoming",
+                      form={"From": "+14155550142", "To": _ACE})
     assert code == 200
     root = parse_twiml(body)
-    say = root.find("Say")
-    assert say is not None
-    assert "Sarah" not in say.text
-    assert "Ace HVAC" in say.text
-    # Should have created a new caller record
+    say_text = _find_say_text(root).lower()
+    assert "sarah" in say_text, f"expected Sarah personalized greeting, got {say_text!r}"
+    return "greets by name after language set"
+
+
+def test_voice_incoming_new_caller():
+    code, body = http("POST", "/voice/incoming",
+                      form={"From": "+15558881234", "To": _ACE})
+    assert code == 200
+    root = parse_twiml(body)
+    all_say_text = " ".join(el.text for el in root.iter("Say") if el.text)
+    assert "Sarah" not in all_say_text
+    assert "Ace HVAC" in all_say_text
+    # Should have created a new caller record (keyed by normalized digits)
     code2, body2 = http("GET", "/memory/5558881234")
     assert code2 == 200, "new caller not persisted"
-    return "new caller created + greeted generically"
+    return "new caller created + greeted"
+
 
 def test_voice_gather_empty_speech():
     # Empty SpeechResult should reprompt without calling Claude
-    code, body = http("POST", "/voice/gather", form={"From": "+14155550142", "SpeechResult": ""})
+    code, body = http("POST", "/voice/gather",
+                      form={"From": "+14155550142", "To": _ACE, "SpeechResult": ""})
     assert code == 200
     root = parse_twiml(body)
-    say = root.find("Say")
-    assert "didn't catch" in say.text.lower()
-    gather = root.find("Gather")
-    assert gather is not None
+    say_text = _find_say_text(root).lower()
+    assert "didn't catch" in say_text or "couldn't hear" in say_text, f"expected reprompt, got {say_text!r}"
+    gathers = list(root.iter("Gather"))
+    assert len(gathers) >= 1, "expected at least one Gather to re-listen"
     return "reprompts on empty speech"
 
 def test_voice_status_non_failure():
@@ -185,7 +217,8 @@ def test_auth_error_handler():
     assert "ANTHROPIC_API_KEY" in j.get("detail", "")
     return "503 + actionable detail"
 
-t("POST /voice/incoming known caller", test_voice_incoming_known_caller)
+t("POST /voice/incoming known caller (language menu)", test_voice_incoming_known_caller)
+t("POST /voice/incoming returning caller (skips menu)", test_voice_incoming_returning_caller_skips_menu)
 t("POST /voice/incoming new caller (auto-create)", test_voice_incoming_new_caller)
 t("POST /voice/gather empty speech reprompts", test_voice_gather_empty_speech)
 t("POST /voice/status completed -> no-op", test_voice_status_non_failure)
@@ -249,15 +282,17 @@ else:
 
     def test_voice_gather_with_speech():
         code, body = http("POST", "/voice/gather",
-                          form={"From": "+14155550142", "SpeechResult": "I want to schedule a tune-up"})
+                          form={"From": "+14155550142", "To": _ACE,
+                                "SpeechResult": "I want to schedule a tune-up"})
         assert code == 200
         root = parse_twiml(body)
-        say = root.find("Say")
-        assert say is not None and len(say.text) > 0
-        # Non-emergency should re-gather
-        gather = root.find("Gather")
-        assert gather is not None, "expected continuation Gather for non-emergency"
-        return "spoken reply + re-gather"
+        say_text = _find_say_text(root)
+        assert len(say_text) > 0, "expected a spoken reply"
+        # Non-emergency should have a continuation Gather (barge-in shape:
+        # Say nested inside Gather)
+        gathers = list(root.iter("Gather"))
+        assert len(gathers) >= 1, "expected continuation Gather for non-emergency"
+        return f"spoken reply ({len(say_text)}ch) + re-gather"
 
     def test_sms_incoming():
         code, body = http("POST", "/sms/incoming",
