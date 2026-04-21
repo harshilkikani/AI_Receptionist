@@ -46,6 +46,10 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Receptionist", lifespan=_lifespan)
 
+# Mount admin routes (lightweight dashboard)
+from src import admin as _admin_module  # noqa: E402
+app.include_router(_admin_module.router)
+
 
 @app.exception_handler(anthropic.AuthenticationError)
 async def _auth_err(request: Request, exc: anthropic.AuthenticationError):

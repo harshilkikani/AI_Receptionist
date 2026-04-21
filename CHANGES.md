@@ -320,3 +320,40 @@ curl -X POST http://localhost:8765/chat \
 ```
 
 **Risk:** Low. Prompt-only change. Rollback = revert this section in `prompts/receptionist_core.md`.
+
+---
+
+## Section J — Admin Dashboard _(complete)_
+
+**Files added:**
+- `src/admin.py` — FastAPI router with 5 read-only endpoints
+
+**Files modified:**
+- `main.py` — Mounts `admin.router` on the app
+
+**Endpoints:**
+- `GET /admin` — per-client margin table (color-coded: red<0%, yellow<50%, green≥50%)
+- `GET /admin/calls?limit=50&client_id=ace_hvac` — recent call log
+- `GET /admin/export.csv?month=2026-04` — CSV download for overage billing
+- `GET /admin/flags` — current feature-flag values + descriptions
+- `GET /admin/alerts/trigger` — force a digest send (for testing alert config)
+
+**Auth:** optional HTTP Basic via `ADMIN_USER` / `ADMIN_PASS` env vars. If either is unset, admin is open (intended for local-only ops).
+
+**Design notes:**
+- Inline HTML + CSS, no Jinja2 (zero new deps — spec constraint)
+- No mutation endpoints — admin is read-only by design. Config changes require editing YAML/JSON + restart.
+- CSV export ready for pasting into billing spreadsheets
+
+**Test:**
+```bash
+uvicorn main:app --port 8765 &
+curl http://localhost:8765/admin                   # HTML overview
+curl http://localhost:8765/admin/calls             # HTML call log
+curl http://localhost:8765/admin/export.csv        # CSV download
+curl http://localhost:8765/admin/flags             # HTML flag view
+```
+
+Routes registered successfully: `/admin`, `/admin/calls`, `/admin/export.csv`, `/admin/flags`, `/admin/alerts/trigger`.
+
+**Risk:** Low. Read-only. No admin = no ability to break production. Failure modes: if auth is misconfigured, endpoint returns 401 rather than a 500.
