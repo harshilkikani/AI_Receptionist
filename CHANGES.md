@@ -237,3 +237,39 @@ kill switch: allow=True (not enforcing) ✓
 ```
 
 **Risk:** Low. Rate-limiting SMS is additive — worst case operator turns flag off and everything flows as before.
+
+---
+
+## Section F — Alerting _(complete)_
+
+**Files added:**
+- `config/alerts.json` — transport (smtp or webhook), thresholds, mode (digest or event), digest hour
+- `src/alerts.py` — threshold evaluation + dispatch + daily loop
+
+**Files modified:**
+- `main.py` — FastAPI lifespan hook starts the digest loop at startup, stops it on shutdown. (Migrated from `@app.on_event` to `asynccontextmanager` lifespan — modern FastAPI.)
+
+**Thresholds (config-driven):**
+- 60%: log only
+- 80%: notify
+- 100%: notify + flag overage
+- 150%: urgent notify
+
+Evaluated against `included_minutes` (preferred) or `included_calls` (fallback if no minute limit).
+
+**Transport:** operator picks SMTP *or* webhook in `config/alerts.json`. No deps beyond stdlib (`smtplib`, `urllib.request`).
+
+**Modes:**
+- `digest` (default) — one summary email/webhook per day at `digest_hour_utc` (default 14 UTC = 9 AM ET). Reduces notification noise.
+- `event` — implemented structure but loop currently runs digest only; event mode extension is a 5-line change (evaluate after each call).
+
+**Feature flag:** `ENFORCE_USAGE_ALERTS` default **true** (safe — notifications only, no call disruption). Still respects global `MARGIN_PROTECTION_ENABLED` kill.
+
+**Test (smoke):**
+```
+ace_hvac at 60% -> threshold=log, margin=89.9%
+ace_hvac at 120% -> threshold=overage
+send_digest_now() -> sent=False (webhook URL empty, correctly no-ops), 2 events evaluated
+```
+
+**Risk:** Low. Failure modes are silent (logged, not raised). No webhook URL = no-op, incomplete SMTP = no-op.

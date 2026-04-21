@@ -1,0 +1,33 @@
+{
+  "_comment": "Pick ONE transport (smtp or webhook). Leave the other empty. Digest runs once daily by default.",
+  "transport": "webhook",
+
+  "smtp": {
+    "host": "smtp.example.com",
+    "port": 587,
+    "user": "alerts@example.com",
+    "from": "alerts@example.com",
+    "to": ["owner@example.com"],
+    "tls": true,
+    "_comment_password": "Password read from env ALERT_SMTP_PASSWORD"
+  },
+
+  "webhook": {
+    "url": "",
+    "_comment_url": "POSTs JSON body: {client_id, month, metric, value, threshold_pct, detail}. Use Slack incoming webhook, Zapier catch hook, or your own endpoint.",
+    "headers": {}
+  },
+
+  "mode": "digest",
+  "_comment_mode": "digest = one daily summary email, event = one notification per threshold crossing",
+
+  "thresholds": {
+    "log_pct": 60,
+    "notify_pct": 80,
+    "overage_pct": 100,
+    "urgent_pct": 150
+  },
+
+  "digest_hour_utc": 14,
+  "_comment_digest_hour": "Hour of day (UTC) when digest fires. 14 UTC = 9 AM EST / 6 AM PST."
+}

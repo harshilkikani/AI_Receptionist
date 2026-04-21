@@ -22,7 +22,8 @@ from pydantic import BaseModel
 
 import llm
 import memory
-from src import tenant, usage, call_timer, spam_filter, sms_limiter
+from contextlib import asynccontextmanager
+from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts
 
 import logging
 logging.basicConfig(
@@ -32,7 +33,18 @@ logging.basicConfig(
 log = logging.getLogger("receptionist")
 
 ROOT = Path(__file__).parent
-app = FastAPI(title="Ace HVAC AI Receptionist")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Startup — kick off alert digest loop if enforcement is on
+    alerts.start_background_loop()
+    yield
+    # Shutdown
+    alerts.stop_background_loop()
+
+
+app = FastAPI(title="AI Receptionist", lifespan=_lifespan)
 
 
 @app.exception_handler(anthropic.AuthenticationError)
