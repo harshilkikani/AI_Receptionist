@@ -256,6 +256,29 @@ VOICE_MAP = {
     "ko": "Polly.Seoyeon-Neural",
     "zh": "Polly.Zhiyu-Neural",
 }
+
+# Tiered voice map — short transactional phrases can use a cheaper voice.
+# On Polly via Twilio all Neural voices cost the same, so this is a scaffold
+# for when operator switches to ElevenLabs (Flash vs. Turbo vs. Multilingual)
+# or another provider with actual tiered pricing.
+#
+# Currently both tiers resolve to the same Polly Neural voice — no cost win
+# on the current TTS stack. Operator updates this map when they swap TTS.
+VOICE_TIER_MAP = {
+    "premium": VOICE_MAP,          # main conversational turns
+    "flash": VOICE_MAP,            # short transactional phrases
+    "standard": {                  # downgrade to standard (non-neural) if needed
+        "en": "Polly.Joanna",
+        "es": "Polly.Lupe",
+        "hi": "Polly.Aditi",
+        "gu": "Polly.Aditi",
+        "pt": "Polly.Camila",
+        "it": "Polly.Bianca",
+        "ja": "Polly.Mizuki",
+        "ko": "Polly.Seoyeon",
+        "zh": "Polly.Zhiyu",
+    },
+}
 # Twilio <Gather> language codes for speech recognition
 STT_LANG_MAP = {
     "en": "en-US",
@@ -271,8 +294,18 @@ STT_LANG_MAP = {
 DEFAULT_LANG = "en"
 
 
-def _voice_for(lang: str) -> str:
-    return VOICE_MAP.get(lang, VOICE_MAP[DEFAULT_LANG])
+def _voice_for(lang: str, client: dict = None, mode: str = "main") -> str:
+    """Return Polly voice for a language. `mode` is 'main' or 'transactional'
+    — when the client config specifies a cheaper tier for transactional
+    phrases, we use that map."""
+    if client is None:
+        tier = "premium"
+    else:
+        plan = client.get("plan") or {}
+        key = "voice_tier_transactional" if mode == "transactional" else "voice_tier_main"
+        tier = plan.get(key, "premium")
+    table = VOICE_TIER_MAP.get(tier, VOICE_MAP)
+    return table.get(lang, table.get(DEFAULT_LANG, VOICE_MAP[DEFAULT_LANG]))
 
 
 def _stt_lang(lang: str) -> str:
@@ -331,7 +364,7 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
                  CallSid, From, number_check["reason"])
         vr = VoiceResponse()
         vr.say("Thanks, we're not taking calls from this number. Goodbye.",
-               voice=_voice_for("en"))
+               voice=_voice_for("en", client, mode="transactional"))
         vr.hangup()
         usage.end_call(CallSid, outcome="spam_number")
         call_timer.record_end(CallSid)
@@ -426,7 +459,7 @@ def voice_gather(From: str = Form(...),
                  CallSid, phrase_check.get("phrase"))
         vr2 = VoiceResponse()
         vr2.say("Thanks, we're not interested. Goodbye.",
-                voice=_voice_for(lang))
+                voice=_voice_for(lang, client, mode="transactional"))
         vr2.hangup()
         usage.end_call(CallSid, outcome="spam_phrase")
         call_timer.record_end(CallSid)
@@ -444,7 +477,7 @@ def voice_gather(From: str = Form(...),
     if timer["action"] == "force_end":
         owner = client.get("owner_name", "the owner")
         goodbye = f"Okay— {owner} will call you back within the hour. Talk soon."
-        vr.say(goodbye, voice=_voice_for(lang))
+        vr.say(goodbye, voice=_voice_for(lang, client, mode="transactional"))
         vr.hangup()
         usage.end_call(CallSid, outcome="duration_capped")
         call_timer.record_end(CallSid)
@@ -460,11 +493,13 @@ def voice_gather(From: str = Form(...),
         vr.say(result["reply"], voice=_voice_for(lang))
         on_call = client.get("escalation_phone") or os.environ.get("ON_CALL_NUMBER")
         if on_call:
-            vr.say("Hang tight— connecting you now.", voice=_voice_for(lang))
+            vr.say("Hang tight— connecting you now.",
+                   voice=_voice_for(lang, client, mode="transactional"))
             vr.dial(on_call)
             usage.end_call(CallSid, outcome="emergency_transfer", emergency=True)
         else:
-            vr.say("Got a tech being paged— they'll call you back in ten.", voice=_voice_for(lang))
+            vr.say("Got a tech being paged— they'll call you back in ten.",
+                   voice=_voice_for(lang, client, mode="transactional"))
         return _twiml(str(vr))
 
     # Normal reply — one Say inside one Gather. That's it.

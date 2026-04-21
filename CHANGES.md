@@ -273,3 +273,31 @@ send_digest_now() -> sent=False (webhook URL empty, correctly no-ops), 2 events 
 ```
 
 **Risk:** Low. Failure modes are silent (logged, not raised). No webhook URL = no-op, incomplete SMTP = no-op.
+
+---
+
+## Section H — Voice Tier Optimization _(scaffold complete; no immediate cost win)_
+
+**Files modified:**
+- `main.py` — Added `VOICE_TIER_MAP` with `premium`/`flash`/`standard` tiers. `_voice_for(lang, client, mode)` returns the correct voice based on `client.plan.voice_tier_main` vs `voice_tier_transactional`. Transactional phrases (spam rejections, goodbyes, transfer announcements, no-on-call messages, duration-cap force-end) tagged with `mode="transactional"`.
+
+**Honest limitation (documented in inline code comments):** on Polly via Twilio, all Neural voices cost the same per character. `premium` and `flash` both resolve to the same Polly Neural voice → **no immediate cost savings** on the current stack.
+
+**Where this matters:** when operator switches TTS to ElevenLabs (Flash vs Turbo vs Multilingual — meaningful price differences), or adds a separate transactional TTS provider, the config hook is already in place:
+
+```python
+VOICE_TIER_MAP["flash"] = {"en": "ElevenLabs.Joanna-Flash", ...}
+```
+
+No code changes needed beyond updating the map.
+
+**`standard` tier is wired now** and does reduce cost — if operator sets `voice_tier_transactional: "standard"` in a client's YAML, they get non-Neural Polly (cheaper per char). Provided as a knob for cost-sensitive tenants who accept a quality drop on goodbyes/confirmations.
+
+**Test (smoke):**
+```
+main (ace_hvac, premium):          Polly.Joanna-Neural
+transactional (ace_hvac, premium): Polly.Joanna-Neural   # same — no win on Polly
+standard tier (test):              Polly.Joanna          # non-neural
+```
+
+**Risk:** Very low. Backward-compatible — old `_voice_for(lang)` signature still works (client defaults to None → premium tier).
