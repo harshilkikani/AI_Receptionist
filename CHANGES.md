@@ -404,3 +404,30 @@ $ pytest tests/
 ```
 
 **Risk:** N/A — tests are code-only.
+
+---
+
+## Section L — Shadow Mode + ROLLOUT.md _(complete)_
+
+**Files added:**
+- `ROLLOUT.md` — 7-day rollout plan with explicit day-by-day steps, rollback procedures, and emergency kill-switch usage.
+
+**Feature flags (already wired through all sections):**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `MARGIN_PROTECTION_ENABLED` | `true` | Global kill switch — bypasses ALL enforcement when false |
+| `ENFORCE_CALL_DURATION_CAP` | `false` | Shadow mode: logs would-force-end, doesn't actually end |
+| `ENFORCE_SPAM_FILTER` | `false` | Shadow mode: logs matches, doesn't reject |
+| `ENFORCE_SMS_CAP` | `false` | Shadow mode: logs cap events, doesn't block SMS |
+| `ENFORCE_USAGE_ALERTS` | `true` | Safe default — notifications don't disrupt calls |
+
+**Rollout order (from ROLLOUT.md):**
+- Day 1–2: shadow mode, observe
+- Day 3: enable spam filter
+- Day 4: enable SMS cap
+- Day 5: enable duration cap (**highest risk**)
+- Day 6–7: tune + margin review
+- After: merge to `main`, tag `v1.0-margin-protection`
+
+**Risk:** N/A — rollout plan is a doc.
