@@ -301,3 +301,22 @@ standard tier (test):              Polly.Joanna          # non-neural
 ```
 
 **Risk:** Very low. Backward-compatible — old `_voice_for(lang)` signature still works (client defaults to None → premium tier).
+
+---
+
+## Section I — Conversation Flow Audit _(complete)_
+
+**Files modified:**
+- `prompts/receptionist_core.md` — Added **Minimum info** rule (don't collect what you don't need: emergency = just address + callback; wrong number = nothing; existing customer = confirm, don't re-ask). Added **Don't repeat back** rule (no "So your name is… address is… number is…" echoes).
+
+Section B already established the baseline (batched questions, early exits for wrong number / hours / directions / price-only). Section I tightens the behavior with two specific anti-patterns that burn turns.
+
+**Test:** `llm._render_system_prompt` now returns 4408 chars including both new sections. Live voice behavior validation requires an actual call — operator should test the `/chat` endpoint with a script:
+```bash
+curl -X POST http://localhost:8765/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"caller_id":"sarah","message":"wrong number, sorry"}'
+# Expected: one-sentence sign-off, not an info collection attempt
+```
+
+**Risk:** Low. Prompt-only change. Rollback = revert this section in `prompts/receptionist_core.md`.
