@@ -431,3 +431,13 @@ $ pytest tests/
 - After: merge to `main`, tag `v1.0-margin-protection`
 
 **Risk:** N/A — rollout plan is a doc.
+
+---
+
+## Phase 3 — Client Onboarding Kit _(complete)_
+
+**Files added:**
+- `docs/NEW_CLIENT_CHECKLIST.md` — 7-step onboarding from first call to going live, with pitfalls
+- `docs/DEMO_SCRIPT.md` — 30-minute prospect walkthrough with objection responses
+
+**Risk:** N/A — docs only.
