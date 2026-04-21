@@ -357,3 +357,50 @@ curl http://localhost:8765/admin/flags             # HTML flag view
 Routes registered successfully: `/admin`, `/admin/calls`, `/admin/export.csv`, `/admin/flags`, `/admin/alerts/trigger`.
 
 **Risk:** Low. Read-only. No admin = no ability to break production. Failure modes: if auth is misconfigured, endpoint returns 401 rather than a 500.
+
+---
+
+## Section K — Tests _(complete)_
+
+**Files added:**
+- `pytest.ini` — pytest config
+- `tests/__init__.py`
+- `tests/conftest.py` — shared fixtures (env isolation, temp SQLite DB per test, client fixtures)
+- `tests/test_tenant.py` — 5 tests (Section G)
+- `tests/test_call_timer.py` — 11 tests (Section A)
+- `tests/test_spam_filter.py` — 12 tests (Section C)
+- `tests/test_usage.py` — 6 tests (Section E)
+- `tests/test_sms_limiter.py` — 7 tests (Section D)
+- `tests/test_alerts.py` — 6 tests (Section F, webhook stubbed)
+- `tests/test_kill_switch.py` — 4 cross-module kill-switch tests
+
+**Total: 51 tests, all passing in ~33 seconds.**
+
+**Coverage per spec requirement:**
+- ✅ Call duration cap triggers at 240s
+- ✅ Emergency extension to 360s
+- ✅ Grace period for critical-info collection
+- ✅ Spam filter rejects obvious spam phrases
+- ✅ Spam filter does NOT reject legit calls with override keywords
+- ✅ Usage tracking increments correctly
+- ✅ Alert thresholds at 60/80/100/150%
+- ✅ Kill switch bypasses every enforcement module
+- ✅ Multi-tenant routing via inbound number
+
+**Isolation:** `conftest.py::_isolate_env` autouse fixture:
+1. Strips all `ENFORCE_*` + `MARGIN_PROTECTION_ENABLED` env vars to default state
+2. Redirects `usage.DB_PATH` to a per-test tmp path
+3. Calls `tenant.reload()` to clear YAML cache
+
+Each test starts with a clean slate.
+
+**`_test_suite.py` (legacy integration smoke test) is unchanged** — still runs independently against a live server if operator wants end-to-end verification.
+
+**Test run:**
+```
+$ pytest tests/
+...................................................                      [100%]
+51 passed in 33.23s
+```
+
+**Risk:** N/A — tests are code-only.
