@@ -294,6 +294,57 @@ per-client, so a YAML with a typo in `timezone` logs an error and moves
 on — doesn't kill the loop. In-memory dedup state is lost on restart
 (worst case: a duplicate digest if bounced at 22:00:30 local; acceptable).
 
+---
+
+## P5 — Onboarding wizard _(complete)_
+
+**Why:** Copy-template + hand-edit YAML is error-prone (missing fields,
+bad E.164, wrong YAML indentation). A guided wizard cuts onboarding time
+from ~10 minutes (and occasional typos that route nothing) to ~3 minutes
+with a validated YAML that can't silently misroute.
+
+**Files added:**
+- `src/onboarding.py` — CLI with three subcommands:
+    - `new` — full interactive Q&A (17 fields, all validated)
+    - `new-demo` — random-id 24h disposable tenant, with `demo: true`
+      + `demo_expires_ts` so the server auto-purges on startup
+    - `purge-expired` — manual sweep (startup also calls it)
+
+  Validators: E.164, snake_case id, IANA timezone, non-empty,
+  positive number. `_ask()` loop re-prompts until valid. I/O is
+  injectable (reader/writer) so tests run headless — no stdin mocking.
+
+- `tests/test_onboarding.py` — 17 tests covering validators, the
+  re-prompt loop, full-Q&A happy path, id collision, demo build
+  + expiry, purge semantics, YAML round-trip, followup output
+  (portal URL + webhook URLs + curl hint), CLI paths.
+
+**Files modified:**
+- `main.py` — lifespan startup calls `onboarding.purge_expired_demos()`
+  so stale demo YAMLs can never accidentally route live traffic after
+  their 24h window.
+
+**Followup printout** — after writing the YAML, the wizard prints:
+1. Missing `.env` values (CLIENT_PORTAL_SECRET, PUBLIC_BASE_URL)
+2. The three Twilio webhook URLs to paste into the Twilio console
+   (uses `PUBLIC_BASE_URL` env or the tunnel hint file written by
+   `scripts/reclaim_tunnel.py` in P9; placeholder otherwise)
+3. A ready-to-send client portal URL (when secret is set)
+4. A `python -c` tenant-routing sanity check
+5. A `curl -X POST /voice/incoming` sanity test
+
+**Test:**
+```bash
+pytest tests/test_onboarding.py -v   # 17 passed
+pytest tests/                        # 135 passed total
+```
+
+**Risk:** Low. No production code path depends on the wizard — it's an
+operator tool. The startup purge can only move files into `clients/_expired/`,
+never delete. If a demo YAML is malformed, the purge skips it with a log
+line rather than raising.
+
+
 
 
 

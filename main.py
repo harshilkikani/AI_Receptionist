@@ -39,6 +39,17 @@ ROOT = Path(__file__).parent
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    # P5 — prune expired demo tenants at startup so stale demo YAMLs
+    # don't accidentally route live traffic after their 24h window.
+    try:
+        from src import onboarding as _onboarding
+        removed = _onboarding.purge_expired_demos()
+        if removed:
+            log.info("startup: purged %d expired demo tenants: %s",
+                     len(removed), ", ".join(removed))
+    except Exception as e:
+        log.error("startup: demo purge failed: %s", e)
+
     # Startup — kick off alert digest loop if enforcement is on
     alerts.start_background_loop()
     # P4 — per-client owner end-of-day digest (10 PM local)
