@@ -593,6 +593,47 @@ not in any YAML are left alone); (2) errors per number don't abort the
 batch; (3) `--dry-run` available for safe verification before any
 writes happen.
 
+---
+
+## P10 — Analytics admin page _(complete)_
+
+**Why:** `/admin` shows per-client margin and calls, but not the patterns
+operators use to spot problems (when do calls come in, what are they
+about, which clients are silently drifting). `/admin/analytics` answers
+all four at a glance, no charting lib.
+
+**Files modified:**
+- `src/admin.py`:
+  - New `/admin/analytics` route with four sections: intent
+    distribution, calls-per-hour heatmap, month-over-month per-client
+    trend, flagged-client list.
+  - Pure-function helpers `_previous_month`, `_intent_counts`,
+    `_calls_per_hour`, `_silence_rate`, `_flagged_clients` — each
+    SQL-scoped by `(client_id?, month)` with the existing `_db_lock`.
+- `tests/test_analytics.py` — 9 tests: empty render, intent + heatmap +
+  MoM rendering, high-spam-rate flag, previous-month wrap, intent
+  counts query, calls-per-hour query, silence-rate math.
+
+**What the operator sees:**
+- **Intent distribution:** one row per intent with count, share %, and
+  an ASCII bar (`█` ratio).
+- **Calls per hour (UTC):** 24 rows with `▇` density bars. Quickly
+  shows when the after-hours line is actually busy.
+- **MoM per client:** calls / minutes / margin with signed deltas vs
+  previous month (`+12`, `-8`).
+- **Flagged:** red rows for clients whose margin dropped below 50%,
+  spam rate exceeds 20%, or silence-timeout rate exceeds 10%. Reasons
+  are listed so the operator knows which lever to pull.
+
+**Test:**
+```bash
+pytest tests/test_analytics.py -v   # 9 passed
+pytest tests/                       # 191 passed total
+```
+
+**Risk:** Low. Read-only page. All SQL is scoped; no new writes.
+
+
 
 
 

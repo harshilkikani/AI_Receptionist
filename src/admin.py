@@ -54,6 +54,83 @@ def _flag(name: str) -> str:
     return os.environ.get(name, "—") or "—"
 
 
+def _previous_month(month: str) -> str:
+    year, m = int(month[:4]), int(month[5:7])
+    if m == 1:
+        return f"{year - 1:04d}-12"
+    return f"{year:04d}-{m - 1:02d}"
+
+
+def _intent_counts(month: str) -> dict:
+    """Intent → count across all clients for the given month."""
+    from src.usage import _connect, _init_schema, _db_lock
+    with _db_lock:
+        conn = _connect()
+        _init_schema(conn)
+        rows = conn.execute("""
+            SELECT intent, COUNT(*) AS n FROM turns
+             WHERE month = ? AND intent IS NOT NULL AND intent <> ''
+          GROUP BY intent
+        """, (month,)).fetchall()
+        conn.close()
+    return {r["intent"]: int(r["n"] or 0) for r in rows}
+
+
+def _calls_per_hour(month: str) -> dict:
+    """UTC hour-of-day → count. SQLite `strftime('%H', start_ts, 'unixepoch')`."""
+    from src.usage import _connect, _init_schema, _db_lock
+    with _db_lock:
+        conn = _connect()
+        _init_schema(conn)
+        rows = conn.execute("""
+            SELECT CAST(strftime('%H', start_ts, 'unixepoch') AS INTEGER) AS h,
+                   COUNT(*) AS n
+              FROM calls
+             WHERE month = ?
+          GROUP BY h
+        """, (month,)).fetchall()
+        conn.close()
+    return {int(r["h"] or 0): int(r["n"] or 0) for r in rows}
+
+
+def _flagged_clients(active_clients: list, month: str) -> list:
+    """Return client info with reasons why they're flagged this month."""
+    out = []
+    for c in active_clients:
+        m = usage.margin_for(c, month=month)
+        reasons = []
+        if m["revenue_usd"] > 0 and m["margin_pct"] < 50:
+            reasons.append(f"margin {m['margin_pct']}%")
+        total = m["total_calls"]
+        filtered = m["calls_filtered"]
+        if total > 0 and (filtered / total) > 0.20:
+            reasons.append(f"spam {int(filtered / total * 100)}%")
+        # Silence-timeout rate: count outcome='silence_timeout' within calls
+        sil_rate = _silence_rate(c["id"], month)
+        if total > 0 and sil_rate > 0.10:
+            reasons.append(f"silence {int(sil_rate * 100)}%")
+        if reasons:
+            out.append({"client_id": c["id"], "reasons": reasons})
+    return out
+
+
+def _silence_rate(client_id: str, month: str) -> float:
+    from src.usage import _connect, _init_schema, _db_lock
+    with _db_lock:
+        conn = _connect()
+        _init_schema(conn)
+        row = conn.execute("""
+            SELECT SUM(CASE WHEN outcome='silence_timeout' THEN 1 ELSE 0 END) AS s,
+                   COUNT(*) AS t
+              FROM calls WHERE client_id=? AND month=?
+        """, (client_id, month)).fetchone()
+        conn.close()
+    total = int(row["t"] or 0)
+    if total == 0:
+        return 0.0
+    return int(row["s"] or 0) / total
+
+
 # ── HTML helpers ───────────────────────────────────────────────────────
 
 _CSS = """
@@ -88,6 +165,8 @@ def _page(title: str, body: str) -> str:
 <nav>
   <a href="/admin">Overview</a>
   <a href="/admin/calls">Recent calls</a>
+  <a href="/admin/analytics">Analytics</a>
+  <a href="/admin/evals">Evals</a>
   <a href="/admin/export.csv">Export CSV</a>
   <a href="/admin/flags">Feature flags</a>
 </nav>
@@ -248,6 +327,108 @@ def trigger_digest(user=Depends(_check_auth)):
     """Force a digest to fire right now. Useful after tuning config/alerts.json."""
     result = alerts.send_digest_now()
     return JSONResponse(result)
+
+
+@router.get("/analytics", response_class=HTMLResponse)
+def analytics_view(user=Depends(_check_auth)):
+    """P10 — intent distribution + hourly heatmap + MoM trend + flagged list.
+    All rendered as text/HTML — no JS, no charting library."""
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    prev_month = _previous_month(month)
+    active_clients = [
+        c for c in tenant.list_all()
+        if not (c.get("id") or "").startswith("_")
+        and (c.get("inbound_number") or "")
+    ]
+
+    # ── Intent distribution (current month, across all clients)
+    intents = _intent_counts(month)
+    total_intents = sum(intents.values()) or 1
+    intent_rows = []
+    for intent, n in sorted(intents.items(), key=lambda kv: -kv[1]):
+        pct = (n / total_intents) * 100
+        bar = "█" * max(1, int(pct / 2))
+        intent_rows.append(
+            f'<tr><td>{html.escape(intent or "Unknown")}</td>'
+            f'<td class="num">{n}</td>'
+            f'<td class="num">{pct:.1f}%</td>'
+            f'<td><code>{bar}</code></td></tr>'
+        )
+
+    # ── Hour-of-day heatmap (current month, all clients)
+    hours = _calls_per_hour(month)
+    max_h = max(hours.values() or [0]) or 1
+    heatmap_rows = []
+    for h in range(24):
+        n = hours.get(h, 0)
+        cells = "▇" * max(1, int((n / max_h) * 20)) if n else "."
+        heatmap_rows.append(
+            f'<tr><td class="muted">{h:02d}:00</td>'
+            f'<td class="num">{n}</td>'
+            f'<td><code>{cells}</code></td></tr>'
+        )
+
+    # ── MoM trend per client
+    mom_rows = []
+    for c in active_clients:
+        cur = usage.margin_for(c, month=month)
+        prev = usage.margin_for(c, month=prev_month)
+        dcalls = cur["total_calls"] - prev["total_calls"]
+        dmin = cur["total_minutes"] - prev["total_minutes"]
+        dmargin = cur["margin_usd"] - prev["margin_usd"]
+        sign_calls = "+" if dcalls >= 0 else ""
+        sign_min = "+" if dmin >= 0 else ""
+        sign_margin = "+" if dmargin >= 0 else ""
+        mom_rows.append(
+            f'<tr><td>{html.escape(c["id"])}</td>'
+            f'<td class="num">{cur["total_calls"]} <span class="muted">({sign_calls}{dcalls})</span></td>'
+            f'<td class="num">{cur["total_minutes"]:.0f} <span class="muted">({sign_min}{dmin:.0f})</span></td>'
+            f'<td class="num">${cur["margin_usd"]:.0f} <span class="muted">({sign_margin}${dmargin:.0f})</span></td>'
+            f'<td class="num">{cur["margin_pct"]}%</td></tr>'
+        )
+
+    # ── Flagged clients
+    flagged = _flagged_clients(active_clients, month)
+    flag_rows = []
+    for f in flagged:
+        flag_rows.append(
+            f'<tr class="bad"><td>{html.escape(f["client_id"])}</td>'
+            f'<td>{html.escape(", ".join(f["reasons"]))}</td></tr>'
+        )
+
+    body = f"""
+<p class="muted">Analytics for {html.escape(month)} (compare to {html.escape(prev_month)})</p>
+
+<h2>Intent distribution</h2>
+<table>
+  <tr><th>Intent</th><th class="num">Count</th>
+      <th class="num">Share</th><th>Distribution</th></tr>
+  {''.join(intent_rows) or '<tr><td colspan="4" class="muted">No LLM turns logged yet.</td></tr>'}
+</table>
+
+<h2>Calls per hour of day (UTC)</h2>
+<table>
+  <tr><th>Hour</th><th class="num">Calls</th><th>Heatmap</th></tr>
+  {''.join(heatmap_rows)}
+</table>
+
+<h2>Month-over-month per client</h2>
+<table>
+  <tr><th>Client</th><th class="num">Calls (Δ)</th>
+      <th class="num">Minutes (Δ)</th><th class="num">Margin $ (Δ)</th>
+      <th class="num">Margin %</th></tr>
+  {''.join(mom_rows) or '<tr><td colspan="5" class="muted">No active clients.</td></tr>'}
+</table>
+
+<h2>Flagged clients</h2>
+<p class="muted">Flagged if: margin &lt; 50%, spam rate &gt; 20%,
+  or silence-timeout rate &gt; 10% of handled calls.</p>
+<table>
+  <tr><th>Client</th><th>Reasons</th></tr>
+  {''.join(flag_rows) or '<tr><td colspan="2" class="muted">No flagged clients.</td></tr>'}
+</table>
+"""
+    return HTMLResponse(_page("Analytics", body))
 
 
 @router.get("/evals", response_class=HTMLResponse)
