@@ -53,6 +53,66 @@ pytest tests/test_security.py -v
 browsing. Headers are additive. Basic auth only enforces when both env
 vars are set; local-only operation is unchanged.
 
+---
+
+## P1 — Client-facing portal _(complete)_
+
+**Why:** We need one stable URL per client that they can bookmark and see
+their own activity in — without exposing any operator-only fields (cost,
+margin, per-client revenue) or letting one client see another's data.
+
+**Files added:**
+- `src/client_portal.py` — APIRouter with three routes plus a CLI:
+    - `GET /client/{client_id}?t=<token>` — current-month summary
+      (calls handled, emergencies routed, bookings captured, minutes used /
+      plan limit, last call, filtered-call count). NO cost/margin fields.
+    - `GET /client/{client_id}/calls?t=<token>` — recent call log
+      (timestamp, duration, outcome, inferred intent).
+    - `GET /client/{client_id}/invoice/{YYYY-MM}?t=<token>` — printable
+      monthly invoice. Uses `src.invoices` if available (P2), otherwise a
+      light fallback computed from `usage.monthly_summary` + plan YAML.
+    - `python -m src.client_portal issue <client_id>` → prints the full
+      signed URL. Refuses if `CLIENT_PORTAL_SECRET` is unset.
+
+- `tests/test_client_portal.py` — 15 tests covering token roundtrip,
+  rotation, 403 on missing/bad token, unknown-client leak check, no
+  operator vocabulary in client-facing HTML, CLI behavior.
+
+**Files modified:**
+- `main.py` — Mounts `client_portal.router`.
+- `.env.example` — Adds `CLIENT_PORTAL_SECRET`, `PUBLIC_BASE_URL`.
+
+**Token design:**
+- Signed with HMAC-SHA256 over `"{client_id}|{issued_ts}"` using
+  `CLIENT_PORTAL_SECRET`.
+- Serialization: `"{issued_ts}.{hex_signature}"`.
+- Never expires. Rotate by changing the secret — all existing tokens
+  become invalid on next request.
+- If `CLIENT_PORTAL_SECRET` is empty or unset, BOTH issuing and
+  verifying fail closed. The portal is effectively disabled until a
+  secret is set. This prevents accidental unauthenticated exposure.
+
+**Route hygiene:**
+- Unknown client ID → 403 (not 404) so existence of a client can't be
+  probed by URL enumeration.
+- IDs starting with `_` (e.g. `_default`, `_template`) are unreachable
+  via the portal even with a valid HMAC — these are reserved configs.
+- Inline HTML + CSS (no Jinja) — matches the `src/admin.py` style and
+  keeps dependencies flat. Print-friendly CSS hides the nav for the
+  invoice view.
+
+**Test:**
+```bash
+pytest tests/test_client_portal.py -v    # 15 passed
+pytest tests/                            # 75 passed total
+```
+
+**Risk:** Low. Stateless, signed tokens; no DB writes on the portal path.
+Summary/calls routes are read-only wrappers around existing `usage`
+aggregates. Invoice route degrades gracefully to a fallback body until
+P2 lands.
+
+
 
 ---
 

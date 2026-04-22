@@ -57,6 +57,10 @@ app.add_middleware(AdminRateLimitMiddleware)
 from src import admin as _admin_module  # noqa: E402
 app.include_router(_admin_module.router)
 
+# Mount client-facing portal (signed-URL per tenant). P1.
+from src import client_portal as _client_portal_module  # noqa: E402
+app.include_router(_client_portal_module.router)
+
 
 @app.exception_handler(anthropic.AuthenticationError)
 async def _auth_err(request: Request, exc: anthropic.AuthenticationError):
