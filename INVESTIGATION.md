@@ -1,119 +1,154 @@
-# INVESTIGATION — AI Receptionist Codebase
+# INVESTIGATION — AI Receptionist (current architecture)
 
-_Date: 2026-04-13_
+_Last updated: 2026-04-21_
 
-## 1. Voice AI Platform / SDK
+Rewritten after the `ship-production` branch landed. For the pre-refactor
+version see `_backups/PLAN.v1-margin.md` + the `margin-protection-refactor`
+branch history.
 
-**Custom Twilio + LLM** stack — not Vapi, Retell, Synthflow, Ulio, or LiveKit.
+## Stack
 
-Evidence:
-- `main.py` imports `from twilio.twiml.voice_response import VoiceResponse, Gather` directly
-- No Vapi/Retell/Synthflow/Ulio SDK imports anywhere
-- Conversation turns are managed via Twilio `<Gather input="speech dtmf">` webhooks, with LLM calls fired synchronously inside each webhook handler
-- No vendor framework abstracting call state — everything is hand-rolled TwiML
+- **Language:** Python 3.14, stdlib-heavy.
+- **Web:** FastAPI + Starlette middleware, Uvicorn at `:8765`.
+- **LLM:** Anthropic Claude Haiku 4.5 via `anthropic` SDK v0.75
+  (`client.beta.messages.parse` with Pydantic `ChatResponse`). System
+  prompt sent as cacheable blocks (P8).
+- **Telephony:** Twilio — voice (`/voice/*`) + SMS (`/sms/incoming`).
+- **TTS/STT:** Polly Neural via Twilio `<Say>`; Twilio enhanced STT
+  inside `<Gather>` with per-language codes.
+- **Storage:** SQLite at `data/usage.db` (stdlib `sqlite3`, WAL mode),
+  JSON memory store at `memory.json`, YAML client configs under
+  `clients/`, JSON for rate card + alerts + spam lists under `config/`.
+- **Scheduler:** in-process asyncio tasks — `src/alerts.py` (daily
+  digest + monthly invoices) and `src/scheduler.py` (10 PM local owner
+  digest per tenant + nightly eval regression).
+- **Deps added across both branches:** `pyyaml`, `pytest`. No Redis,
+  Postgres, Celery, APScheduler, Jinja2.
 
-## 2. Telephony Provider
+## Data flow (inbound call, happy path)
 
-**Twilio** (verified).
+```
+ Caller → Twilio PSTN
+   ↓
+ POST /voice/incoming (form-encoded)
+   ↓ TwilioSignatureMiddleware validates X-Twilio-Signature
+   ↓ SecurityHeadersMiddleware adds nosniff / no-referrer
+ tenant.load_client_by_number(To)  — YAML lookup
+ spam_filter.check_number(From)     — blocklist + area code
+ memory.get_or_create_by_phone(From)
+ call_timer.record_start(CallSid, client_id)
+ usage.start_call(...)
+   ↓
+ Lang selection (menu or saved) → TwiML <Gather>
+   ↓ (next turn)
+ POST /voice/gather
+   ↓ spam_filter.check_phrases(SpeechResult) (first 15s)
+   ↓ call_timer.check(...)  → normal / soft_wrapup / hard_wrapup / force_end
+   ↓ llm.chat_with_usage(caller, SpeechResult, history, client, wrap_up_mode)
+       ↑ system = [{stable, cache_control: ephemeral}, {memory+suffix}]
+   ↓ usage.log_turn(...)
+   ↓ memory.append_turn(...)
+ If priority=high:
+   owner_notify.notify_emergency(...)     → SMS owner_cell
+   vr.dial(escalation_phone)
+   usage.end_call(outcome='emergency_transfer', emergency=True)
+ Else:
+   TwiML <Say> inside <Gather> → next caller turn
+   ↓
+ POST /voice/status (Twilio terminal callback)
+   usage.end_call(CallSid, outcome)
+   call_timer.record_end(CallSid)
+   If CallStatus in {no-answer, busy, failed}: recovery SMS
+   If CallStatus=completed + duration >= 30s + non-emergency:
+     feedback.maybe_send_followup(...)    # P11, flag-gated
+```
 
-- Single active number: `+1 (844) 940-3274` (from `.env`)
-- Webhooks: `/voice/incoming`, `/voice/setlang`, `/voice/gather`, `/voice/status`, `/sms/incoming`
-- Account SID: `AC_REDACTED_SID_PLACEHOLDER`
-- Trial or paid account (paid — $5 credit added per prior conversation history)
+SMS follows the same shape through `/sms/incoming`. If the inbound body
+classifies as YES/NO within 48h of a feedback ask,
+`feedback.record_response` matches it and short-circuits the LLM.
 
-## 3. LLM Provider and Model
+## Multi-tenant
 
-**Anthropic Claude Haiku 4.5** (`claude-haiku-4-5`) via `anthropic` Python SDK v0.75.
+- Every client is a YAML under `clients/<id>.yaml`. Loader is
+  `src/tenant.py`. Routing by `To` form field; `_`-prefixed IDs are
+  reserved (never route). Missing `To` with a single real tenant
+  configured → dev-convenience fallback to that tenant.
+- Fields added on this branch: `owner_email`, `owner_cell`, `timezone`,
+  optional plan fields `overage_rate_per_minute`, `included_sms_segments`,
+  `overage_rate_per_sms`, `emergency_surcharge`. All default empty so
+  existing ace_hvac routing is unchanged.
+- Client configs are process-cached via `lru_cache`; `tenant.reload()`
+  busts the cache (used by tests + onboarding wizard).
 
-- `llm.py` line 14: `MODEL = "claude-haiku-4-5"`
-- Uses `client.beta.messages.parse(...)` with `output_format=ChatResponse` (Pydantic) for structured output
-- `max_tokens = 80` (tuned for ultra-short receptionist replies)
-- `anthropic.Anthropic()` instantiated at module import after `load_dotenv()`
+## Enforcement flags
 
-## 4. Voice Synthesis (TTS)
+| Flag | Default | Scope |
+|---|---|---|
+| `MARGIN_PROTECTION_ENABLED` | true | Global kill switch |
+| `ENFORCE_CALL_DURATION_CAP` | false | 240s / 360s hard cap |
+| `ENFORCE_SPAM_FILTER` | false | Number + phrase rejection |
+| `ENFORCE_SMS_CAP` | false | Per-call SMS limit |
+| `ENFORCE_USAGE_ALERTS` | true | Daily digest |
+| `ENFORCE_OWNER_EMERGENCY_SMS` | true | Pre-transfer owner push (P3) |
+| `ENFORCE_OWNER_DIGEST` | true | 22:00 local owner summary (P4) |
+| `TWILIO_VERIFY_SIGNATURES` | true | Webhook signature 403s (P6) |
+| `ENFORCE_EVAL_REGRESSION` | false | Nightly eval run (P7) |
+| `PROMPT_CACHE_ENABLED` | true | cache_control on system prompt (P8) |
+| `ENFORCE_FEEDBACK_SMS` | false | YES/NO post-call SMS (P11) |
 
-**Amazon Polly Neural** via Twilio's built-in `<Say>` verb.
+Kill switch + per-feature flag compose: both must be on for enforcement
+to actually activate.
 
-- `main.py` `VOICE_MAP`: English=`Polly.Joanna-Neural`, Spanish=`Polly.Lupe-Neural`, Hindi=`Polly.Kajal-Neural`, Gujarati=`Polly.Kajal-Neural` (fallback — no Gujarati Polly voice exists), plus Portuguese/Italian/Japanese/Korean/Chinese
-- No separate ElevenLabs/PlayHT/OpenAI TTS integration
-- All TTS is Twilio-hosted (no custom audio streaming)
-- Single tier — no main-vs-transactional voice split exists yet
+## Client-facing surface
 
-## 5. System Prompt Structure
+Signed per-tenant portal at `/client/{id}?t=<token>` (P1):
+- Summary card (no cost/margin fields)
+- Call log (timestamps, outcomes, intent, emergency flag)
+- Printable monthly invoice (P2 — falls back to a simple view if
+  `src/invoices.py` is unavailable)
 
-**Inline string literal** in `llm.py` `SYSTEM_TEMPLATE` (lines 23–32). Single `{memory}` placeholder for caller context.
+Tokens are HMAC-SHA256 over `{client_id}|{issued_ts}` keyed by
+`CLIENT_PORTAL_SECRET`; never expire, rotate by changing the secret.
+CLI: `python -m src.client_portal issue <client_id>`.
 
-Current prompt is ~50 words, hard-coded for "Ace HVAC & Plumbing". Memory is rendered by `_format_memory()` from `memory.py` JSON store — name, phone, address, equipment, notes, last 3 history entries.
+## Ops tooling
 
-No templated multi-client support. No separation of "company persona" vs "conversation rules".
+- `python -m src.onboarding new` — interactive tenant creation (17
+  validated prompts), writes YAML + prints webhook URLs + portal URL.
+- `python -m src.onboarding new-demo` — 24h disposable tenant; startup
+  auto-purges expired demos into `clients/_expired/`.
+- `python -m src.invoices preview|csv|send|send-all` — manual invoice
+  ops.
+- `python -m src.client_portal issue <id>` — mint a signed portal URL.
+- `python -m src.owner_digest preview|send <client_id> [YYYY-MM-DD]` —
+  preview or force-send a daily digest.
+- `python -m evals.runner` — replay 20 seeded eval cases against
+  `llm.chat`.
+- `python -m evals.regression_detector` — run + diff vs previous; alert
+  on >5pp pass-rate drop.
+- `python -m evals.cache_benchmark` — two-pass cache-hit measurement.
+- `python scripts/reclaim_tunnel.py` — auto-reclaim cloudflared URL +
+  repoint managed Twilio numbers.
 
-## 6. Call Lifecycle
+Admin dashboard routes: `/admin` (overview), `/admin/calls`,
+`/admin/analytics` (P10), `/admin/evals` (P7), `/admin/export.csv`,
+`/admin/flags`, `/admin/alerts/trigger`. Basic-auth gated via
+`ADMIN_USER` + `ADMIN_PASS`; rate-limited to 60 req/min per IP.
 
-### Inbound call flow (voice)
-1. **Twilio hits** `POST /voice/incoming` with `From` header
-2. `memory.get_or_create_by_phone(From)` — look up or auto-create caller record (keyed by normalized phone digits)
-3. If caller has saved language → skip menu, greet directly
-4. If new → DTMF language menu (1=en, 2=es, 3=hi, 4=gu)
-5. `POST /voice/setlang` stores language, plays greeting, opens gather
-6. **Turn loop**: Caller speaks → Twilio transcribes → `POST /voice/gather` with `SpeechResult`
-7. `_run_pipeline()` calls Claude with memory + last 4 conversation turns
-8. Response wrapped in single `<Gather>` with nested `<Say>` (barge-in enabled)
-9. Repeats until caller hangs up
-10. Emergencies: `priority="high"` branches to `<Dial>` to `ON_CALL_NUMBER` env var
+## Deployment
 
-### Missed call flow
-- Twilio `StatusCallback` → `/voice/status` → if `CallStatus` in `{no-answer, busy, failed}` → `llm.recover()` generates SMS → sent via Twilio REST client
+Target: single VM, uvicorn behind a Cloudflare tunnel.
 
-### SMS flow
-- `POST /sms/incoming` → same pipeline as voice, reply wrapped in `<Message>` TwiML
+1. `.env` from `.env.example` with the operator's credentials + secrets
+   (Anthropic, Twilio, ADMIN_USER/PASS, CLIENT_PORTAL_SECRET).
+2. `uvicorn main:app --host 0.0.0.0 --port 8765`.
+3. `python scripts/reclaim_tunnel.py` OR Cloudflare Named Tunnel
+   (preferred — see `ROLLOUT.md`).
 
-### No existing call-duration timer. No spam filter. No usage tracking. No rate limiting.
+Startup lifespan: purges expired demo tenants, starts alerts digest
+loop, starts the per-tenant scheduler. Shutdown cancels both loops.
 
-## 7. Existing Usage Tracking
+`data/usage.db` is the single operational truth for cost/margin/billing;
+back it up alongside `clients/*.yaml` and `memory.json` during deploys.
 
-**None.** No token counting, no call duration logging, no cost tracking, no SQLite/DB, no log files beyond uvicorn's default stdout.
-
-## 8. Multi-Tenant Structure
-
-**None.** Hardcoded single-tenant for "Ace HVAC & Plumbing" throughout:
-- `llm.py` SYSTEM_TEMPLATE: company name hardcoded
-- `main.py` LANG_GREETINGS: hardcoded Joanna / Ace HVAC phrasing
-- Single `TWILIO_NUMBER` in `.env`
-- Single `memory.json` file
-
-## 9. Happy Path (Current)
-
-1. Caller rings `+18449403274`
-2. Twilio hits `/voice/incoming` — new caller → language menu
-3. Caller presses 1 → `/voice/setlang` → AI greets: *"Hey, this is Joanna from Ace HVAC— what's going on?"*
-4. Caller speaks → Twilio transcribes → `/voice/gather` → Claude replies (1–2s latency)
-5. AI speaks reply inside `<Gather>` — caller can interrupt
-6. Turn loop repeats until caller hangs up or emergency triggers `<Dial>`
-
-## 10. Existing Tests
-
-`_test_suite.py` at repo root. Covers:
-- Static endpoints (`GET /`, `GET /missed-calls`, `GET /memory/{id}`, `POST /memory/{id}`)
-- Invalid body / 404 paths
-- Twilio TwiML shape (`/voice/incoming`, `/voice/gather` empty speech, `/voice/status` no-op)
-- Anthropic auth-error → 503 friendly response
-- LLM integration (only runs if real `ANTHROPIC_API_KEY` present)
-
-Framework: **plain urllib + manual `t()` harness**, not pytest. I will add pytest alongside it per PLAN.md, and port critical new tests to pytest.
-
-## DO NOT DISRUPT
-
-### Live production phone number
-- **+1 (844) 940-3274** (Twilio) — active, used for live demos this week. All changes must keep this number answering as "Ace HVAC & Plumbing" in "Joanna" voice. Multi-tenant refactor MUST leave this number mapped to the existing Ace HVAC persona until explicitly remapped.
-
-### Live integrations
-- Cloudflare Tunnel URL: `https://leaders-related-difficulties-comprehensive.trycloudflare.com` (ephemeral — likely dead now; not something we'd break, but webhook URLs in Twilio console point here).
-- Anthropic API key in `.env` is a real billable key (~$5 trial credits remaining).
-- Twilio credentials in `.env` are real paid-account credentials.
-
-### Web chat UI
-- `index.html` is a functional demo UI used for showing the web-chat equivalent of the phone flow. Refactor must keep `/chat`, `/recover/{caller_id}`, `/missed-calls`, `/memory/*` endpoints working for the existing 3 seed callers (sarah, mike, dave).
-
-## Platform Pivot Assessment
-
-Not a thin wrapper over a closed platform. Full code access to voice loop, LLM call, TTS selection, memory store. Refactor proceeds **inside the codebase** (Python/FastAPI) — no external config-only pivot needed.
+For failure-mode remediation see `docs/OPS_RUNBOOK.md`.
