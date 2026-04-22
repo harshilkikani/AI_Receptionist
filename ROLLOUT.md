@@ -203,5 +203,25 @@ Next request immediately bypasses all new enforcement.
 | `ENFORCE_SPAM_FILTER` | `false` | Reject calls by number blocklist / phrase match |
 | `ENFORCE_SMS_CAP` | `false` | Block outbound SMS past `plan.sms_max_per_call` |
 | `ENFORCE_USAGE_ALERTS` | `true` | Send daily digest email/webhook |
+| `ENFORCE_OWNER_EMERGENCY_SMS` | `true` | P3 — push owner's cell on emergency |
+| `ENFORCE_OWNER_DIGEST` | `true` | P4 — 10 PM-local daily owner summary |
+| `TWILIO_VERIFY_SIGNATURES` | `true` | P6 — 403 forged Twilio webhooks |
 
 Always: usage tracking (SQLite) is on regardless of flags. The kill switch does **not** stop data collection — only enforcement.
+
+## Production security toggles (P6)
+
+After the initial Twilio wiring phase, the **last** toggle you flip is
+`TWILIO_VERIFY_SIGNATURES=true`. Timeline:
+
+1. Wire the number + webhook URLs. Confirm calls land.
+2. Set `TWILIO_VERIFY_SIGNATURES=false` for 24h and watch
+   `logs/` for `twilio_signature shadow-pass` lines. Every
+   legitimate Twilio POST should validate (you'll see no warnings).
+3. Flip to `true`. Any forged / mis-routed webhook now gets a 403 at
+   the middleware layer before touching app code.
+
+If a legitimate webhook starts 403'ing after you flip, check
+`X-Forwarded-Proto` + `X-Forwarded-Host` in your tunnel config, or set
+`PUBLIC_BASE_URL` explicitly so signature validation uses the correct
+URL scheme + host.
