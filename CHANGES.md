@@ -542,6 +542,58 @@ pytest tests/                            # 171 passed total
 no-op. Backward-compat `_render_system_prompt` string helper preserved
 for existing tests + code.
 
+---
+
+## P9 — Persistent tunnel (auto-reclaim + Named Tunnel docs) _(complete)_
+
+**Why:** Every `cloudflared tunnel --url http://localhost:8765` restart
+mints a new `https://<random>.trycloudflare.com` URL. Without an
+automated process, the operator has to open the Twilio console and
+paste three webhook URLs for every number after every restart — a 10x
+footgun. The auto-reclaim script does this in seconds.
+
+**Files added:**
+- `scripts/reclaim_tunnel.py` — spawns cloudflared as a subprocess,
+  parses its stderr stream for the `trycloudflare.com` URL, writes it
+  to `data/tunnel_url.txt`, then PATCHes every managed Twilio number
+  (derived from `clients/*.yaml::inbound_number`) so its
+  `voice_url` / `status_callback` / `sms_url` point to the new tunnel
+  path.
+- `tests/test_reclaim_tunnel.py` — 11 tests: URL regex happy + sad
+  paths, persist_url file creation, managed-number filtering, missing
+  credentials skip, list() error handling, per-number update error
+  handling, empty targets skip, tenant_numbers excludes reserved
+  configs, stdout stream parsing + callback.
+
+**Behavior:**
+- Option A (Cloudflare Named Tunnel + your own domain) is documented in
+  ROLLOUT.md — the 3-command setup. Preferred for production.
+- Option B (auto-reclaim) is what this commit implements. Always works,
+  zero signup, zero domain required. Keep using it until you're ready
+  for Option A.
+
+**Defaults:**
+- cloudflared binary: `./cloudflared.exe` on Windows, `cloudflared` on
+  *nix. Override with `--exe`.
+- Local port: 8765. Override with `--port`.
+- `--dry-run` captures the URL but doesn't touch Twilio (useful during
+  initial wiring to confirm the output parsing works).
+- `--once` exits after the first URL capture — convenient for CI smoke
+  tests.
+
+**Test:**
+```bash
+pytest tests/test_reclaim_tunnel.py -v   # 11 passed
+pytest tests/                            # 182 passed total
+```
+
+**Risk:** Medium. Updates Twilio webhooks when invoked. Mitigations:
+(1) only touches numbers that match a tenant `inbound_number` (numbers
+not in any YAML are left alone); (2) errors per number don't abort the
+batch; (3) `--dry-run` available for safe verification before any
+writes happen.
+
+
 
 
 
