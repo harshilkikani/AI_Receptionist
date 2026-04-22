@@ -14,6 +14,7 @@ Fill these in as you talk to them. Values go straight into their YAML config.
 | `name` | "Bob's Septic Service" | Display name (what the AI says) |
 | `owner_name` | "Bob Miller" | AI uses: "Bob will call you back" |
 | `owner_email` | "bob@bobseptic.com" | **P2** — where monthly invoices go. Empty = SMTP send skipped (webhook still works). |
+| `owner_cell` | "+17175551234" | **P3** — where emergency push SMS goes. Falls back to `escalation_phone` if empty. |
 | `services` | "Septic pumping, repairs, emergency service" | One line, under 100 chars |
 | `pricing_summary` | "Pumping from $475. Emergency 24/7." | Ballpark — AI quotes this |
 | `service_area` | "Lancaster County" | Geographic area |

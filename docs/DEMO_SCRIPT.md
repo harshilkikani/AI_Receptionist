@@ -58,7 +58,20 @@ Prompt them:
 - "Ask about pricing." → AI gives ballpark, offers in-home estimate
 - "Say 'I've got a pipe bursting!'" (or their equivalent) → AI goes into emergency mode, transfers to their cell
 
-**This is the moment that sells it.** Their phone rings. "That's the AI paging you for a real emergency."
+**This is the moment that sells it — and it's now a two-beat moment (P3):**
+
+1. *First* their cell buzzes with an **SMS** from the receptionist that
+   reads something like "Emergency Ace HVAC: +14155550142 — 'got a pipe
+   bursting'". They glance at it. They know what's waiting.
+2. *Then* the phone rings — the AI-bridged live call. They pick up
+   already briefed.
+
+Both within ~3 seconds of each other. No blind transfers.
+
+If they want to see both beats cleanly, stage it yourself first: set
+their `owner_cell` in the YAML to YOUR phone before the demo, run the
+emergency once against your own number, and show them the SMS on your
+phone. Then set it back to theirs and run the live moment.
 
 ### Minutes 15–20: Show the back-office
 
