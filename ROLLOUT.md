@@ -33,6 +33,12 @@ This refactor adds multi-tenant routing, call duration caps, spam filtering, SMS
    - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMBER` (unchanged)
    - Leave all `ENFORCE_*` flags at their defaults (false for call cap/spam/SMS; true for alerts)
    - `MARGIN_PROTECTION_ENABLED=true` (global switch — individual flags still gate actual enforcement)
+   - **P0 admin security (REQUIRED before exposing /admin via tunnel):**
+     - `ADMIN_USER=<any>` and `ADMIN_PASS=<32+ random chars>`. If either is
+       unset, /admin is open — fine for localhost, unsafe for cloudflared.
+     - Optional: `ADMIN_RATE_LIMIT_PER_MIN=60` (default; middleware 429s past it).
+     - Every response now carries `X-Content-Type-Options: nosniff` and
+       `Referrer-Policy: no-referrer` automatically. No action needed.
 
 5. **Verify `clients/ace_hvac.yaml` exists and maps to the live number** (`+18449403274` by default).
 
