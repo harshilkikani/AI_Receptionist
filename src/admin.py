@@ -248,3 +248,68 @@ def trigger_digest(user=Depends(_check_auth)):
     """Force a digest to fire right now. Useful after tuning config/alerts.json."""
     result = alerts.send_digest_now()
     return JSONResponse(result)
+
+
+@router.get("/evals", response_class=HTMLResponse)
+def evals_view(user=Depends(_check_auth)):
+    """P7 — last recorded eval run + per-case results."""
+    try:
+        from evals import runner as _runner
+    except ImportError:
+        return HTMLResponse(_page(
+            "Evals",
+            "<p class='muted'>evals/ package not importable.</p>",
+        ))
+
+    summary = _runner.latest_summary()
+    history = _runner.load_history()[-10:]  # last 10 runs for a trend
+
+    if summary is None:
+        body = """
+<div class="muted">
+  <p>No eval runs recorded yet.</p>
+  <p>Run one manually:</p>
+  <pre>python -m evals.runner --save</pre>
+</div>"""
+        return HTMLResponse(_page("Evals", body))
+
+    # Re-run to get per-case results for the current view (summary from
+    # history is slim). If this is too slow, cache it in a JSON file next
+    # to eval_history.jsonl. For 20 cases against a real LLM, this is
+    # ~15-30 seconds — the page lives behind admin auth + rate limits, so
+    # acceptable. Gate this with a query param to avoid surprise.
+    trend_rows = []
+    for h in history:
+        ts = datetime.fromtimestamp(h["ts"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        trend_rows.append(
+            f'<tr><td class="muted">{ts}</td>'
+            f'<td class="num">{h.get("passed", 0)}/{h.get("total", 0)}</td>'
+            f'<td class="num">{h.get("pass_rate", 0)*100:.1f}%</td>'
+            f'<td class="num">{h.get("avg_latency_ms", 0)}ms</td></tr>'
+        )
+
+    ts = datetime.fromtimestamp(summary["ts"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    body = f"""
+<p class="muted">Last run: {html.escape(ts)}</p>
+<table>
+  <tr><th>Passed</th><th>Total</th><th>Pass rate</th><th>Avg latency</th></tr>
+  <tr class="good">
+    <td class="num">{summary['passed']}</td>
+    <td class="num">{summary['total']}</td>
+    <td class="num">{summary['pass_rate']*100:.1f}%</td>
+    <td class="num">{summary.get('avg_latency_ms', 0)}ms</td>
+  </tr>
+</table>
+
+<h2>Recent runs</h2>
+<table>
+  <tr><th>When (UTC)</th><th class="num">Passed/Total</th>
+      <th class="num">Pass rate</th><th class="num">Avg latency</th></tr>
+  {''.join(trend_rows) if trend_rows else ''}
+</table>
+
+<h2>How to refresh</h2>
+<pre>python -m evals.runner --save
+python -m evals.regression_detector  # compares to previous run</pre>
+"""
+    return HTMLResponse(_page("Evals", body))

@@ -48,12 +48,45 @@ def _digest_hour() -> int:
         return 22
 
 
+def _eval_hour_utc() -> int:
+    try:
+        return int(os.environ.get("EVAL_REGRESSION_HOUR_UTC", "7"))
+    except ValueError:
+        return 7
+
+
+_eval_last_run_date: Optional[str] = None
+
+
 def _twilio_client():
     try:
         import main as _main
         return _main._twilio_client()
     except Exception:
         return None
+
+
+def _maybe_run_eval_regression(now_utc: datetime):
+    """Once a day at EVAL_REGRESSION_HOUR_UTC, run the eval suite and
+    alert on regression. Guarded so multiple ticks in the same hour
+    don't re-run."""
+    if os.environ.get("ENFORCE_EVAL_REGRESSION", "false").lower() != "true":
+        return
+    global _eval_last_run_date
+    if now_utc.hour != _eval_hour_utc():
+        return
+    today = now_utc.date().isoformat()
+    if _eval_last_run_date == today:
+        return
+    _eval_last_run_date = today
+    try:
+        from evals import regression_detector
+        out = regression_detector.run()
+        log.info("eval regression run: pass_rate=%s regressed=%s",
+                 out.get("summary_meta", {}).get("pass_rate"),
+                 out.get("diff", {}).get("regressed"))
+    except Exception as e:
+        log.error("eval regression run failed: %s", e)
 
 
 def tick(now_utc: Optional[datetime] = None):
@@ -63,6 +96,9 @@ def tick(now_utc: Optional[datetime] = None):
     For each active client:
       - Compute local time in client's timezone.
       - If local hour matches _digest_hour() and not sent today, send.
+
+    Also runs the eval regression detector once per day at
+    EVAL_REGRESSION_HOUR_UTC when ENFORCE_EVAL_REGRESSION=true.
     """
     now_utc = now_utc or datetime.utcnow().replace(tzinfo=ZoneInfo("UTC")) if ZoneInfo \
               else datetime.utcnow()
@@ -98,6 +134,9 @@ def tick(now_utc: Optional[datetime] = None):
             _sent_today[key] = True
         log.info("owner_digest tick for %s result=%s",
                  cid, {k: v for k, v in result.items() if k != "digest"})
+
+    # Eval regression (independent of clients)
+    _maybe_run_eval_regression(now_utc)
 
 
 async def _loop():

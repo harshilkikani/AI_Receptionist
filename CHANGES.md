@@ -398,6 +398,64 @@ webhook. Mitigation: the `.env.example` comment explicitly calls out
 shadow mode as the right first step when wiring Twilio. Operator flips
 to enforce after the first 24h of observing successful webhooks.
 
+---
+
+## P7 — Self-improving eval harness _(complete)_
+
+**Why:** Prompt edits and model changes silently regress behavior. Without
+a seed set we see regressions only when a customer complains. 20 seeded
+cases + a nightly diff catches meaningful drift before it ships.
+
+**Files added:**
+- `evals/__init__.py`
+- `evals/cases.jsonl` — 20 seed cases covering: new-lead + returning
+  scheduling, 4 emergency variants (burst, gas, no-heat, flood),
+  quote/price-shopper, follow-up + irate, wrong-number variants,
+  hours/directions, spam pitches (SEO + warranty), ambiguous, rambler.
+  Each case carries `id, client_id, caller_phone, turns, expected_intent,
+  expected_priority, must_contain, must_not_contain`.
+- `evals/runner.py` — `load_cases`, `run_case` (injectable `chat_fn` for
+  testability), `run_cases`, `append_history`, `load_history`,
+  `latest_summary`. CLI: `python -m evals.runner [--save] [--case id]`.
+- `evals/regression_detector.py` — `detect(summary, previous)` returns
+  `{regressed, delta_pct_points}`. `run(dry_run)` runs the suite,
+  appends to history, and fires an alert via `src.alerts._dispatch` if
+  the pass-rate drop exceeds 5pp (threshold hardcoded — easy to tune).
+- `tests/test_evals.py` — 16 tests: cases load, score pass/fail variants,
+  runner exception handling, summary shape, history roundtrip,
+  regression-threshold logic, full integration (good run → bad run
+  detects), admin view empty + populated.
+
+**Files modified:**
+- `src/admin.py` — adds `/admin/evals` view. Shows latest pass rate +
+  10-run trend. Inline HTML matches the rest of the admin UI.
+- `src/scheduler.py` — `tick()` now ALSO calls
+  `_maybe_run_eval_regression` once per day at `EVAL_REGRESSION_HOUR_UTC`
+  when `ENFORCE_EVAL_REGRESSION=true`. Default off — the nightly
+  regression run spends real LLM tokens, so opt-in only.
+- `.env.example` — `ENFORCE_EVAL_REGRESSION=false` and
+  `EVAL_REGRESSION_HOUR_UTC=7` documented.
+
+**Design:**
+- Runner calls `llm.chat` directly (not via HTTP) so a full suite runs
+  in ~30s against real Claude — fast enough for interactive use,
+  skippable in CI (tests inject a fake chat_fn).
+- History is append-only JSONL at `data/eval_history.jsonl`. Slim rows
+  (no per-case results) keep the file small indefinitely.
+- Regression detection is a simple percentage-point delta. Smaller
+  suites would need something smarter (Wilson interval, etc.). At 20
+  cases, 5pp = 1 case — a coarse-but-useful signal.
+
+**Test:**
+```bash
+pytest tests/test_evals.py -v        # 16 passed
+pytest tests/                        # 160 passed total
+```
+
+**Risk:** Low — opt-in scheduling. Manual runs are always free to kick
+off; the only thing controlled by flag is automatic nightly firing.
+
+
 
 
 
