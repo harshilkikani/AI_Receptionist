@@ -23,7 +23,7 @@ from pydantic import BaseModel
 import llm
 import memory
 from contextlib import asynccontextmanager
-from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts
+from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts, owner_notify
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 
 import logging
@@ -510,6 +510,21 @@ def voice_gather(From: str = Form(...),
     if result["priority"] == "high":
         # Mark the call as emergency — extends cap to 360s for any subsequent turns
         call_timer.mark_emergency(CallSid)
+        # P3 — push an SMS to the owner's cell before transferring so they
+        # see who called + the one-line summary before their phone rings.
+        # Best-effort: failure never disrupts the caller transfer.
+        try:
+            owner_notify.notify_emergency(
+                client,
+                caller_phone=From,
+                summary=SpeechResult,
+                address=(caller.get("address") or None),
+                call_sid=CallSid,
+                twilio_client=_twilio_client(),
+                twilio_from=os.environ.get("TWILIO_NUMBER"),
+            )
+        except Exception as e:  # never fail the call for an owner-alert bug
+            log.error("owner_notify raised unexpectedly: %s", e)
         vr.say(result["reply"], voice=_voice_for(lang))
         on_call = client.get("escalation_phone") or os.environ.get("ON_CALL_NUMBER")
         if on_call:

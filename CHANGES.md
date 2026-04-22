@@ -186,6 +186,61 @@ pytest tests/                     # 91 passed total
 automatically until an operator flips the flag. Shadow-equivalent. Re-send
 via CLI is always available so an errored batch can be retried manually.
 
+---
+
+## P3 — Emergency owner SMS push _(complete)_
+
+**Why:** When the AI transfers an emergency, the owner's phone rings — but
+without context. They answer a blind call. Pushing an SMS to the owner's
+cell the instant the AI makes the call lets them see caller number, the
+one-line summary, and the address-on-file BEFORE the ringing phone
+reaches them.
+
+**Files added:**
+- `src/owner_notify.py` — `notify_emergency(client, caller_phone, summary,
+  address, call_sid, twilio_client, twilio_from)` → dict. Best-effort,
+  never raises. Uses `sms_limiter.cap_length` so the body never exceeds
+  320 chars.
+- `tests/test_owner_notify.py` — 12 tests: body construction,
+  length cap, owner_cell → escalation_phone fallback, DB logging as
+  `direction='owner_alert'`, caller-cap exclusion, shadow-mode
+  (`ENFORCE_OWNER_EMERGENCY_SMS=false`), kill switch, twilio-
+  unavailable, send-error resilience.
+
+**Files modified:**
+- `main.py` — `/voice/gather` emergency branch now calls
+  `owner_notify.notify_emergency` BEFORE `vr.dial(on_call)`. The
+  outbound SMS fires instantly so the owner's phone lights up with
+  context while the Twilio bridge is still forming.
+- `.env.example` — adds `ENFORCE_OWNER_EMERGENCY_SMS=true` (default on
+  — notifications are safe) with shadow-mode + kill-switch notes.
+- `clients/*.yaml` — new optional `owner_cell` field (P2 commit
+  already added this across all YAMLs).
+
+**Billing semantics:**
+- SMS row logged with `direction='owner_alert'` — caller's per-call
+  outbound cap is unaffected (`sms_limiter.should_send` only counts
+  `direction='outbound'`).
+- `usage.monthly_summary` sums segments across all directions, so the
+  owner_alert DOES count toward the client's billable SMS — which
+  matches the spec.
+
+**Shadow mode:**
+- Setting `ENFORCE_OWNER_EMERGENCY_SMS=false` logs an
+  `owner_alert_shadow` row and skips the real send. Useful for
+  calibrating during rollout without generating live SMS charges.
+
+**Test:**
+```bash
+pytest tests/test_owner_notify.py -v   # 12 passed
+pytest tests/                          # 103 passed total
+```
+
+**Risk:** Low. Wrapped in try/except in `main.py` — even a bug in the
+module can't disrupt the caller's emergency transfer. If credentials or
+numbers are unavailable the send skips with a clear reason.
+
+
 
 
 
