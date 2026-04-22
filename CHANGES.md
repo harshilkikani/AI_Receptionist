@@ -455,6 +455,94 @@ pytest tests/                        # 160 passed total
 **Risk:** Low — opt-in scheduling. Manual runs are always free to kick
 off; the only thing controlled by flag is automatic nightly firing.
 
+---
+
+## P8 — Prompt caching on LLM calls _(complete — structure shipped, savings $0 today)_
+
+**Why:** The rendered system prompt is identical for every call under one
+tenant (modulo the caller memory suffix). Anthropic's ephemeral prompt
+cache can serve that stable prefix at ~10% of normal input cost, which
+would be meaningful once the prefix crosses the model's cache minimum.
+
+**Files modified:**
+- `prompts/receptionist_core.md` — caller-memory section moved OUT of
+  the template (no more `{{memory}}` placeholder). The template is now
+  purely the stable per-tenant body.
+- `llm.py`:
+    - New `_render_stable_text(client)` → stable per-tenant text.
+    - New `_render_system_blocks(caller, client, wrap_up_mode,
+      recover_suffix)` → list of content blocks: the first block wraps
+      the stable body with `cache_control={"type": "ephemeral"}`, the
+      second carries the volatile memory + wrap-up + recover suffix.
+    - `chat_with_usage` + `recover` now pass the blocks as `system=`
+      to `beta.messages.parse`.
+    - `last_token_usage` now also returns `cache_read_input_tokens`.
+    - Process-local `cache_stats()` tracks reads/writes/totals.
+    - `PROMPT_CACHE_ENABLED` env var (default `true`) lets operator A/B
+      test or disable caching; when disabled, a single plain block is
+      sent.
+- `evals/cache_benchmark.py` — runs the first N cases twice and prints
+  a summary (tokens, cache reads, estimated USD savings).
+- `tests/test_prompt_caching.py` — 11 tests: block shape, cache_control
+  placement, env toggle returns single block, stable text excludes
+  memory, backward-compat string renderer still works, wrap-up + recover
+  suffixes stay in the volatile block (would bust cache if in the
+  cached block), `last_token_usage` extracts cache_read, cache_stats
+  reset, per-tenant prefix stability check, cross-tenant prefix
+  distinctness.
+
+**Measured savings (honest report):**
+
+Running `python -m evals.cache_benchmark --cases 3` against the live
+Anthropic API with `claude-haiku-4-5`:
+
+```
+Pass 1 — cold cache:  input_tokens = 4597, cache_read = 0
+Pass 2 — warm cache:  input_tokens = 4597, cache_read = 0
+Saved tokens:  0
+USD saved:     $0.00
+```
+
+Reason: **the stable block is 1,085 tokens, below Haiku 4.5's 4,096-token
+cache minimum.** Per Anthropic's documentation
+(`https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md`
+— "Minimum Token Requirements"), blocks shorter than the model minimum
+have their `cache_control` silently ignored:
+
+| Model | Minimum cache block |
+|---|---|
+| Claude Opus 4.x | 1024 tokens |
+| Claude Sonnet 4.6 | 2048 tokens |
+| Claude Haiku 4.5 | 4096 tokens |
+
+**Implication:** the cache_control structure is present and correct — it
+just doesn't activate on Haiku with today's prompt. Two paths to real
+savings:
+1. Migrate to Sonnet 4.6 and expand the template to >2048 tokens.
+2. Keep Haiku and expand the template to >4096 tokens (add more
+   examples, industry-specific guidance, etc.).
+
+The spec anticipates this case: "If a prompt-caching setup would cost
+more than it saves (under 1K tokens cached), skip it and say so." The
+*setup* costs nothing here (extra JSON field is ignored by the API when
+inactive), so the structure is kept in place to activate automatically
+the moment the prompt or the model change crosses the threshold.
+
+**Operator action:** run `python -m evals.cache_benchmark` any time you
+change the prompt or model. A non-zero `cache_read_tokens` on pass 2 is
+the signal that caching is live.
+
+**Test:**
+```bash
+pytest tests/test_prompt_caching.py -v   # 11 passed
+pytest tests/                            # 171 passed total
+```
+
+**Risk:** None. Adding `cache_control` to an API that ignores it is a
+no-op. Backward-compat `_render_system_prompt` string helper preserved
+for existing tests + code.
+
+
 
 
 

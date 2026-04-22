@@ -74,9 +74,6 @@ If actively taking down address/name/phone when timer fires, finish that and the
 - **Hours:** {{hours}}
 - **Escalation phone:** {{escalation_phone}}
 
-## Caller memory (injected per-call)
-{{memory}}
-
 ## Output format
 Always output structured JSON matching the ChatResponse schema:
 - `reply`: your 1–2 sentence response
