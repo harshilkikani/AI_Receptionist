@@ -69,6 +69,25 @@ Open `/admin` in your browser. Point at:
 
 Open `/admin/calls` → show the transcript trail.
 
+### Minutes 18–19: Send them their OWN dashboard link
+
+Close the demo with this move — they walk away with a bookmark, not a
+promise to email later.
+
+```bash
+python -m src.client_portal issue demo_prospect
+```
+
+Copy the URL it prints. Text or email it to them while they're still on
+the call:
+
+> "This is your link. Bookmark it. You see your call log, your minutes,
+> your bill — nothing you don't need. I don't see anyone else's
+> numbers through this link, and no one sees yours."
+
+The shareable dashboard is usually the difference between "I'll think
+about it" and "send me the agreement."
+
 ### Minutes 20–25: Pricing conversation
 
 Now that they've *experienced* it, they're ready to hear the price.
