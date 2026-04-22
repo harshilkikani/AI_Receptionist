@@ -633,6 +633,72 @@ pytest tests/                       # 191 passed total
 
 **Risk:** Low. Read-only page. All SQL is scoped; no new writes.
 
+---
+
+## P11 — Per-call feedback SMS + self-improvement loop _(complete)_
+
+**Why:** The eval suite catches obvious regressions, but real-world
+problems show up as "the AI got the address wrong", "the AI missed
+a booking" — not things you can easily seed. Soliciting a one-word
+YES/NO from callers after every non-emergency call, and dumping the
+conversation to a review file on NO, is the cheapest data-collection
+mechanism possible.
+
+**Files added:**
+- `src/feedback.py`:
+    - `maybe_send_followup(call_sid, client, caller_phone, outcome,
+      duration_s, emergency, ...)` — guarded by outcome/duration/
+      emergency/flag; sends one SMS with the prompt body.
+    - `classify(body)` — lenient YES/NO matcher with trailing
+      punctuation stripped; recognizes "yes/y/yeah/yup/yep/sure/
+      absolutely" and "no/n/nope/nah/not really".
+    - `record_response(caller_phone, body)` — looks up the most recent
+      pending feedback row for this caller within 48h, records the
+      classification, and on NO writes a transcript line to
+      `logs/negative_feedback.jsonl`.
+    - `feedback` SQLite table (call_sid, client_id, caller_phone,
+      sent_ts, response, response_ts, transcript, month), init'd
+      lazily on first write.
+- `tests/test_feedback.py` — 23 tests: 12 classify variants (YES/NO,
+  case, punctuation, multi-word "not really"), guard skips (non-normal
+  outcome, emergency, too-short call, flag off), send path + pending
+  row presence + transcript embed, inbound-response match YES + NO +
+  negative-log write, unparseable, no-pending, outside-window.
+
+**Files modified:**
+- `main.py`:
+    - `/voice/status` on `CallStatus=completed` invokes
+      `_feedback.maybe_send_followup` with the caller's conversation
+      history.
+    - `/sms/incoming` starts by calling `_feedback.record_response`.
+      On a match, the handler short-circuits with a brief ack message
+      ("Thanks — passing that along!" for YES, "Got it — we'll follow
+      up." for NO) and skips the LLM, so the feedback reply doesn't
+      chain into a new conversation.
+- `.env.example` — `ENFORCE_FEEDBACK_SMS=false` documented.
+
+**Self-improvement loop:**
+1. Caller hangs up.
+2. `/voice/status` fires → `maybe_send_followup` pushes the YES/NO SMS.
+3. Caller texts back.
+4. `/sms/incoming` → `record_response` logs the result.
+5. On NO → `logs/negative_feedback.jsonl` gains a line with
+   call_sid + transcript + the caller's SMS body.
+6. Operator grep for NO replies, promotes recurring patterns into
+   new `evals/cases.jsonl` entries.
+7. Next nightly eval run flags any regression and the loop closes.
+
+**Test:**
+```bash
+pytest tests/test_feedback.py -v   # 23 passed
+pytest tests/                      # 214 passed total
+```
+
+**Risk:** Low. Default-off flag. Send path fails closed on Twilio
+outages. Matching has a 48h response window so stale incoming SMS
+never accidentally match.
+
+
 
 
 

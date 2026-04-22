@@ -25,6 +25,7 @@ import memory
 from contextlib import asynccontextmanager
 from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts, owner_notify
 from src import scheduler as _scheduler
+from src import feedback as _feedback
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 
@@ -577,8 +578,28 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
             "failed": "failed",
             "canceled": "canceled",
         }
-        usage.end_call(CallSid, outcome=outcome_map.get(CallStatus, CallStatus))
+        outcome = outcome_map.get(CallStatus, CallStatus)
+        usage.end_call(CallSid, outcome=outcome)
         call_timer.record_end(CallSid)
+
+        # P11 — post-call feedback SMS (opt-in via ENFORCE_FEEDBACK_SMS).
+        # Only fire for natural call completions; spam/duration-capped/
+        # emergency outcomes bypass via the module's own guards.
+        if outcome == "normal":
+            try:
+                _client = tenant.load_client_by_number(To)
+                duration_s = int(CallDuration or "0")
+                caller = memory.get_or_create_by_phone(From)
+                _feedback.maybe_send_followup(
+                    CallSid, _client,
+                    caller_phone=From, outcome=outcome,
+                    duration_s=duration_s, emergency=False,
+                    twilio_client=_twilio_client(),
+                    twilio_from=os.environ.get("TWILIO_NUMBER"),
+                    conversation=(caller or {}).get("conversation") or [],
+                )
+            except Exception as e:
+                log.error("feedback.maybe_send_followup error: %s", e)
 
     # Missed call recovery — SMS flow
     if CallStatus not in ("no-answer", "busy", "failed"):
@@ -629,6 +650,28 @@ def sms_incoming(From: str = Form(...), Body: str = Form(...),
     # Log the inbound message toward this "conversation" (keyed by phone)
     sms_conv_key = f"SMS_{memory.normalize_phone(From)}"
     usage.log_sms(sms_conv_key, client["id"], From, Body, direction="inbound")
+
+    # P11 — if this body is a YES/NO reply to a prior feedback SMS,
+    # record it + (on NO) dump the transcript to negative_feedback.jsonl.
+    # We short-circuit the AI reply on a matched YES/NO to avoid chaining
+    # conversations unnecessarily.
+    try:
+        feedback_result = _feedback.record_response(From, Body)
+    except Exception as e:
+        log.error("feedback.record_response error: %s", e)
+        feedback_result = {"matched": False}
+    if feedback_result.get("matched"):
+        log.info("feedback_matched call_sid=%s response=%s",
+                 feedback_result.get("call_sid"),
+                 feedback_result.get("response"))
+        # Acknowledge briefly — keeps the caller from wondering if the
+        # message went through.
+        mr = MessagingResponse()
+        if feedback_result["response"] == "yes":
+            mr.message("Thanks — passing that along!")
+        else:
+            mr.message("Got it — we'll follow up.")
+        return _twiml(str(mr))
 
     # Run the LLM
     result = _run_pipeline(caller, Body, client=client, call_sid=sms_conv_key)
