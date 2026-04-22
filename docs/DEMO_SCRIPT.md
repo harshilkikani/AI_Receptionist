@@ -114,6 +114,9 @@ If yes:
 - Offer the 7-day free trial (see `NEW_CLIENT_CHECKLIST.md` §6)
 - Set up their **after-hours** forwarding (low commitment)
 - Schedule Day-7 review call to look at the admin dashboard together
+- Ask: "For the first two weeks, want us to text callers 'YES / NO'
+  after non-emergency calls so we can catch anything the AI gets
+  wrong fast?" (P11 — opt-in by setting `ENFORCE_FEEDBACK_SMS=true`)
 
 If not yet:
 - Offer to leave the demo number active for the week so they can test it with their team

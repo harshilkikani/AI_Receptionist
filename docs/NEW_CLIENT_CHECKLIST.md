@@ -56,6 +56,12 @@ Still worth asking the client during onboarding:
 - "Want the 10 PM nightly summary?" (if yes, ensure `owner_cell` OR
   `owner_email` is set + `timezone` is correct). Opt-out by setting
   `ENFORCE_OWNER_DIGEST=false` globally or leaving both fields empty.
+- "Want the YES/NO follow-up SMS after non-emergency calls for the
+  first few weeks?" (P11). Flip `ENFORCE_FEEDBACK_SMS=true` globally
+  to enable. NO responses land in `logs/negative_feedback.jsonl` —
+  review weekly and promote recurring patterns into
+  `evals/cases.jsonl` so the regression detector catches them from
+  then on.
 
 ---
 
