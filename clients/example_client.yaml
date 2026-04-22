@@ -6,6 +6,9 @@
 id: bobs_septic
 name: "Bob's Septic Service"
 owner_name: "Bob Miller"
+owner_email: "bob@example.com"
+owner_cell: "+15551234567"
+timezone: "America/New_York"
 inbound_number: ""
 escalation_phone: "+15559876543"
 services: "Septic pumping, repairs, installations, emergency service"

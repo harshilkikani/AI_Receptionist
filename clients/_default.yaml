@@ -3,6 +3,9 @@
 id: _default
 name: "this service"
 owner_name: "the owner"
+owner_email: ""
+owner_cell: ""
+timezone: "America/New_York"
 inbound_number: ""
 escalation_phone: ""
 services: "general service"

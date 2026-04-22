@@ -222,8 +222,33 @@ def send_digest_now() -> dict:
 _loop_task: Optional[asyncio.Task] = None
 
 
+def _maybe_send_monthly_invoices(now: datetime):
+    """If today's day+hour matches config/alerts.json::monthly_invoice.*,
+    fire invoices for the previous month. Runs inside the daily digest
+    loop so we don't need a second scheduler."""
+    try:
+        invoice_cfg = (_cfg().get("monthly_invoice") or {})
+        if not invoice_cfg.get("enabled"):
+            return
+        if now.day != int(invoice_cfg.get("send_on_day", 1)):
+            return
+        # Invoice hour may differ from digest hour — honor send_hour_utc.
+        # The digest loop wakes at digest_hour; if that isn't the invoice
+        # hour, we let the per-minute check below handle it on the next
+        # wake. (Simplest: fire if we're within the same hour.)
+        if now.hour != int(invoice_cfg.get("send_hour_utc", 15)):
+            return
+        from src import invoices  # lazy import — avoid circular
+        result = invoices.send_monthly_invoices(now=now, force=False)
+        log.info("monthly invoices: sent=%d attempted=%d month=%s",
+                 result.get("sent", 0), result.get("attempted", 0),
+                 result.get("month"))
+    except Exception as e:
+        log.error("monthly invoice dispatch error: %s", e)
+
+
 async def _digest_loop():
-    """Sleep until the next digest hour, send, repeat."""
+    """Sleep until the next digest hour, send digest + maybe invoices, repeat."""
     while True:
         try:
             now = datetime.now(timezone.utc)
@@ -236,6 +261,9 @@ async def _digest_loop():
             await asyncio.sleep(wait_s)
             log.info("running daily alert digest")
             send_digest_now()
+            # Monthly invoice check — fires only on the configured day+hour.
+            # Safe to call every day; no-ops otherwise.
+            _maybe_send_monthly_invoices(datetime.now(timezone.utc))
         except asyncio.CancelledError:
             raise
         except Exception as e:

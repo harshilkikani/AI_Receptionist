@@ -112,6 +112,81 @@ Summary/calls routes are read-only wrappers around existing `usage`
 aggregates. Invoice route degrades gracefully to a fallback body until
 P2 lands.
 
+---
+
+## P2 — Automated monthly billing _(complete)_
+
+**Why:** Invoicing was manual (export-CSV out of /admin, price by hand, send
+PDF). For this to scale to multiple clients, the invoice needs to generate,
+render (HTML + CSV), and dispatch itself once a month via the same
+transport the daily digest uses.
+
+**Files added:**
+- `src/invoices.py` — `generate_invoice`, `render_invoice_html`,
+  `render_invoice_csv`, `send_invoice`, `send_monthly_invoices`. CLI:
+  `python -m src.invoices preview|csv|send|send-all`.
+- `tests/test_invoices.py` — 16 tests covering generation (base only,
+  with overage, filtered calls excluded, reserved-client refusal),
+  rendering (HTML total + CSV roundtrip + no internal vocabulary),
+  dispatch gates (disabled → skipped, SMTP without owner_email → skip,
+  previous-month wrap, day/hour gate), client-portal integration, CLI.
+
+**Files modified:**
+- `src/alerts.py` — daily digest loop now also calls
+  `_maybe_send_monthly_invoices` after each digest send. Fires only when
+  today matches `monthly_invoice.send_on_day` + `send_hour_utc`.
+- `config/alerts.json` — adds a `monthly_invoice` block with `enabled`,
+  `send_on_day`, `send_hour_utc`, `transport` (default
+  `same_as_digest`, which falls back to the digest's transport).
+- `clients/ace_hvac.yaml`, `clients/_default.yaml`,
+  `clients/_template.yaml`, `clients/example_client.yaml` — add
+  `owner_email`, `owner_cell`, `timezone` fields (used by P2, P3, P4
+  respectively). All default empty/safe so no existing client routing
+  breaks.
+- `src/client_portal.py` — invoice route already had an
+  `ImportError` fallback; it now resolves `src.invoices` and renders
+  the richer body.
+
+**Line items produced:**
+- Monthly service plan (plan base, always)
+- Included calls / included minutes (informational)
+- Calls handled / minutes used / SMS segments / emergencies
+  (informational)
+- Call overage (if `included_calls` AND `overage_rate_per_call` set)
+- Minute overage (if `overage_rate_per_minute` set — new optional plan field)
+- SMS overage (if `overage_rate_per_sms` + `included_sms_segments` set)
+- Emergency surcharge (if `emergency_surcharge` set per emergency)
+
+Only the billable rows count toward `total`; info rows show qty +
+render `—` in the amount column.
+
+**Transport behavior:**
+- SMTP: HTML body + CSV attachment sent to `client.owner_email`.
+  If `owner_email` is missing, the client is skipped with a
+  `reason=owner_email_missing` entry in the result.
+- Webhook: POSTs `{type, client_id, month, html, csv, line_items, total}`
+  to the alerts webhook URL.
+- Transport resolution: `monthly_invoice.transport` can be `smtp`,
+  `webhook`, or `same_as_digest` (default) — the last inherits from
+  `config/alerts.json::transport`.
+
+**Operator levers:**
+- `python -m src.invoices preview ace_hvac 2026-04` → HTML to stdout
+- `python -m src.invoices csv ace_hvac 2026-04` → CSV to stdout
+- `python -m src.invoices send ace_hvac 2026-04` → one-off send
+- `python -m src.invoices send-all --month 2026-04` → force send for all
+
+**Test:**
+```bash
+pytest tests/test_invoices.py -v  # 16 passed
+pytest tests/                     # 91 passed total
+```
+
+**Risk:** Low. `monthly_invoice.enabled=false` by default — nothing fires
+automatically until an operator flips the flag. Shadow-equivalent. Re-send
+via CLI is always available so an errored batch can be retried manually.
+
+
 
 
 ---

@@ -29,5 +29,14 @@
   },
 
   "digest_hour_utc": 14,
-  "_comment_digest_hour": "Hour of day (UTC) when digest fires. 14 UTC = 9 AM EST / 6 AM PST."
+  "_comment_digest_hour": "Hour of day (UTC) when digest fires. 14 UTC = 9 AM EST / 6 AM PST.",
+
+  "monthly_invoice": {
+    "enabled": false,
+    "_comment_enabled": "When true, invoices are auto-sent on send_on_day/send_hour_utc for every active client.",
+    "send_on_day": 1,
+    "send_hour_utc": 15,
+    "transport": "same_as_digest",
+    "_comment_transport": "smtp | webhook | same_as_digest. SMTP uses client.owner_email as TO; webhook posts JSON with the invoice payload."
+  }
 }

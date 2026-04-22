@@ -12,6 +12,16 @@ id: _template
 name: "Example Company"
 owner_name: "Owner Name"
 
+# Where monthly invoices are delivered (P2). Optional — empty means skip
+# SMTP send; webhook transport still works.
+owner_email: "owner@example.com"
+
+# Where emergency SMS alerts go (P3). Defaults to escalation_phone if empty.
+owner_cell: "+15559876543"
+
+# Timezone used for owner's end-of-day digest (P4). IANA zone name.
+timezone: "America/New_York"
+
 # Twilio number that routes to this client (E.164 format)
 # Leave empty only for templates/defaults
 inbound_number: ""

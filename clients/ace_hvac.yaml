@@ -3,6 +3,9 @@
 id: ace_hvac
 name: "Ace HVAC & Plumbing"
 owner_name: "the owner"
+owner_email: ""                       # where monthly invoices go (P2). empty = no SMTP send
+owner_cell: ""                        # where emergency SMS alerts go (P3). falls back to escalation_phone
+timezone: "America/New_York"          # used for owner's end-of-day digest (P4)
 inbound_number: "+18449403274"
 escalation_phone: ""                  # set via ON_CALL_NUMBER env for now
 services: "HVAC, plumbing, furnace repair, AC install, water heater service"
