@@ -344,6 +344,61 @@ operator tool. The startup purge can only move files into `clients/_expired/`,
 never delete. If a demo YAML is malformed, the purge skips it with a log
 line rather than raising.
 
+---
+
+## P6 — Twilio webhook signature verification _(complete)_
+
+**Why:** Anyone who learns the tunnel URL could POST a forged
+`/voice/incoming` and trick the AI into placing real emergency transfers
+or burning LLM budget. Twilio signs every webhook; validating that
+signature is a $0 protection once wired.
+
+**Files added:**
+- `src/twilio_signature.py` — `TwilioSignatureMiddleware`. Guards the
+  five webhook paths (`/voice/incoming`, `/voice/setlang`,
+  `/voice/gather`, `/voice/status`, `/sms/incoming`). Honors
+  `X-Forwarded-Proto` + `X-Forwarded-Host` so signatures from Twilio
+  (which sign `https://public-domain/path`) validate when the app sees
+  `http://localhost/path` through cloudflared. `PUBLIC_BASE_URL` takes
+  full precedence when set.
+- `tests/test_twilio_signature.py` — 9 tests: valid sig passes, missing
+  sig 403s, wrong sig 403s, shadow mode passes, non-voice paths
+  unaffected, downstream form parsing still works (body re-yield),
+  `/sms/incoming` verified, missing token in shadow mode, PUBLIC_BASE_URL
+  override path.
+
+**Files modified:**
+- `main.py` — installs the middleware (added LAST in the stack so it
+  runs FIRST on inbound requests; 403 happens before any other logic).
+- `_test_suite.py` — legacy integration harness now signs `/voice/*` and
+  `/sms/incoming` POSTs with `TWILIO_AUTH_TOKEN` if present, so the
+  suite works against a live server with or without the flag on.
+- `.env.example` — `TWILIO_VERIFY_SIGNATURES=true` default, with a
+  shadow-mode hint for the initial Twilio wiring phase.
+
+**Shadow mode:**
+- `TWILIO_VERIFY_SIGNATURES=false` keeps the middleware installed but
+  logs `shadow-pass` warnings for invalid signatures and lets the
+  request through. Use while you're verifying Twilio webhook shapes or
+  debugging tunnel URLs.
+
+**Body re-yield:** the middleware reads the body up-front to verify the
+signature, then replaces `request._receive` so FastAPI's `Form(...)`
+parsing downstream still sees a body. Verified by the
+`test_form_body_still_parses_downstream` case.
+
+**Test:**
+```bash
+pytest tests/test_twilio_signature.py -v    # 9 passed
+pytest tests/                                # 144 passed total
+```
+
+**Risk:** Medium. A misconfigured auth token would 403 every real
+webhook. Mitigation: the `.env.example` comment explicitly calls out
+shadow mode as the right first step when wiring Twilio. Operator flips
+to enforce after the first 24h of observing successful webhooks.
+
+
 
 
 

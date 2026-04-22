@@ -26,6 +26,7 @@ from contextlib import asynccontextmanager
 from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts, owner_notify
 from src import scheduler as _scheduler
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
+from src.twilio_signature import TwilioSignatureMiddleware
 
 import logging
 logging.basicConfig(
@@ -67,6 +68,10 @@ app = FastAPI(title="AI Receptionist", lifespan=_lifespan)
 # admin-prefixed paths.
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AdminRateLimitMiddleware)
+# P6 — Twilio signature verification for /voice/* + /sms/incoming.
+# Runs AFTER headers middleware (added later = runs earlier); adds a 403
+# cheap rejection for forged webhooks before any app logic runs.
+app.add_middleware(TwilioSignatureMiddleware)
 
 # Mount admin routes (lightweight dashboard)
 from src import admin as _admin_module  # noqa: E402

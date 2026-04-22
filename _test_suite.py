@@ -36,6 +36,25 @@ def t(name, fn):
         print(f"  ERR   {name}  {type(e).__name__}: {e}")
 
 
+# P6 — if the running server has TWILIO_VERIFY_SIGNATURES=true, sign the
+# voice/sms POSTs with TWILIO_AUTH_TOKEN from the local env. If the
+# server is in shadow mode (or creds aren't in this runner's env) the
+# signature is harmless and requests still pass.
+_TWILIO_VOICE_PATHS = ("/voice/incoming", "/voice/setlang", "/voice/gather",
+                       "/voice/status", "/sms/incoming")
+
+
+def _sign(url: str, params: dict) -> str | None:
+    token = os.environ.get("TWILIO_AUTH_TOKEN")
+    if not token:
+        return None
+    try:
+        from twilio.request_validator import RequestValidator
+    except ImportError:
+        return None
+    return RequestValidator(token).compute_signature(url, params)
+
+
 def http(method, path, body=None, form=None, expect=None):
     if form is not None:
         data = urllib.parse.urlencode(form).encode()
@@ -46,7 +65,12 @@ def http(method, path, body=None, form=None, expect=None):
     else:
         data = None
         headers = {}
-    req = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
+    full_url = BASE + path
+    if method.upper() == "POST" and path in _TWILIO_VOICE_PATHS and form is not None:
+        sig = _sign(full_url, form)
+        if sig:
+            headers["X-Twilio-Signature"] = sig
+    req = urllib.request.Request(full_url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status, r.read().decode("utf-8", "replace")
