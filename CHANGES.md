@@ -240,6 +240,61 @@ pytest tests/                          # 103 passed total
 module can't disrupt the caller's emergency transfer. If credentials or
 numbers are unavailable the send skips with a clear reason.
 
+---
+
+## P4 — Owner end-of-day digest _(complete)_
+
+**Why:** Alerts (P-past) fire only when a threshold is crossed. Owners still
+want a quiet nightly wrap-up: how many calls today, how many emergencies
+routed, how many bookings captured. Pushed automatically at 10 PM local
+time per-tenant.
+
+**Files added:**
+- `src/owner_digest.py` — `build_digest(client, local_date)` returns a
+  dict `{calls_total, emergencies, bookings_captured, spam_filtered,
+  avg_response_s, top_issue_themes, owner_cell, owner_email}`. Also
+  `render_sms`, `render_email`, `send_digest`, plus a CLI.
+- `src/scheduler.py` — one asyncio task wakes every 60s, walks active
+  clients, fires the digest for any whose local time matches
+  `OWNER_DIGEST_HOUR_LOCAL`. Dedup per `(client_id, local_date)`.
+- `tests/test_owner_digest.py` — 15 tests: zero-activity digest,
+  activity counting with seeded calls, reserved-client refusal, SMS
+  length cap, email subject/body, SMS-preferred send, shadow mode,
+  no-channel skip, scheduler tick in-hour / off-hour / reserved-client
+  exclusion, CLI paths.
+
+**Files modified:**
+- `main.py` — lifespan starts/stops the scheduler.
+- `.env.example` — `ENFORCE_OWNER_DIGEST` (default true) and
+  `OWNER_DIGEST_HOUR_LOCAL` (default 22).
+
+**Timezone handling:**
+- Uses `zoneinfo.ZoneInfo(client.timezone)` (stdlib, Python ≥3.9).
+- Default timezone on a client YAML is `America/New_York`.
+- Day boundaries are computed in the client's local time, so "today's
+  digest" at 10 PM local reflects exactly the calls that happened that
+  day regardless of UTC offset.
+
+**Transport order (per send):**
+1. If `owner_cell` set + Twilio available → SMS (body capped at 320).
+2. Else if `owner_email` set + SMTP configured → HTML email.
+3. Else → logged + skipped (`reason='no_channel_available'`).
+
+SMS row logged with `direction='owner_digest'`. Doesn't count against
+the caller's per-call SMS cap; counts toward billable SMS.
+
+**Test:**
+```bash
+pytest tests/test_owner_digest.py -v   # 15 passed
+pytest tests/                          # 118 passed total
+```
+
+**Risk:** Low. Scheduler is one coroutine that catches its own exceptions
+per-client, so a YAML with a typo in `timezone` logs an error and moves
+on — doesn't kill the loop. In-memory dedup state is lost on restart
+(worst case: a duplicate digest if bounced at 22:00:30 local; acceptable).
+
+
 
 
 

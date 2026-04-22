@@ -24,6 +24,7 @@ import llm
 import memory
 from contextlib import asynccontextmanager
 from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts, owner_notify
+from src import scheduler as _scheduler
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 
 import logging
@@ -40,9 +41,12 @@ ROOT = Path(__file__).parent
 async def _lifespan(app: FastAPI):
     # Startup — kick off alert digest loop if enforcement is on
     alerts.start_background_loop()
+    # P4 — per-client owner end-of-day digest (10 PM local)
+    _scheduler.start()
     yield
     # Shutdown
     alerts.stop_background_loop()
+    _scheduler.stop()
 
 
 app = FastAPI(title="AI Receptionist", lifespan=_lifespan)
