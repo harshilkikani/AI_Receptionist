@@ -209,6 +209,56 @@ Next request immediately bypasses all new enforcement.
 
 Always: usage tracking (SQLite) is on regardless of flags. The kill switch does **not** stop data collection — only enforcement.
 
+## Persistent tunnel (P9)
+
+There are two ways to keep a stable public URL for Twilio webhooks.
+
+### Option A — Cloudflare Named Tunnel (preferred for production)
+
+Requires a Cloudflare account + a domain you control. Three commands,
+permanent URL.
+
+```bash
+# 1. Log in and create a named tunnel
+cloudflared tunnel login
+cloudflared tunnel create receptionist
+
+# 2. Map the tunnel to a subdomain on your Cloudflare-hosted zone
+cloudflared tunnel route dns receptionist receptionist.yourdomain.com
+
+# 3. Run it, pointed at the local app port
+cloudflared tunnel --url http://localhost:8765 run receptionist
+```
+
+Set `PUBLIC_BASE_URL=https://receptionist.yourdomain.com` in `.env` and
+the Twilio webhook URLs stay stable forever. The signature middleware
+honors that exact URL when validating.
+
+### Option B — auto-reclaim trycloudflare (default, zero-signup)
+
+For development or if you haven't wired Option A yet:
+
+```bash
+python scripts/reclaim_tunnel.py
+```
+
+This:
+- Starts cloudflared with `--url http://localhost:8765`
+- Captures the fresh `https://<random>.trycloudflare.com` URL from its
+  output
+- Writes it to `data/tunnel_url.txt` (used by the onboarding wizard)
+- PATCHes every Twilio number that matches a `clients/*.yaml::inbound_number`
+  to point to the new URL's `/voice/*` + `/sms/incoming` endpoints
+
+Flags:
+- `--dry-run` — capture the URL + write the hint file, but DO NOT touch
+  Twilio. Useful the first time, to confirm output parsing.
+- `--port 9000` — non-default local port.
+- `--exe ./cloudflared.exe` — custom binary path.
+- `--once` — exit after the first URL capture.
+
+The script terminates cloudflared cleanly on Ctrl-C. Re-run to reconnect.
+
 ## Production security toggles (P6)
 
 After the initial Twilio wiring phase, the **last** toggle you flip is
