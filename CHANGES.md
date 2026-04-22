@@ -1,9 +1,58 @@
-# CHANGES — Margin Protection + Multi-Tenant Refactor
+# CHANGES — Margin Protection + Multi-Tenant Refactor + Production Ship
 
-_Branch: `margin-protection-refactor`_
+_Branch: `margin-protection-refactor` → `ship-production`_
 _Starting commit: baseline_
 
 This document is a running log. Each section below corresponds to one commit on the branch.
+
+---
+
+# Branch: ship-production — production hardening (P0–P11)
+
+Follows `margin-protection-refactor`. 11 priorities — each gets a code commit
+and a docs commit. All new enforcement defaults to shadow mode / opt-in.
+
+---
+
+## P0 — Admin security _(complete)_
+
+**Why:** `/admin` is public-shaped even though it's read-only. Before exposing
+via a tunnel to a prospect or client we need auth on by default, a rate limit
+against accidental scraping/DoS, and baseline headers so a misconfigured
+response can't be content-sniffed or leak referrers.
+
+**Files added:**
+- `src/security.py` — `AdminRateLimitMiddleware` (token bucket, 60/min per IP,
+  429 on exceed) and `SecurityHeadersMiddleware` (nosniff + no-referrer).
+- `tests/test_security.py` — 8 tests: headers everywhere, rate-limit
+  boundary, non-admin bypass, Basic auth 401 + accept/reject, XFF-split
+  buckets.
+
+**Files modified:**
+- `main.py` — Adds both middlewares. Order: headers middleware added first so
+  rate-limit 429 responses still carry headers.
+- `.env.example` — `ADMIN_USER` / `ADMIN_PASS` documented as required before
+  any public exposure; new `ADMIN_RATE_LIMIT_PER_MIN` knob (default 60).
+- `ROLLOUT.md` — "before exposing via tunnel" checklist updated.
+
+**Design notes:**
+- In-memory token bucket per client IP. Process-local — multi-instance
+  deployments should swap for Redis (documented in the module).
+- `X-Forwarded-For` honored so bucket keys differentiate real callers
+  behind cloudflared.
+- Basic auth was already scaffolded in `src/admin.py`; nothing changed
+  there — only the env-var documentation and the front-door rate limit.
+
+**Test:**
+```bash
+pytest tests/test_security.py -v
+# 8 passed
+```
+
+**Risk:** Low. Rate limit cap (60/min) is well above any realistic human
+browsing. Headers are additive. Basic auth only enforces when both env
+vars are set; local-only operation is unchanged.
+
 
 ---
 

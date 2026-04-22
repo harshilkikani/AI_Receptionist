@@ -24,6 +24,7 @@ import llm
 import memory
 from contextlib import asynccontextmanager
 from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts
+from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 
 import logging
 logging.basicConfig(
@@ -45,6 +46,12 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Receptionist", lifespan=_lifespan)
+
+# P0 — security middlewares. Order matters: headers applied to every
+# response (including rate-limited 429s), rate limiter runs first for
+# admin-prefixed paths.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AdminRateLimitMiddleware)
 
 # Mount admin routes (lightweight dashboard)
 from src import admin as _admin_module  # noqa: E402
