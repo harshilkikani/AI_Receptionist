@@ -15,6 +15,7 @@ Fill these in as you talk to them. Values go straight into their YAML config.
 | `owner_name` | "Bob Miller" | AI uses: "Bob will call you back" |
 | `owner_email` | "bob@bobseptic.com" | **P2** — where monthly invoices go. Empty = SMTP send skipped (webhook still works). |
 | `owner_cell` | "+17175551234" | **P3** — where emergency push SMS goes. Falls back to `escalation_phone` if empty. |
+| `timezone` | "America/New_York" | **P4** — IANA TZ for the 10 PM-local owner daily digest. Default America/New_York. |
 | `services` | "Septic pumping, repairs, emergency service" | One line, under 100 chars |
 | `pricing_summary` | "Pumping from $475. Emergency 24/7." | Ballpark — AI quotes this |
 | `service_area` | "Lancaster County" | Geographic area |
@@ -29,6 +30,10 @@ Ask them:
 - "How many calls do you currently miss per month?" (validates plan sizing)
 - "What's the worst thing the AI could say?" (reveals must-avoid phrases — add to prompt if needed)
 - "What should the AI do if someone sounds drunk or abusive?" (currently: transfers to on-call; confirm they want this)
+- "Want the 10 PM nightly summary?" (if yes, make sure `owner_cell` OR
+  `owner_email` is set + `timezone` is correct). Opt-out by setting
+  `ENFORCE_OWNER_DIGEST=false` globally or removing `owner_cell`
+  /`owner_email` on their YAML.
 
 ---
 
