@@ -34,6 +34,7 @@ from src import bookings as _bookings
 from src import sentiment_tracker as _sentiment
 from src import usage_cap as _usage_cap
 from src import signup as _signup_module
+from src import webhooks as _webhooks
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -611,6 +612,14 @@ def voice_gather(From: str = Form(...),
     if result["priority"] == "high":
         # Mark the call as emergency — extends cap to 360s for any subsequent turns
         call_timer.mark_emergency(CallSid)
+        # V3.13 — fire emergency.triggered webhook (best-effort)
+        _webhooks.fire_safe("emergency.triggered", client, {
+            "call_sid": CallSid,
+            "from_number": From,
+            "summary": SpeechResult[:200] if SpeechResult else "",
+            "address": caller.get("address") if caller else None,
+            "sentiment_escalation": result.get("sentiment_escalation", False),
+        })
         # P3 — push an SMS to the owner's cell before transferring so they
         # see who called + the one-line summary before their phone rings.
         # Best-effort: failure never disrupts the caller transfer.
@@ -673,10 +682,30 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
 
         # V3.6 — booking extraction. Only runs for outcome='normal' calls
         # with a Scheduling intent turn + transcript. Best-effort.
+        booking_row = None
         try:
-            _bookings.maybe_extract_from_call(CallSid)
+            booking_row = _bookings.maybe_extract_from_call(CallSid)
         except Exception as e:
             log.error("bookings.maybe_extract_from_call error: %s", e)
+
+        # V3.13 — fire webhook events. Best-effort via fire_safe so a
+        # crash in delivery never disrupts the caller response.
+        _client_for_webhooks = tenant.load_client_by_number(To)
+        _webhooks.fire_safe("call.ended", _client_for_webhooks, {
+            "call_sid": CallSid,
+            "from_number": From,
+            "outcome": outcome,
+            "duration_s": int(CallDuration or "0"),
+        })
+        if booking_row:
+            _webhooks.fire_safe("booking.created", _client_for_webhooks, {
+                "booking_id": booking_row.get("id"),
+                "call_sid": CallSid,
+                "caller_name": booking_row.get("caller_name"),
+                "address": booking_row.get("address"),
+                "service": booking_row.get("service"),
+                "requested_when": booking_row.get("requested_when"),
+            })
 
         # P11 — post-call feedback SMS (opt-in via ENFORCE_FEEDBACK_SMS).
         # Only fire for natural call completions; spam/duration-capped/
@@ -779,6 +808,13 @@ def sms_incoming(From: str = Form(...), Body: str = Form(...),
         log.info("feedback_matched call_sid=%s response=%s",
                  feedback_result.get("call_sid"),
                  feedback_result.get("response"))
+        # V3.13 — fire feedback.negative webhook on NO responses.
+        if feedback_result.get("response") == "no":
+            _webhooks.fire_safe("feedback.negative", client, {
+                "call_sid": feedback_result.get("call_sid"),
+                "from_number": From,
+                "body": Body[:200],
+            })
         # Acknowledge briefly — keeps the caller from wondering if the
         # message went through.
         mr = MessagingResponse()
