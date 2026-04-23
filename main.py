@@ -29,6 +29,7 @@ from src import feedback as _feedback
 from src import transcripts as _transcripts
 from src import owner_commands as _owner_commands
 from src import voice_style as _voice_style
+from src import call_summary as _call_summary
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -625,6 +626,15 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
         outcome = outcome_map.get(CallStatus, CallStatus)
         usage.end_call(CallSid, outcome=outcome)
         call_timer.record_end(CallSid)
+
+        # V3.4 — generate a 1-line AI summary for the call. Best-effort;
+        # a failure never affects the call record. The module's own
+        # guards (duration, outcome, transcript-empty) decide whether
+        # to actually summarize.
+        try:
+            _call_summary.generate_summary(CallSid)
+        except Exception as e:
+            log.error("call_summary.generate_summary error: %s", e)
 
         # P11 — post-call feedback SMS (opt-in via ENFORCE_FEEDBACK_SMS).
         # Only fire for natural call completions; spam/duration-capped/

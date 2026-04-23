@@ -187,6 +187,7 @@ def overview(user=Depends(_check_auth)):
 
 @router.get("/calls", response_class=HTMLResponse)
 def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)):
+    from src import call_summary
     rows_raw = usage.recent_calls(client_id=client_id or None, limit=limit)
     rows = []
     for r in rows_raw:
@@ -202,12 +203,20 @@ def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)
             f'<a href="/admin/call/{call_sid}">detail</a>'
             if call_sid else ""
         )
+        # V3.4 — show AI summary when available (col may not exist in old DBs)
+        summary = r.get("summary") if "summary" in r.keys() else None
+        summary_cell = (
+            f'<span class="muted" style="font-style:italic">{html.escape(summary)}</span>'
+            if summary
+            else '<span class="muted">—</span>'
+        )
         rows.append([
             (html.escape(start_iso), "muted"),
             html.escape(r["client_id"]),
             (html.escape(r.get("from_number") or ""), "muted"),
             (f'{r.get("duration_s") or 0}s', "num"),
             pill(html.escape(outcome), outcome_pill_variant),
+            summary_cell,
             emoji,
             detail_link,
         ])
@@ -215,7 +224,7 @@ def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)
     header_filter = f' · filter: <code>{html.escape(client_id)}</code>' if client_id else ""
     table = data_table(
         headers=["When", "Client", "From", ("Duration", "num"), "Outcome",
-                 "Flag", ""],
+                 "AI summary", "Flag", ""],
         rows=rows,
         empty_text="No calls logged yet.",
     )
@@ -242,6 +251,7 @@ def call_detail(call_sid: str, user=Depends(_check_auth)):
         "%b %d, %Y %H:%M:%S UTC") if meta.get("end_ts") else "—")
     duration = f'{meta.get("duration_s") or 0}s'
 
+    summary = meta.get("summary") if "summary" in (meta.keys() if hasattr(meta, "keys") else []) else None
     meta_rows = [
         ["Call SID", (f'<code>{html.escape(call_sid)}</code>', "mono")],
         ["Client", html.escape(meta["client_id"])],
@@ -252,6 +262,9 @@ def call_detail(call_sid: str, user=Depends(_check_auth)):
         ["Outcome", pill(meta.get("outcome") or "—", "ghost")],
         ["Emergency", "🚨 yes" if meta.get("emergency") else "no"],
     ]
+    if summary:
+        meta_rows.append(["AI summary",
+                          f'<span style="font-style:italic">{html.escape(summary)}</span>'])
     meta_table = data_table(headers=["Field", "Value"], rows=meta_rows)
 
     if turns:
