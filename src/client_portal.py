@@ -167,7 +167,9 @@ def summary(client_id: str, t: str = "", request: Request = None):
         body=body,
         nav=_nav(client_id, t), active=f"/client/{client_id}?t={html.escape(t)}",
         accent="client",
-        brand=client["name"],
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
         footer_note="Questions? Reply to the email that delivered this link.",
     ))
 
@@ -214,7 +216,9 @@ def call_log(client_id: str, t: str = "", limit: int = 50):
         nav=_nav(client_id, t),
         active=f"/client/{client_id}/calls?t={html.escape(t)}",
         accent="client",
-        brand=client["name"],
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
     ))
 
 
@@ -276,7 +280,9 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
         nav=_nav(client_id, t),
         active=f"/client/{client_id}/calls?t={html.escape(t)}",
         accent="client",
-        brand=client["name"],
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
     ))
 
 
@@ -296,7 +302,9 @@ def invoice_view(client_id: str, month: str, t: str = ""):
         nav=_nav(client_id, t),
         active=f"/client/{client_id}/invoice/{html.escape(month)}?t={html.escape(t)}",
         accent="client",
-        brand=client["name"],
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
         footer_note="Print-friendly · Ctrl+P or ⌘P",
     ))
 

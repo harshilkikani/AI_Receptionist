@@ -331,12 +331,30 @@ def css() -> str:
 
 # ── Page shell ─────────────────────────────────────────────────────────
 
+def _hex_soft(hex_color: str) -> str:
+    """Return a light tint of the given #rrggbb hex — used as --accent-soft.
+    10% over white: mix each channel toward 255 at 90%."""
+    h = (hex_color or "").strip().lstrip("#")
+    if len(h) != 6:
+        return hex_color
+    try:
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except ValueError:
+        return hex_color
+    r = int(r + (255 - r) * 0.88)
+    g = int(g + (255 - g) * 0.88)
+    b = int(b + (255 - b) * 0.88)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def page(*, title: str, body: str,
          nav: Optional[Iterable[tuple]] = None,
          active: Optional[str] = None,
          accent: str = "ops",
          subtitle: Optional[str] = None,
          brand: Optional[str] = None,
+         brand_logo_url: Optional[str] = None,
+         custom_accent_hex: Optional[str] = None,
          footer_note: Optional[str] = None) -> str:
     """Produce a full HTML page with the standard shell.
 
@@ -348,6 +366,10 @@ def page(*, title: str, body: str,
         accent: "ops" | "client" | "brand" — picks the accent color.
         subtitle: small text under the H1.
         brand: sidebar brand label (default "Receptionist").
+        brand_logo_url: V3.10 — optional logo image for the sidebar.
+        custom_accent_hex: V3.10 — overrides the accent color with a
+            tenant-provided hex like "#ff6600". The matching soft tint
+            is computed automatically.
         footer_note: optional right-aligned footer text.
     """
     nav = list(nav or [])
@@ -370,6 +392,29 @@ def page(*, title: str, body: str,
         if footer_note else ""
     )
 
+    # V3.10 — optional logo in sidebar
+    logo_html = ""
+    if brand_logo_url:
+        logo_html = (
+            f'<img src="{html.escape(brand_logo_url)}" alt="" '
+            f'style="height:24px;vertical-align:middle;margin-right:6px;">'
+        )
+
+    # V3.10 — custom accent color override. We validate the hex on input
+    # to avoid CSS injection; bad input falls back to the default accent.
+    extra_style = ""
+    body_accent = html.escape(accent)
+    if custom_accent_hex:
+        import re
+        if re.match(r"^#[0-9a-fA-F]{6}$", custom_accent_hex.strip()):
+            soft = _hex_soft(custom_accent_hex.strip())
+            extra_style = (
+                f'<style>body[data-accent="custom"] {{ '
+                f'--accent: {html.escape(custom_accent_hex.strip())}; '
+                f'--accent-soft: {html.escape(soft)}; }}</style>'
+            )
+            body_accent = "custom"
+
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -377,10 +422,11 @@ def page(*, title: str, body: str,
 <meta name="robots" content="noindex">
 <title>{html.escape(title)}</title>
 <style>{_CSS}</style>
-</head><body data-accent="{html.escape(accent)}">
+{extra_style}
+</head><body data-accent="{body_accent}">
 <div class="app">
   <aside class="sidebar">
-    <div class="brand"><span class="dot"></span>{brand_label}</div>
+    <div class="brand">{logo_html}<span class="dot"></span>{brand_label}</div>
     {nav_html}
   </aside>
   <main class="main">
