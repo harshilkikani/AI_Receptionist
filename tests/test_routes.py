@@ -17,6 +17,11 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("GET",  "/"),
     ("GET",  "/missed-calls"),
     ("POST", "/chat"),
+
+    # V7 — ops probes
+    ("GET",  "/health"),
+    ("GET",  "/ready"),
+
     ("POST", "/recover/{caller_id}"),
     ("GET",  "/memory/{caller_id}"),
     ("POST", "/memory/{caller_id}"),

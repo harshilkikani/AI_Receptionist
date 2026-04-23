@@ -30,12 +30,13 @@ from src import transcripts as _transcripts
 from src import owner_commands as _owner_commands
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
+from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
 
 import logging
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+# V7 — request-id-aware logging. install_logging() sets up a handler
+# that includes the per-request correlation ID. Logs now look like:
+#   2026-04-21 12:34:56 INFO [a3f2b9c1] receptionist handling call CAxxx
+_install_logging(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 log = logging.getLogger("receptionist")
 
 ROOT = Path(__file__).parent
@@ -75,6 +76,12 @@ app.add_middleware(AdminRateLimitMiddleware)
 # Runs AFTER headers middleware (added later = runs earlier); adds a 403
 # cheap rejection for forged webhooks before any app logic runs.
 app.add_middleware(TwilioSignatureMiddleware)
+# V7 — request-id correlation middleware. Added LAST so it runs FIRST,
+# meaning every downstream middleware + handler shares the same ID.
+app.add_middleware(RequestIDMiddleware)
+
+# V7 — ops probes: /health (liveness) + /ready (readiness)
+app.include_router(_ops_router)
 
 # Mount admin routes (lightweight dashboard)
 from src import admin as _admin_module  # noqa: E402
