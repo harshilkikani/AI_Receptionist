@@ -33,6 +33,7 @@ from src import call_summary as _call_summary
 from src import bookings as _bookings
 from src import sentiment_tracker as _sentiment
 from src import usage_cap as _usage_cap
+from src import signup as _signup_module
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -95,6 +96,9 @@ app.include_router(_admin_module.router)
 # Mount client-facing portal (signed-URL per tenant). P1.
 from src import client_portal as _client_portal_module  # noqa: E402
 app.include_router(_client_portal_module.router)
+
+# V3.12 — public /signup form for self-serve demo tenants
+app.include_router(_signup_module.router)
 
 
 @app.exception_handler(anthropic.AuthenticationError)

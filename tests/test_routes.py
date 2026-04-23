@@ -22,6 +22,10 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("GET",  "/health"),
     ("GET",  "/ready"),
 
+    # V3.12 — self-serve signup
+    ("GET",  "/signup"),
+    ("POST", "/signup"),
+
     ("POST", "/recover/{caller_id}"),
     ("GET",  "/memory/{caller_id}"),
     ("POST", "/memory/{caller_id}"),
