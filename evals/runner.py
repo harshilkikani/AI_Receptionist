@@ -108,9 +108,18 @@ def score(case: dict, reply, expected: dict = None) -> dict:
 
 def run_case(case: dict,
              chat_fn: Optional[Callable] = None,
-             client: Optional[dict] = None) -> dict:
-    """Run one case. chat_fn signature matches llm.chat(caller, msg, conv, client)."""
-    chat_fn = chat_fn or _default_chat_fn()
+             client: Optional[dict] = None,
+             use_cache: bool = True) -> dict:
+    """Run one case. chat_fn signature matches llm.chat(caller, msg, conv, client).
+
+    V3.16 — wraps chat_fn in a response-level cache so identical prompts
+    don't re-hit the API. Pass use_cache=False to force-refresh.
+    """
+    base_fn = chat_fn or _default_chat_fn()
+    # Wrap with the per-case cache (noop if use_cache=False)
+    from evals.cache import CachingChatFn
+    wrapped = CachingChatFn(base_fn, case_id=case["id"],
+                             use_cache=use_cache)
     client = client or tenant.load_client_by_id(case["client_id"])
     caller = _caller_for(case)
 
@@ -120,24 +129,28 @@ def run_case(case: dict,
 
     t0 = time.monotonic()
     try:
-        reply = chat_fn(caller, last["text"], conversation, client=client)
+        reply = wrapped(caller, last["text"], conversation, client=client)
     except Exception as e:
         return {"id": case["id"], "pass": False, "reasons": [f"exception:{type(e).__name__}:{e}"],
-                "intent": None, "priority": None, "reply": "", "latency_ms": 0}
+                "intent": None, "priority": None, "reply": "", "latency_ms": 0,
+                "cache_hit": False}
     latency_ms = int((time.monotonic() - t0) * 1000)
     result = score(case, reply)
     result["latency_ms"] = latency_ms
+    result["cache_hit"] = wrapped.last_hit
     return result
 
 
 def run_cases(chat_fn: Optional[Callable] = None,
-              case_ids: Optional[list] = None) -> dict:
+              case_ids: Optional[list] = None,
+              use_cache: bool = True) -> dict:
     """Run every case in cases.jsonl (or the subset specified by case_ids)."""
     cases = load_cases()
     if case_ids:
         cases = [c for c in cases if c["id"] in set(case_ids)]
 
-    results = [run_case(c, chat_fn=chat_fn) for c in cases]
+    results = [run_case(c, chat_fn=chat_fn, use_cache=use_cache)
+               for c in cases]
     passed = sum(1 for r in results if r["pass"])
     total = len(results)
     pass_rate = (passed / total) if total else 0.0
@@ -189,9 +202,12 @@ def _cli(argv: Optional[list] = None) -> int:
     p.add_argument("--save", action="store_true",
                    help="append run to data/eval_history.jsonl")
     p.add_argument("--case", default=None, help="run only this case id")
+    p.add_argument("--no-cache", action="store_true",
+                   help="bypass the response cache; always hit the LLM")
     args = p.parse_args(argv)
 
-    summary = run_cases(case_ids=[args.case] if args.case else None)
+    summary = run_cases(case_ids=[args.case] if args.case else None,
+                         use_cache=(not args.no_cache))
     print(f"{summary['passed']}/{summary['total']} passed "
           f"({summary['pass_rate']*100:.1f}%). "
           f"avg latency {summary['avg_latency_ms']}ms")
