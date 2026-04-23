@@ -28,6 +28,7 @@ from src import scheduler as _scheduler
 from src import feedback as _feedback
 from src import transcripts as _transcripts
 from src import owner_commands as _owner_commands
+from src import voice_style as _voice_style
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -406,10 +407,14 @@ def _greeting_for(client: dict, lang: str) -> str:
     return f"Hey, this is Joanna from {company}— what's going on?"
 
 
-def _respond(vr, message: str, lang: str):
+def _respond(vr, message: str, lang: str, client: dict = None):
     """The ONE pattern used everywhere: Say inside Gather. Nothing else.
     Caller can interrupt. If they stay silent, Twilio re-fires /voice/gather
-    with empty SpeechResult and we handle it there — one layer, no chains."""
+    with empty SpeechResult and we handle it there — one layer, no chains.
+
+    V3.3 — if the client opts into `voice_style`, the message is wrapped
+    in Polly-friendly SSML for more natural pacing.
+    """
     g = vr.gather(
         input="speech dtmf",
         action="/voice/gather",
@@ -419,7 +424,9 @@ def _respond(vr, message: str, lang: str):
         enhanced=True,
         language=_stt_lang(lang),
     )
-    g.say(message, voice=_voice_for(lang))
+    style = _voice_style.style_for(client, mode="main")
+    payload = _voice_style.apply_ssml(message, style=style) if style else message
+    g.say(payload, voice=_voice_for(lang, client, mode="main"))
 
 
 # ── Voice endpoints ───────────────────────────────────────────────────
@@ -459,7 +466,7 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
             greeting = f"Hey {first_name}! It's {company}— what's going on?"
         else:
             greeting = _greeting_for(client, saved_lang)
-        _respond(vr, greeting, saved_lang)
+        _respond(vr, greeting, saved_lang, client=client)
         return _twiml(str(vr))
 
     # New caller — language selection (only time this ever happens)
@@ -486,7 +493,7 @@ def voice_setlang(From: str = Form(...), Digits: str = Form(default="1"),
     memory.update_caller(caller["id"], language=lang)
 
     vr = VoiceResponse()
-    _respond(vr, _greeting_for(client, lang), lang)
+    _respond(vr, _greeting_for(client, lang), lang, client=client)
     return _twiml(str(vr))
 
 
@@ -519,7 +526,8 @@ def voice_gather(From: str = Form(...),
 
     # Empty speech → single re-prompt, no "still there" spam
     if not SpeechResult.strip():
-        _respond(vr, "Sorry, didn't catch that— what was that?", lang)
+        _respond(vr, "Sorry, didn't catch that— what was that?", lang,
+                 client=client)
         return _twiml(str(vr))
 
     # ── Spam filter layer 2: phrase detection (first 15s) ──────────────
@@ -595,7 +603,7 @@ def voice_gather(From: str = Form(...),
         return _twiml(str(vr))
 
     # Normal reply — one Say inside one Gather. That's it.
-    _respond(vr, result["reply"], lang)
+    _respond(vr, result["reply"], lang, client=client)
     return _twiml(str(vr))
 
 

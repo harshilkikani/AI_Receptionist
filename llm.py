@@ -169,9 +169,59 @@ def _render_system_prompt(caller: Optional[dict], client: Optional[dict],
     return "\n\n".join(b["text"] for b in blocks)
 
 
+RECENT_TURNS = 4          # always include this many recent turns verbatim
+COMPRESS_THRESHOLD = 10   # compress older turns once conversation exceeds this
+
+
+def _compress_older_turns(older: list) -> str:
+    """V3.2 — collapse older conversation turns into one short
+    recap line so the receptionist remembers what was already
+    said without bloating the token count.
+
+    No LLM call — deterministic join. Caps each turn at ~80 chars
+    (long enough for the gist, short enough to stay cheap).
+    """
+    if not older:
+        return ""
+    lines = []
+    for t in older:
+        role = "caller" if (t.get("role") or "user") != "assistant" else "receptionist"
+        text = (t.get("text") or "").strip().replace("\n", " ")
+        if not text:
+            continue
+        if len(text) > 80:
+            text = text[:77].rstrip() + "..."
+        lines.append(f"- {role}: {text}")
+    if not lines:
+        return ""
+    return "Earlier in this conversation:\n" + "\n".join(lines)
+
+
 def _build_messages(conversation: list, new_user_message: str) -> list:
-    msgs = []
-    for turn in (conversation or [])[-4:]:
+    """Build the message list for Claude.
+
+    Short conversations: pass the last RECENT_TURNS verbatim.
+    Long conversations (> COMPRESS_THRESHOLD turns): compress everything
+    older than the last RECENT_TURNS into a single recap injected as a
+    prefix user message. Keeps the prompt bounded on extended SMS
+    threads where the caller and receptionist might exchange 15+ turns.
+    """
+    conv = conversation or []
+    msgs: list = []
+
+    # When the conversation is long, prepend a compressed recap so the
+    # model doesn't lose track of what was already established.
+    if len(conv) > COMPRESS_THRESHOLD:
+        older = conv[:-RECENT_TURNS]
+        recap = _compress_older_turns(older)
+        if recap:
+            msgs.append({"role": "user", "content": f"[context recap]\n{recap}"})
+            msgs.append({"role": "assistant", "content": "Got it."})
+        recent = conv[-RECENT_TURNS:]
+    else:
+        recent = conv[-RECENT_TURNS:]
+
+    for turn in recent:
         role = "assistant" if turn.get("role") == "assistant" else "user"
         msgs.append({"role": role, "content": turn.get("text", "")})
     msgs.append({"role": "user", "content": new_user_message})
@@ -185,6 +235,103 @@ _FALLBACK = ChatResponse(
     intent="General",
     priority="low",
 )
+
+
+# V3.1 — degradation: keep the CALL alive when the LLM can't respond.
+# Anthropic outages, rate limits, timeouts, or auth problems shouldn't
+# land a naked 503 JSON on the Twilio webhook (that kills the call).
+# Instead we catch the specific exceptions inside chat_with_usage and
+# return a short canned reply so the TwiML is still valid.
+#
+# Multiple phrases so repeated degradations don't sound like a loop.
+
+_DEGRADED_PHRASES: dict = {
+    "rate_limit": [
+        "Hang on one second— lot of calls coming in right now, bear with me.",
+        "Sorry, give me a quick beat— I'll be right with you.",
+    ],
+    "timeout": [
+        "Hang on, bad connection on my end— one sec.",
+        "Give me a moment, I lost you for a second there.",
+    ],
+    "auth": [
+        "Let me grab someone real quick— one moment.",
+        "One sec, I need to hand you off.",
+    ],
+    "api_error": [
+        "Hang tight, hiccup on my end— give me ten seconds.",
+        "Sorry, my system just blipped— hold one second.",
+    ],
+    "unknown": [
+        "One moment, let me check on that.",
+        "Gimme one second.",
+    ],
+}
+
+_degradation_stats: dict = {
+    "total": 0,
+    "by_reason": {},
+    "last_ts": None,
+    "last_reason": None,
+}
+
+
+def degradation_stats() -> dict:
+    """Process-local degradation counter. /admin and /metrics read this."""
+    return {
+        "total": _degradation_stats["total"],
+        "by_reason": dict(_degradation_stats["by_reason"]),
+        "last_ts": _degradation_stats["last_ts"],
+        "last_reason": _degradation_stats["last_reason"],
+    }
+
+
+def reset_degradation_stats():
+    _degradation_stats["total"] = 0
+    _degradation_stats["by_reason"] = {}
+    _degradation_stats["last_ts"] = None
+    _degradation_stats["last_reason"] = None
+
+
+def _degraded_response(reason: str) -> ChatResponse:
+    """Pick a canned reply for the degradation kind. Emits a warning log
+    so the operator sees failures in real time."""
+    import random
+    import time
+    phrases = _DEGRADED_PHRASES.get(reason, _DEGRADED_PHRASES["unknown"])
+    _degradation_stats["total"] += 1
+    _degradation_stats["by_reason"][reason] = (
+        _degradation_stats["by_reason"].get(reason, 0) + 1
+    )
+    _degradation_stats["last_ts"] = int(time.time())
+    _degradation_stats["last_reason"] = reason
+    _log.warning("llm_degraded reason=%s total=%d",
+                 reason, _degradation_stats["total"])
+    return ChatResponse(
+        reply=random.choice(phrases),
+        intent="General",
+        priority="low",
+    )
+
+
+def _classify_anthropic_error(exc: Exception) -> str:
+    """Map an Anthropic/SDK exception to a degradation reason bucket."""
+    name = type(exc).__name__.lower()
+    if isinstance(exc, anthropic.RateLimitError) or "ratelimit" in name:
+        return "rate_limit"
+    if isinstance(exc, anthropic.APITimeoutError) or "timeout" in name:
+        return "timeout"
+    if isinstance(exc, anthropic.AuthenticationError) or "auth" in name:
+        return "auth"
+    if isinstance(exc, TypeError):
+        # SDK raises TypeError when no api_key/auth_token can be resolved.
+        msg = str(exc).lower()
+        if "api_key" in msg or "auth_token" in msg:
+            return "auth"
+        return "unknown"
+    if isinstance(exc, anthropic.APIError):
+        return "api_error"
+    return "unknown"
 
 
 # ── Public API ─────────────────────────────────────────────────────────
@@ -214,13 +361,20 @@ def chat_with_usage(caller: Optional[dict], user_message: str,
     system_blocks = _render_system_blocks(caller, client,
                                           wrap_up_mode=wrap_up_mode)
     messages = _build_messages(conversation or [], user_message)
-    response = _anthropic.beta.messages.parse(
-        model=MODEL,
-        max_tokens=80,
-        system=system_blocks,
-        messages=messages,
-        output_format=ChatResponse,
-    )
+    try:
+        response = _anthropic.beta.messages.parse(
+            model=MODEL,
+            max_tokens=80,
+            system=system_blocks,
+            messages=messages,
+            output_format=ChatResponse,
+        )
+    except Exception as exc:
+        # V3.1 — degrade gracefully. Keep the caller on the line with a
+        # canned reply rather than letting the exception bubble into a
+        # 503 JSON that would kill the Twilio TwiML response.
+        reason = _classify_anthropic_error(exc)
+        return _degraded_response(reason), (0, 0)
     in_tok, out_tok, cache_read = last_token_usage(response)
     _cache_stats["total_input"] += in_tok
     _cache_stats["total_cache_read"] += cache_read
@@ -245,13 +399,17 @@ def recover(caller: Optional[dict],
         ),
     )
     messages = [{"role": "user", "content": "(generate missed-call opening)"}]
-    response = _anthropic.beta.messages.parse(
-        model=MODEL,
-        max_tokens=80,
-        system=system_blocks,
-        messages=messages,
-        output_format=ChatResponse,
-    )
+    try:
+        response = _anthropic.beta.messages.parse(
+            model=MODEL,
+            max_tokens=80,
+            system=system_blocks,
+            messages=messages,
+            output_format=ChatResponse,
+        )
+    except Exception as exc:
+        reason = _classify_anthropic_error(exc)
+        return _degraded_response(reason)
     return response.parsed_output or _FALLBACK
 
 
