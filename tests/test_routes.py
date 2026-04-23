@@ -39,9 +39,10 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("GET",  "/admin/analytics"),
     ("GET",  "/admin/evals"),
 
-    # Client portal (P1)
+    # Client portal (P1, V3 polish, V4 detail)
     ("GET",  "/client/{client_id}"),
     ("GET",  "/client/{client_id}/calls"),
+    ("GET",  "/client/{client_id}/call/{call_sid}"),     # V4 — client-side detail
     ("GET",  "/client/{client_id}/invoice/{month}"),
 }
 
