@@ -44,9 +44,9 @@ def _init_transcripts_schema(conn):
 def record_turn(call_sid: str, client_id: str, role: str, text: str,
                 intent: Optional[str] = None,
                 ts: Optional[int] = None) -> None:
-    """Append one turn to the transcript store. No-op if call_sid is empty
-    (web chat / SMS pseudo-sids use their own keys)."""
-    if not call_sid or not text:
+    """Append one turn to the transcript store. No-op if call_sid or text
+    is blank (whitespace included)."""
+    if not (call_sid or "").strip() or not (text or "").strip():
         return
     ts = ts or int(time.time())
     with _db_lock:

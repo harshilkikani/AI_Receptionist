@@ -26,6 +26,7 @@ from contextlib import asynccontextmanager
 from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts, owner_notify
 from src import scheduler as _scheduler
 from src import feedback as _feedback
+from src import transcripts as _transcripts
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 
@@ -148,6 +149,24 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
         input_tokens=in_tok,
         output_tokens=out_tok,
         tts_chars=len(result.reply),
+        intent=result.intent,
+    )
+
+    # V4 — capture the full transcript so the admin + client portal can
+    # replay the conversation. Keyed by call_sid; silently no-ops for
+    # web chat / SMS pseudo-sids without a real CallSid.
+    _transcripts.record_turn(
+        call_sid=call_sid,
+        client_id=client.get("id", "_default"),
+        role="user",
+        text=user_message,
+        intent=result.intent,
+    )
+    _transcripts.record_turn(
+        call_sid=call_sid,
+        client_id=client.get("id", "_default"),
+        role="assistant",
+        text=result.reply,
         intent=result.intent,
     )
 
