@@ -32,6 +32,12 @@ def _isolate_env(monkeypatch, tmp_path):
     from src import usage
     monkeypatch.setattr(usage, "DB_PATH", tmp_path / "usage_test.db")
 
+    # V3.16 — tests should never accidentally hit the on-disk eval cache.
+    # EVAL_CACHE_DISABLE=true forces runner.run_case to bypass it.
+    # The dedicated cache tests explicitly override this via their own
+    # fixtures where they need to test caching behavior.
+    monkeypatch.setenv("EVAL_CACHE_DISABLE", "true")
+
     # Clear any cached state in modules we touch
     from src import tenant
     tenant.reload()

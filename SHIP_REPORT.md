@@ -1,9 +1,10 @@
 # SHIP_REPORT — AI Receptionist
 
-_Branches: `margin-protection-refactor` → `ship-production` (v1.0 @ tag `v1.0-ship-production`) → **v2.0 major upgrade**_
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0 @ tag `v1.0-ship-production`) → **v2.0 major upgrade** → **v3.0 major upgrade (current tip)**_
 
-_Test suite: 265 pytest cases, all passing (~75 seconds). Legacy
-`_test_suite.py` integration harness: 19 cases against a live server._
+_Test suite: **475 pytest cases, all passing** (~70 seconds). Legacy
+`_test_suite.py` integration harness: 19 cases against a live server.
+209 new tests since v2.0._
 
 ---
 
@@ -124,3 +125,105 @@ with `python -m src.client_portal issue <client_id>`.
   diagnose + fix commands.
 - **Architecture:** `docs/ARCHITECTURE.md` — system diagram +
   request lifecycle trace.
+
+---
+
+# v3.0 — Agency-ready scale-up (V3.1–V3.18)
+
+Informed by competitive research against 2026 voice-agent platforms
+(Vapi, Retell, Bland, Synthflow, Rosie, ServiceTitan Voice Agents,
+Trillet, Stammer, Convocore). Focus: features agencies need to close
+SMB deals quickly + ops hardening.
+
+| # | Section | Highlights |
+|---|---|---|
+| V3.1 | Graceful LLM degradation | Canned "hang on" phrases when Claude rate-limits / times out / auth-fails. Keeps the Twilio webhook alive instead of 503-ing the call. |
+| V3.2 | Context compression | Long SMS threads get old turns folded into a `[context recap]` prefix. Prompt stays bounded on 15+ turn conversations. |
+| V3.3 | SSML prosody tuning | Polly breaks + rate/pitch per tenant's `voice_style` field. 3 presets (warm/formal/brisk). Opt-in. |
+| V3.4 | Per-call AI summary | 1-line summary auto-generated post-call, stored in calls table, surfaced in admin call log + detail. |
+| V3.5 | **Knowledge base (RAG-lite)** | Per-tenant `clients/<id>.knowledge.md`. Keyword-match against caller message; inject relevant sections into prompt. Ships with a septic_pro pricing/services KB. |
+| V3.6 | **Booking capture** | `bookings` table + LLM extraction (name/address/when/service) from post-call transcript. `/admin/bookings` dashboard. ICS generation. |
+| V3.7 | Real-time sentiment | ChatResponse gains `sentiment` field. Auto-escalate to emergency transfer after N consecutive frustrated/angry turns. |
+| V3.8 | Agent personality | `personality: warm|formal|brisk|regional` per tenant. Snippet appended to cacheable prompt block. |
+| V3.9 | **Agency tenancy** | `agencies/<id>.yaml` owns client IDs. `/admin/agency/{id}` aggregate view. Enables agency resellers. |
+| V3.10 | **White-label portal branding** | Per-tenant accent color, logo URL, display name. CSS-injection-proof strict hex validation. |
+| V3.11 | Hard usage cap | `plan.hard_cap_calls` auto-disables runaway tenants with a polite caller message. No LLM tokens spent past cap. |
+| V3.12 | **Self-serve signup** | Public `/signup` form → 24h demo tenant + portal URL. Rate-limited 5/hour/IP. |
+| V3.13 | **Webhook event bus** | Clients subscribe to `call.ended`, `booking.created`, `emergency.triggered`, `feedback.negative` via YAML. HMAC-SHA256-signed POSTs. |
+| V3.14 | Live call monitoring | `/admin/live` with meta-refresh shows in-flight calls + latest caller line. |
+| V3.15 | **Prometheus /metrics** | Scrape-friendly text format. Uptime, active calls, LLM degradations, per-client call counts, margin. |
+| V3.16 | Eval response cache | SHA256-keyed cache for repeated eval runs. `EVAL_CACHE_DISABLE` env gate. |
+| V3.17 | **Docker + docker-compose** | Production-shaped image (slim, non-root, tini, healthcheck). Compose stub for cloudflared sidecar. |
+| V3.18 | Audit + CHANGES + SHIP_REPORT | This file. Full suite: 475 passing, 1 deselected. Zero regressions. |
+
+## Three-command go-live (updated for v3)
+
+Preferred path — Docker:
+
+```bash
+# 1. Fill .env, then build + run
+cp .env.example .env  # edit values
+docker-compose up -d --build
+
+# 2. (one-time) auto-repoint Twilio webhooks to the cloudflared URL
+python scripts/reclaim_tunnel.py
+
+# 3. Mint client portal URLs
+python -m src.client_portal issue ace_hvac
+python -m src.client_portal issue septic_pro
+```
+
+Legacy path (bare-metal) still works:
+```bash
+pip install -r requirements.txt && pytest tests/
+uvicorn main:app --host 0.0.0.0 --port 8765
+python scripts/reclaim_tunnel.py     # second terminal
+```
+
+## New env vars introduced in v3
+
+| Var | Default | Purpose |
+|---|---|---|
+| `ENFORCE_SENTIMENT_ESCALATION` | `true` | V3.7 auto-escalate on frustrated/angry caller |
+| `SENTIMENT_ESCALATE_AFTER` | `2` | V3.7 consecutive hot turns before escalation |
+| `ENFORCE_USAGE_HARD_CAP` | `true` | V3.11 plan.hard_cap_calls enforcement |
+| `ENFORCE_PUBLIC_SIGNUP` | `true` | V3.12 /signup form on/off |
+| `SIGNUP_RATE_LIMIT_PER_HOUR` | `5` | V3.12 per-IP rate limit |
+| `EVAL_CACHE_DISABLE` | *(unset)* | V3.16 force fresh LLM calls in evals |
+| `SUMMARY_MODEL` | `claude-haiku-4-5` | V3.4 override summarization model |
+| `BOOKING_MODEL` | `claude-haiku-4-5` | V3.6 override extraction model |
+
+## New YAML fields introduced in v3
+
+Optional per tenant:
+- `voice_style: warm|formal|brisk` (V3.3)
+- `personality: warm|formal|brisk|regional` (V3.8)
+- `brand_accent_color: "#hexhex"` (V3.10)
+- `brand_logo_url: "https://..."` (V3.10)
+- `brand_display_name: "..."` (V3.10)
+- `plan.hard_cap_calls: N` (V3.11)
+- `webhooks: [{url, events, secret}]` (V3.13)
+
+New `agencies/<id>.yaml` format:
+- `id, name, contact_email, owned_clients: [...]` (V3.9)
+
+New `clients/<id>.knowledge.md` (V3.5) — optional per-tenant knowledge
+base, plain markdown with `# Section` headers.
+
+## Gaps deferred to v4
+
+- **Sub-500ms latency** — requires a speech-to-speech backend
+  (gpt-realtime, Sonic-3, or ElevenLabs Conversational). Voice pipeline
+  unchanged in v3; would need a new transport layer.
+- **Native ServiceTitan / Jobber / Housecall Pro integrations** —
+  webhook event bus (V3.13) covers most use cases via Zapier; direct
+  CRM writers are a bigger lift.
+- **MCP tool-calling** for live CRM reads during calls — research
+  flagged this as the 2026 buzzword but real adoption is early.
+- **Per-unique-caller billing** — alternate plan model alongside
+  per-minute. Small YAML/usage change, didn't prioritize here.
+- **Voicemail detection (AMD)** for outbound — the current outbound
+  callback queue stub (not shipped in v3) would need AMD.
+- **Warm transfer whisper** — owner_notify sends an SMS brief right
+  before the dial; a true whisper (AI narrates context as owner
+  connects) is a larger Twilio Conference refactor.

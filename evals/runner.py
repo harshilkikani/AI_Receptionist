@@ -114,7 +114,11 @@ def run_case(case: dict,
 
     V3.16 — wraps chat_fn in a response-level cache so identical prompts
     don't re-hit the API. Pass use_cache=False to force-refresh.
+    EVAL_CACHE_DISABLE=true in env also disables globally (tests).
     """
+    import os as _os
+    if _os.environ.get("EVAL_CACHE_DISABLE", "").lower() == "true":
+        use_cache = False
     base_fn = chat_fn or _default_chat_fn()
     # Wrap with the per-case cache (noop if use_cache=False)
     from evals.cache import CachingChatFn

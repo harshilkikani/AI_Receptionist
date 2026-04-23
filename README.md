@@ -2,15 +2,16 @@
 
 > A voice + SMS AI receptionist for service businesses. Answers missed calls in under a second, routes emergencies to the owner's cell with an SMS brief **before** the bridge, remembers callers across calls, bills per-minute automatically, and improves itself overnight from its own mistakes.
 
-- **265 passing tests**
+- **475 passing tests**
 - **Real production stack** — FastAPI, Twilio, Anthropic Claude Haiku 4.5, SQLite
 - **Multi-tenant** — one YAML per business, one Twilio number per tenant
 - **Zero-framework frontend** — pure HTML + CSS for every UI surface
 - **MIT licensed** — clone it, read it, change it
 
-![status](https://img.shields.io/badge/tests-265%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-475%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
+![version](https://img.shields.io/badge/version-v3.0-violet)
 
 ---
 
@@ -37,17 +38,23 @@ Full three-command go-live: see [`SHIP_REPORT.md`](SHIP_REPORT.md).
 
 | | |
 |---|---|
-| 📞 **Voice + SMS intake** | Twilio webhooks → FastAPI → Claude → Polly Neural. Barge-in enabled so the caller can interrupt. 9 languages, caller's choice. |
-| 🧠 **Multi-call memory** | Keyed by phone number. Returning callers greeted by name with address + prior history loaded into the prompt. |
-| 🚨 **Emergency routing** | Keyword-tuned intent classification. On `priority: high` the caller is transferred to `escalation_phone` AND a briefing SMS hits `owner_cell` before the bridge connects. |
-| 💰 **Margin protection** | Per-client plans, call-duration caps, spam filter, SMS cap, all feature-flagged so every enforcement feature can be rolled out in shadow mode first. |
-| 📊 **Admin dashboard** | `/admin` — margin by tenant, call log, analytics (intent distribution, hour-of-day heatmap, MoM trend), feature flags, CSV export. |
-| 🔐 **Client portal** | `/client/{id}?t=<signed-token>` — one bookmarkable URL per tenant. Calls, invoice, no cost/margin. Rotate by changing the HMAC secret. |
-| 📆 **Automated billing** | Monthly invoices generated + sent via SMTP or webhook on the 1st. HTML body + CSV attachment. |
-| 🛠️ **Onboarding wizard** | `python -m src.onboarding new` walks 17 validated prompts, writes a YAML, prints the Twilio webhook URLs. `new-demo` mints a 24h disposable tenant. |
-| 🧪 **Self-improving evals** | 25 seed cases in `evals/cases.jsonl`. Regression detector runs nightly and alerts on >5pp pass-rate drop. Failed YES/NO customer feedback becomes new test cases. |
-| 📝 **Call transcripts** | Every turn stored. Admin + client portal both have per-call detail views. |
-| 🩺 **Ops-ready** | `/health`, `/ready`, `X-Request-ID` correlation, structured logging. |
+| 📞 **Voice + SMS intake** | Twilio webhooks → FastAPI → Claude → Polly Neural. Barge-in, 9 languages, caller's choice. Optional per-tenant SSML prosody tuning (V3.3). |
+| 🧠 **Multi-call memory** | Keyed by phone number. Returning callers greeted by name with address + history pre-loaded into the prompt. |
+| 🚨 **Emergency routing** | Keyword-tuned + sentiment-aware (V3.7). Transfers to `escalation_phone` with a pre-bridge SMS brief to `owner_cell`. |
+| 📚 **Knowledge base** (V3.5) | Per-tenant `<id>.knowledge.md` injected into the prompt via keyword match. Prices, hours, service area come out accurately. |
+| 📅 **Booking capture** (V3.6) | Post-call extraction pulls name/address/when/service into a `bookings` table. Admin dashboard + ICS generation. |
+| 💰 **Margin protection** | Per-client plans, call-duration caps, spam filter, SMS cap, **hard usage cap** (V3.11). All feature-flagged. |
+| 🏢 **Agency multi-tenancy** (V3.9) | `agencies/<id>.yaml` declares owned clients. `/admin/agency/{id}` shows aggregate metrics for the agency only. |
+| 🎨 **White-label branding** (V3.10) | Per-tenant logo, accent color, display name on the client portal. |
+| 📊 **Admin dashboard** | Margin table, call log with AI summaries, per-call transcripts, analytics, evals, bookings, live in-flight calls, feature flags, CSV export. |
+| 🔐 **Client portal** | `/client/{id}?t=<signed-token>` — one bookmarkable URL per tenant. HMAC-signed, rotate via secret. |
+| 📆 **Automated billing** | Monthly invoices via SMTP or webhook on the 1st. HTML + CSV. |
+| 🛠️ **Onboarding** | CLI wizard + **public /signup form** (V3.12) — a prospect gets a working demo tenant in 60 seconds. |
+| 🧪 **Self-improving evals** | 25 seed cases, nightly regression detection, negative-feedback-to-eval pipeline, **response cache** (V3.16) for cheap re-runs. |
+| 🔌 **Webhook event bus** (V3.13) | Clients subscribe to `call.ended`, `booking.created`, `emergency.triggered`, `feedback.negative`. HMAC-signed POSTs. |
+| 🩺 **Ops-ready** | `/health`, `/ready`, **`/metrics`** (V3.15) in Prometheus format, `X-Request-ID` correlation, structured logging. |
+| 🛡️ **Graceful degradation** (V3.1) | LLM rate limits / timeouts / auth failures get canned-response fallbacks so the call never 503's out. |
+| 🐳 **Docker-ready** (V3.17) | `docker-compose up` — image with tini, health checks, non-root user. |
 
 ## Architecture
 

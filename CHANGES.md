@@ -836,6 +836,197 @@ ops hygiene. Adding them after v1.0 was a small lift.
 **v2 totals:** 265 passing pytest cases (up from 216).
 Eight new commits plus matching docs commits.
 
+---
+
+# v3.0 major upgrade — V3.1–V3.18
+
+Agency-ready scale-up pass. Informed by a deep competitive-research brief
+against 2026 voice-agent platforms (Vapi, Retell, Bland, Synthflow,
+Rosie, ServiceTitan Voice Agents, Trillet, Stammer, Convocore,
+Marlie AI). Priorities picked from what agencies name in marketing +
+close-deal scripts: white-label multi-tenancy, native bookings,
+real-time sentiment, knowledge base, webhooks, ops-grade observability.
+
+## V3.1 — Graceful LLM degradation _(complete)_
+
+`llm.chat_with_usage` + `recover` now catch `anthropic.RateLimitError`,
+`APITimeoutError`, `AuthenticationError`, and generic `APIError` +
+`TypeError(no api_key)` inside the try/except. On failure, a randomized
+canned "hang on" phrase is returned (categorized by reason) instead of
+propagating an exception that would 503 the Twilio webhook and kill the
+call. Module-level `degradation_stats()` counter surfaces reason
+buckets; `/metrics` (V3.15) reads it. 13 tests.
+
+## V3.2 — Context compression _(complete)_
+
+`_build_messages` compresses turns older than `COMPRESS_THRESHOLD` (10)
+into a single `[context recap]` prefix. Each older turn is truncated
+to ~80 chars. Only activates on long SMS threads; voice calls with
+their 240s cap almost never trip it. No extra LLM call for summary —
+deterministic join keeps the feature cheap. 7 tests.
+
+## V3.3 — SSML prosody tuning _(complete)_
+
+`src/voice_style.py::apply_ssml(text, style)` XML-escapes then inserts
+`<prosody rate/pitch>` + `<break>` at sentence and clause boundaries.
+Three styles: `warm` (95% rate, soft pitch), `formal` (100% neutral),
+`brisk` (108% faster, tight breaks). Opt-in via `voice_style` field in
+a tenant YAML — omitting it keeps the plain-text path for backward
+compat. `main.py._respond` now renders SSML when the tenant opts in.
+16 tests.
+
+## V3.4 — Per-call AI summary _(complete)_
+
+`src/call_summary.py::generate_summary(call_sid)` reads the transcript
+post-call and asks Claude Haiku for one sentence under 100 chars
+summarizing what happened. Stored on a new `calls.summary` column
+(lazy-migrated via `ALTER TABLE ADD COLUMN` wrapped in try/except).
+Skipped for <30s calls and spam/silence/no-transcript outcomes. Surfaced
+in the admin call log (new column), admin call detail, and client
+portal. 10 tests.
+
+## V3.5 — Knowledge base (RAG-lite) _(complete)_
+
+`src/knowledge.py` parses `clients/<id>.knowledge.md` by `# Section`
+headers and scores sections by keyword-overlap against the caller's
+current message. Top matches inject into the volatile portion of the
+system prompt as `## Relevant knowledge`. Stopword-filtered tokenizer,
+dollar-sign-aware, lru-cached per process. Ships with a worked
+`septic_pro.knowledge.md` covering pricing ($475 pump-out, $525
+1500-gal, after-hours surcharges), drain-field repair, install ranges,
+service area, emergency response, and maintenance cadence. Demo
+prospects asking "how much?" now get real numbers. 19 tests.
+
+## V3.6 — Booking capture _(complete)_
+
+`src/bookings.py`: new `bookings` table (id, client_id, call_sid,
+caller_phone, caller_name, address, requested_when, service, notes,
+status, created_ts, month). `maybe_extract_from_call(call_sid)` fires
+post-call when outcome=normal + intent=Scheduling + transcript exists;
+calls Claude via `beta.messages.parse` with a `BookingExtraction`
+Pydantic schema. `generate_ics(booking)` emits RFC 5545 calendar
+invites. `/admin/bookings` lists them with status pills and call
+cross-links. 15 tests.
+
+## V3.7 — Real-time sentiment + auto-escalation _(complete)_
+
+`llm.ChatResponse` gains a `sentiment` field
+(neutral/positive/frustrated/angry). Prompt instructs Claude to
+classify the CALLER's tone each turn. `src/sentiment_tracker.py`
+counts consecutive hot turns per call; at threshold (default 2), the
+turn's priority is auto-promoted to `high` so the call routes through
+the existing emergency transfer flow — including the owner SMS brief.
+Flag `ENFORCE_SENTIMENT_ESCALATION` (default on) + global kill.
+14 tests.
+
+## V3.8 — Agent personality _(complete)_
+
+`src/personality.py` holds four snippet presets (warm/formal/brisk/
+regional). Client YAMLs opt in via `personality: warm`. Snippet
+appends to the stable (cacheable) portion of the system prompt —
+doesn't invalidate prompt cache. 11 tests.
+
+## V3.9 — Agency tenancy _(complete)_
+
+`agencies/<id>.yaml` files declare `owned_clients`. `src/agency.py`
+loads them (lru_cache) and exposes list/get/ownership helpers.
+`/admin/agency/{agency_id}` shows an aggregate view scoped to the
+agency's clients — same stat cards + per-client table as `/admin`,
+filtered. Worked example `agencies/example_agency.yaml` (Acme AI
+Agency owns ace_hvac + septic_pro). 12 tests.
+
+## V3.10 — White-label portal branding _(complete)_
+
+`design.page()` grows `brand_logo_url`, `brand_display_name`, and
+`custom_accent_hex` parameters. Hex passes a strict `^#[a-f0-9]{6}$`
+regex before landing in a scoped `<style>body[data-accent="custom"] {
+--accent: ... }` block — CSS-injection-proof. Companion soft tint
+computed via `_hex_soft`. Client YAMLs adopt three new fields
+(`brand_accent_color`, `brand_logo_url`, `brand_display_name`). 13 tests.
+
+## V3.11 — Hard usage cap _(complete)_
+
+`src/usage_cap.py::is_capped(client)` checks `plan.hard_cap_calls`
+against `usage.monthly_summary`. When hit, `/voice/incoming` plays a
+polite "at capacity" message, hangs up, and records outcome='capped' —
+no LLM tokens burned for a runaway-budget tenant. Flag
+`ENFORCE_USAGE_HARD_CAP` default on + kill switch. 11 tests.
+
+## V3.12 — Self-serve signup _(complete)_
+
+`src/signup.py` adds `GET /signup` (form) + `POST /signup`
+(tenant-creation endpoint). Validates company name, services, and
+E.164-ish email regex. Reuses `onboarding._build_demo` + `_write_yaml`
+for the 24h-expiry tenant, then mints a portal URL. Rate-limited
+5/hour per IP via local bucket (separate from /admin's). Disable via
+`ENFORCE_PUBLIC_SIGNUP=false`. 11 tests.
+
+## V3.13 — Webhook event bus _(complete)_
+
+`src/webhooks.py`: clients subscribe in YAML `webhooks: [{url, events,
+secret}]`. Known events: `call.started`, `call.ended`,
+`emergency.triggered`, `booking.created`, `feedback.negative`. HMAC-
+SHA256 signs body with per-subscription secret → `X-AI-Receptionist-
+Signature: sha256=<hex>`. 5-second timeout per delivery; `fire_safe`
+wraps with outer try/except so a bad recipient never disrupts the
+Twilio handler. Wired into main.py at call-end, booking-created,
+emergency branch, and feedback-negative points. 15 tests.
+
+## V3.14 — Live call monitoring _(complete)_
+
+`/admin/live` renders `call_timer.snapshot()` as a table (call SID,
+client, elapsed, emergency flag, turn count, latest caller line,
+watch link). Meta `http-equiv=refresh content="3"` auto-reloads every
+3 seconds. No JS. 6 tests.
+
+## V3.15 — Prometheus /metrics _(complete)_
+
+`src/ops.py` grows `/metrics` endpoint in Prometheus text-exposition
+format. Emits: `receptionist_uptime_seconds`, `_active_calls`,
+`_active_emergency_calls`, `_llm_degradations_total{reason}` (from
+V3.1 stats), `_calls_total{client,outcome}`, `_minutes_total{client}`,
+`_emergencies_total{client}`, `_margin_pct{client}`,
+`_sentiment_escalations_active`. No auth required — scrapers don't
+carry Basic. 10 tests.
+
+## V3.16 — Eval response cache _(complete)_
+
+`evals/cache.py::CachingChatFn` wraps a `chat_fn` with a key-lookup
+memo layer. Key = sha256(case_id, user_message, client_id). Persists
+to `data/eval_cache.jsonl` with a 30-day TTL on entries. Runner
+integration via `use_cache` kwarg. `--no-cache` CLI flag forces
+refresh. `EVAL_CACHE_DISABLE=true` env disables globally (tests
+set this in conftest to avoid cross-test contamination). 15 tests.
+
+## V3.17 — Docker + docker-compose _(complete)_
+
+`Dockerfile` (python:3.12-slim, tini PID 1, requirements-first for
+layer caching, non-root UID 1000, HEALTHCHECK on /health). `docker-
+compose.yml` with app service + host-mounted volumes for data/ logs/
+clients/ agencies/ evals/. Stub for a cloudflared sidecar in
+comments. `.dockerignore` excludes .env, .git, tests/, docs/ so
+image stays small. 12 tests (parse + invariant checks).
+
+## V3.18 — Audit + CHANGES + SHIP_REPORT _(complete)_
+
+Full pytest suite: **475 passed, 1 deselected** (up from v2's 265).
+209 new tests across 17 feature modules.
+
+Competitive positioning (from the v3 research brief):
+ - Agencies need: unlimited sub-accounts (✓ V3.9), white-label
+   branding (✓ V3.10), native bookings (✓ V3.6), webhooks into
+   Zapier/Jobber/HubSpot (✓ V3.13), compliance-talk surfaces
+   (HIPAA/SOC2 left as operator-responsibility).
+ - 2026 tech bar: sub-500ms latency (voice pipeline unchanged —
+   deferred for a dedicated latency sprint), SSML prosody (✓ V3.3),
+   graceful degradation (✓ V3.1).
+ - HVAC/plumbing/septic verticals: emergency keyword routing (✓ v1),
+   after-hours-only deployment (✓ kill switch + usage cap V3.11),
+   bilingual (✓ 9 langs from v1), per-unique-caller billing (deferred).
+
+**v3 totals:** 475 passing pytest cases. 17 new feature commits + 1
+final audit commit. Zero regressions on the ship-production baseline.
+
 
 
 

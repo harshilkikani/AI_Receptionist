@@ -9,6 +9,13 @@ import pytest
 from evals import cache
 
 
+@pytest.fixture(autouse=True)
+def _enable_cache(monkeypatch):
+    """conftest sets EVAL_CACHE_DISABLE=true globally — the cache tests
+    explicitly re-enable it so they can exercise caching behavior."""
+    monkeypatch.setenv("EVAL_CACHE_DISABLE", "false")
+
+
 @pytest.fixture
 def tmp_cache(tmp_path):
     return tmp_path / "eval_cache.jsonl"
