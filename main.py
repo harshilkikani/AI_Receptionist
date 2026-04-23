@@ -32,6 +32,7 @@ from src import voice_style as _voice_style
 from src import call_summary as _call_summary
 from src import bookings as _bookings
 from src import sentiment_tracker as _sentiment
+from src import usage_cap as _usage_cap
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -444,6 +445,21 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
     client = tenant.load_client_by_number(To)
     usage.start_call(CallSid, client["id"], From, To)
     call_timer.record_start(CallSid, client["id"])
+
+    # V3.11 — hard usage cap. If the tenant has set plan.hard_cap_calls
+    # and the current month's total has hit it, politely refuse rather
+    # than burning more LLM tokens for a client who's beyond their plan.
+    cap_status = _usage_cap.is_capped(client)
+    if cap_status["capped"]:
+        log.info("usage_cap_hit call_sid=%s client=%s current=%d cap=%d",
+                 CallSid, client["id"], cap_status["current"], cap_status["cap"])
+        vr_cap = VoiceResponse()
+        vr_cap.say(_usage_cap.capped_message(client),
+                   voice=_voice_for("en", client, mode="transactional"))
+        vr_cap.hangup()
+        usage.end_call(CallSid, outcome="capped")
+        call_timer.record_end(CallSid)
+        return _twiml(str(vr_cap))
 
     # Spam filter layer 1: caller-ID blocklist (before any LLM cost)
     number_check = spam_filter.check_number(From, client["id"], CallSid)
