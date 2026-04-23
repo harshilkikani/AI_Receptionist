@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Callable, Awaitable, Iterable
+from typing import Callable, Awaitable
 from urllib.parse import parse_qsl
 
 from starlette.middleware.base import BaseHTTPMiddleware

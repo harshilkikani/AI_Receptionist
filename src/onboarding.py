@@ -84,7 +84,7 @@ def v_positive_number(value: str) -> Optional[str]:
 
 def v_timezone(value: str) -> Optional[str]:
     try:
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from zoneinfo import ZoneInfo
     except ImportError:  # pragma: no cover
         return None
     try:

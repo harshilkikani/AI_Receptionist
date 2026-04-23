@@ -698,6 +698,145 @@ pytest tests/                      # 214 passed total
 outages. Matching has a 48h response window so stale incoming SMS
 never accidentally match.
 
+---
+
+# v2.0 major upgrade — V1–V8
+
+Full audit + redesign pass after the v1.0 ship. 8 focused
+improvements spanning demo orientation, UI, ops hardening, two new
+user-visible features (transcripts + HELP command), and repo
+polish. Live `+18449403274`/Ace HVAC routing untouched throughout.
+
+---
+
+## V1 — Septic demo pivot _(complete)_
+
+**Why:** The showcase needed to feel like a real business demo. HVAC
+was fine for live traffic; septic is sharper for the 3-minute video
+because "sewage backing up at 11 PM" is a single-sentence reason
+every viewer gets.
+
+**Files:**
+- Added `clients/septic_pro.yaml` — full "Septic Pro / Bob" tenant.
+  No `inbound_number` so it doesn't route live traffic.
+- `memory.py` — 3 new seed callers (Ellen, Travis, Linda). HVAC
+  seeds retained.
+- New `docs/SHOWCASE_SCRIPT.md` — 3-min website video script,
+  entirely septic.
+- `docs/DEMO_SCRIPT.md` — header points operators at septic_pro as
+  the baked-in warm-up tenant.
+- `evals/cases.jsonl` — 5 septic cases added (overflow emergency,
+  pump-out, quote, drain-field emergency, new-customer inspection).
+- `_test_suite.py` — caller-seed assertion loosened (require HVAC
+  seeds present, not strict equality).
+
+## V2 — Design system + admin UI v2 _(complete)_
+
+**Why:** Every HTML surface had bespoke CSS. Typography, spacing,
+colors all inconsistent. v2 extracts a shared module so the three
+surfaces (admin/portal/landing) speak the same visual language while
+carrying distinct accents.
+
+**Files:**
+- New `src/design.py` — CSS custom-property tokens, automatic
+  dark-mode via prefers-color-scheme, print-friendly overrides. Helpers
+  `page()`, `card()`, `data_table()`, `stats()`, `stat_card()`,
+  `pill()`, `sparkline()`, `heatbar()`.
+- `src/admin.py` rewritten on the design system. New `/admin/call/{sid}`
+  route for per-call transcript detail (wired in V4). Sidebar nav,
+  stat cards, SVG sparklines, pill-styled outcomes, demo-tenant badges.
+- `src/transcripts.py` — schema + CRUD scaffold for V4.
+- `tests/test_routes.py` — manifest updated with new routes.
+
+## V3 — Client portal UI v2 _(complete)_
+
+**Files:**
+- `src/client_portal.py` rewritten on the design system (accent="client",
+  teal). Summary uses stat cards; call log uses friendly labels
+  + pill variants; invoice re-skinned with print CSS hiding nav.
+- New `/client/{id}/call/{sid}` route — client-side transcript detail.
+  Explicit tenant-ownership check on the call SID prevents
+  cross-tenant leaks even with a valid token.
+
+## V4 — Call transcripts (new feature) _(complete)_
+
+**Why:** We logged metadata but never the conversation itself. For
+dispute resolution, training data, and client trust, that's a gap.
+
+**Files:**
+- `src/transcripts.py` — `record_turn`, `get_transcript`,
+  `get_call_meta`. New `transcripts` SQLite table, schema init lazy
+  on first write.
+- `main.py::_run_pipeline` — now records user + assistant turns for
+  every LLM exchange. No-ops on empty sid (web chat, some SMS).
+- `tests/test_transcripts.py` — 13 tests: roundtrip, whitespace
+  guards, ordering, admin detail rendering, portal tenant isolation,
+  pipeline integration.
+
+## V5 — index.html as showcase landing _(complete)_
+
+**Why:** The root page was the old HVAC chat UI. Visitors to the
+public site should land on a clear pitch, not a chat sandbox.
+
+**Files:**
+- `index.html` completely rewritten — sticky nav, gradient hero
+  with social-proof strip, 3-feature grid, embedded live web-chat
+  demo against `septic_pro` + septic seeds, quick-prompt chips
+  (overflow emergency, book pump-out, price check, wrong number),
+  4-step "how it works", terminal-styled clone-and-run teaser,
+  gradient CTA. Dark-mode ready. ~17KB, no JS framework.
+- `main.py` — `/chat` gains optional `client_id` so the landing
+  can demo septic_pro regardless of the sole-tenant fallback.
+
+## V6 — HELP SMS + welcome flow (new feature) _(complete)_
+
+**Why:** Owners texting questions to their receptionist number would
+have gotten a confused AI reply. Now they get a direct cheat sheet.
+
+**Files:**
+- New `src/owner_commands.py` — `is_help_command`, `handle_help_sms`,
+  `build_welcome_body`, `send_welcome_sms`. Recognizes HELP / INFO /
+  STATUS / LINK as first word. Owners (matched by owner_cell /
+  escalation_phone, normalized) get a portal URL + escalation line;
+  unknown numbers get a polite "call us" redirect.
+- `main.py::/sms/incoming` — short-circuits HELP before the feedback
+  check and before the LLM.
+- `src/onboarding.py` CLI — new `welcome <client_id> [--to NUM]
+  [--dry-run]` subcommand.
+
+## V7 — Ops endpoints + request-id correlation _(complete)_
+
+**Why:** K8s-style probes + log-line correlation are table-stakes
+ops hygiene. Adding them after v1.0 was a small lift.
+
+**Files:**
+- New `src/ops.py` — `RequestIDMiddleware` (short hex ID per request,
+  honors inbound X-Request-ID, sets X-Request-ID response header,
+  exposes via contextvar); `install_logging()` (root format string
+  includes `[request_id]`); `/health` (liveness); `/ready`
+  (readiness — sqlite + tenant + prompt-template checks, 503 on any
+  fail so load balancers stop).
+- `main.py` wires all three.
+
+## V8 — Audit + README + LICENSE _(complete)_
+
+**Files:**
+- New `README.md` — proper GitHub landing with status badges, quick
+  start, feature table, repo tour, links to key docs.
+- New `LICENSE` — MIT.
+- Static unused-import audit → removed 5 truly-unused names
+  (`Optional` in call_timer/sms_limiter, `Iterable` in
+  twilio_signature, `ZoneInfoNotFoundError` in onboarding,
+  `datetime/timezone` in feedback).
+- `SHIP_REPORT.md` gains a v2.0 section summarizing all 8 upgrades,
+  updated test counts, and a refreshed three-command go-live.
+
+---
+
+**v2 totals:** 265 passing pytest cases (up from 216).
+Eight new commits plus matching docs commits.
+
+
 
 
 

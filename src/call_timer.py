@@ -23,7 +23,6 @@ import os
 import re
 import time
 import threading
-from typing import Optional
 
 _state_lock = threading.Lock()
 _calls: dict = {}  # call_sid -> {start_ts, client_id, emergency, grace_used}

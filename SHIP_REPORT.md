@@ -1,85 +1,98 @@
-# SHIP_REPORT — ship-production branch
+# SHIP_REPORT — AI Receptionist
 
-_Commit range: `b75d59f..HEAD`_
-_Test suite: 216 pytest cases, all passing (60s + LLM integration tests
-skipped without a real ANTHROPIC_API_KEY)._
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0 @ tag `v1.0-ship-production`) → **v2.0 major upgrade**_
 
-## Per-section status
+_Test suite: 265 pytest cases, all passing (~75 seconds). Legacy
+`_test_suite.py` integration harness: 19 cases against a live server._
 
-| # | Section | Status | Notes |
+---
+
+# v1.0 — Margin protection + production ship (P0–P11)
+
+See `CHANGES.md` for the per-P details. Status summary:
+
+| # | Section | Status |
+|---|---|---|
+| P0 | Admin security (auth gate, rate limit, headers) | done |
+| P1 | Client-facing portal with signed URLs | done |
+| P2 | Automated monthly billing | done |
+| P3 | Owner emergency SMS push | done |
+| P4 | End-of-day owner digest | done |
+| P5 | Onboarding wizard + demo tenants | done |
+| P6 | Twilio webhook signature verification | done |
+| P7 | Eval harness with cases.jsonl | done |
+| P8 | Prompt caching | done (structure; $0 savings on Haiku today — see below) |
+| P9 | Persistent tunnel (auto-reclaim + Named Tunnel docs) | done |
+| P10 | Analytics admin page | done |
+| P11 | Post-call feedback SMS | done |
+
+**Measured P8 savings (honest):** $0 on Claude Haiku 4.5 because the
+stable prompt block is 1,085 tokens and Haiku's cache minimum is 4,096.
+Structure is correct and activates automatically if the prompt grows
+past the threshold or you migrate to Sonnet 4.6 (min 2,048) or
+Opus (min 1,024). Full analysis in `CHANGES.md` → P8.
+
+---
+
+# v2.0 — Major upgrade (V1–V8)
+
+A post-v1.0 audit pass that rebuilt the UI, pivoted the demo to septic
+services, added two user-visible features, and professionalized the
+repo.
+
+| # | Section | Status | Highlights |
 |---|---|---|---|
-| P0 | Admin security (auth gate, rate limit, headers) | **done** | 8 tests. Middlewares installed. |
-| P1 | Client-facing portal with signed URLs | **done** | 15 tests. CLI issues tokens. |
-| P2 | Automated monthly billing | **done** | 16 tests. `enabled=false` default. |
-| P3 | Owner emergency SMS push | **done** | 12 tests. Fires before transfer. |
-| P4 | End-of-day owner digest | **done** | 15 tests. 22:00 local. |
-| P5 | Onboarding wizard + demo tenants | **done** | 17 tests. Startup auto-purge. |
-| P6 | Twilio webhook signature verification | **done** | 9 tests. Shadow-mode available. |
-| P7 | Eval harness with cases.jsonl | **done** | 16 tests + 20 seed cases. |
-| P8 | Prompt caching | **done (structure)** | 11 tests. Savings = $0 today (see below). |
-| P9 | Persistent tunnel (auto-reclaim + Named Tunnel docs) | **done** | 11 tests. Option B wired. |
-| P10 | Analytics admin page | **done** | 9 tests. No-JS tables + ASCII bars. |
-| P11 | Post-call feedback SMS | **done** | 23 tests. `enabled=false` default. |
+| V1 | Septic demo pivot | done | `septic_pro` tenant, 3 septic seed callers, rewritten `SHOWCASE_SCRIPT.md`, 5 septic eval cases. |
+| V2 | Shared design system + admin v2 | done | `src/design.py`, sidebar nav, SVG sparklines + heatbars, pill-styled outcomes, dark-mode ready. |
+| V3 | Client portal v2 | done | Same design system (teal accent), stat cards, per-call detail link, print-friendly invoice. |
+| V4 | Call transcripts (new feature) | done | Every turn stored. Admin + portal per-call detail pages with explicit tenant-isolation. |
+| V5 | Landing page rebuild | done | `index.html` is now a showcase landing with embedded septic-flavored live chat demo. |
+| V6 | HELP SMS + welcome flow (new feature) | done | Owners texting HELP get portal URL + escalation; unknown callers get a polite redirect. `onboarding welcome` CLI subcommand. |
+| V7 | /health + /ready + request-id | done | Ops probes + request correlation middleware + `[request_id]` in log lines. |
+| V8 | Audit + README + LICENSE | done | Static unused-import sweep. Professional README with status badges, repo tour, quick-start. MIT LICENSE. This file updated. |
 
-Plus:
-- Route manifest check at `tests/test_routes.py` — fails if a router
-  is added or removed without updating the manifest.
-- All 19 legacy `_test_suite.py` integration tests still pass against
-  a live server (now automatically sign their webhook POSTs if
-  `TWILIO_AUTH_TOKEN` is available).
+## What's new between v1.0 and v2.0
 
-## Token savings (measured, P8)
+**Two new user-visible features:**
+- **Call transcripts** — conversation replay for operator + client.
+- **HELP SMS command** — owners text HELP and get a cheat sheet.
 
-Running `python -m evals.cache_benchmark --cases 3` against live
-Anthropic with `claude-haiku-4-5`:
+**Two fresh surfaces:**
+- **Showcase landing page** — `/` is now a proper marketing page.
+- **Admin + portal UI** — redesigned on a shared design system.
 
-```
-Pass 1 (cold): input_tokens = 4597   cache_read = 0
-Pass 2 (warm): input_tokens = 4597   cache_read = 0
-Saved:         0 tokens       $0.00
-```
+**Ops additions:**
+- `/health`, `/ready`, `X-Request-ID` header + contextvar, structured logging.
 
-**Why zero:** the stable system block is 1,085 tokens. Claude Haiku 4.5
-requires 4,096 tokens minimum for cache activation; blocks below the
-minimum have their `cache_control` silently ignored. Sonnet 4.6 needs
-2,048; Opus 1,024.
+---
 
-The structure is in place and correct — it activates automatically if
-the prompt grows past the Haiku minimum or the operator migrates to
-Sonnet/Opus. Full analysis + rate table in `CHANGES.md` → P8.
+# Known gaps — do before first paying client
 
-## Known gaps — do before first paying client
+Unchanged from v1.0 plus v2-specific notes:
 
-1. **`.env` secrets** — set `ADMIN_USER`, `ADMIN_PASS`,
-   `CLIENT_PORTAL_SECRET` (32+ random chars), and
-   `PUBLIC_BASE_URL` (your tunnel URL).
-2. **Twilio webhook URLs** on `+18449403274` — currently point at
-   whatever cloudflared URL was last active. Run
-   `python scripts/reclaim_tunnel.py` once the server is up to
-   auto-repoint.
-3. **SMTP credentials** for invoices + digests — set
-   `ALERT_SMTP_PASSWORD` in `.env` and fill `config/alerts.json::smtp`
-   with host/port/user/from/to. Or switch transport to `webhook` and
-   point at a Zapier catch hook.
+1. **`.env` secrets** — `ADMIN_USER`, `ADMIN_PASS`,
+   `CLIENT_PORTAL_SECRET` (32+ random chars), `PUBLIC_BASE_URL`.
+2. **Twilio webhook URLs** — `python scripts/reclaim_tunnel.py`
+   repoints them to the current tunnel automatically.
+3. **SMTP or webhook** for `config/alerts.json` — invoices + digests.
 4. **Shadow-mode walk** — keep `ENFORCE_SPAM_FILTER`,
-   `ENFORCE_CALL_DURATION_CAP`, and `ENFORCE_SMS_CAP` at `false` for
-   the first 48 hours. Watch `logs/rejected_calls.jsonl` and the
-   call_timer log lines. Only flip each to `true` after observing clean
-   behavior.
-5. **Twilio signature verification** — start with
-   `TWILIO_VERIFY_SIGNATURES=false`, confirm webhooks are shaped
-   correctly (no `shadow-pass` warnings in logs), THEN flip to `true`.
-6. **Monthly invoice go-live** — set
+   `ENFORCE_CALL_DURATION_CAP`, `ENFORCE_SMS_CAP` at `false` for
+   48h. Review `logs/rejected_calls.jsonl` and `logs/` before flipping.
+5. **`TWILIO_VERIFY_SIGNATURES`** — start with `false`, flip to `true`
+   after confirming webhooks shaped correctly (no `shadow-pass`
+   warnings in logs).
+6. **Monthly invoices** — set
    `config/alerts.json::monthly_invoice.enabled=true` only after
-   manually sending `python -m src.invoices send-all --month <prev>`
-   once and reviewing the output.
-7. **Eval regression scheduler** — `ENFORCE_EVAL_REGRESSION=false` by
-   default (costs tokens). Flip to `true` once `cases.jsonl` is
-   stable.
-8. **`owner_cell` + `owner_email` + `timezone`** on every active
-   client's YAML — these default empty and the new per-tenant features
-   need them. Use `python -m src.onboarding new` for new tenants so
-   you don't forget.
+   manually running `python -m src.invoices send-all --month <prev>`
+   once + reviewing output.
+7. **Nightly eval regression** — `ENFORCE_EVAL_REGRESSION=false` by
+   default (spends tokens). Flip after `cases.jsonl` is stable.
+8. **Every client YAML** — `owner_cell`, `owner_email`, `timezone`
+   fields. Defaults are empty. Wizard prompts for all three.
+9. **V2-new:** `ENFORCE_FEEDBACK_SMS=false` by default; turn on per
+   client when you want the YES/NO self-improvement loop.
+10. **V2-new:** send the welcome SMS on day 1 —
+    `python -m src.onboarding welcome <client_id>`.
 
 ## Three commands to go live
 
@@ -95,6 +108,19 @@ python scripts/reclaim_tunnel.py
 ```
 
 After those three, `+18449403274` answers live as Joanna / Ace HVAC,
-the admin is at `http://localhost:8765/admin` (with Basic auth from the
-`ADMIN_USER`/`ADMIN_PASS` you set), and the per-tenant portal links
-can be minted with `python -m src.client_portal issue <client_id>`.
+the admin is at `http://localhost:8765/admin`, the showcase landing is
+at `http://localhost:8765/`, and per-tenant portal links are minted
+with `python -m src.client_portal issue <client_id>`.
+
+---
+
+# Operating model reminder
+
+- **Global kill switch:** `MARGIN_PROTECTION_ENABLED=false` → all
+  enforcement bypassed instantly, no restart needed if running with
+  a reloader.
+- **Ops page:** `/admin/flags` shows current flag state.
+- **Problem triage:** `docs/OPS_RUNBOOK.md` — 10 failure modes with
+  diagnose + fix commands.
+- **Architecture:** `docs/ARCHITECTURE.md` — system diagram +
+  request lifecycle trace.
