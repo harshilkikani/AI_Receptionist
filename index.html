@@ -3,545 +3,466 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ace HVAC & Plumbing — AI Receptionist Demo</title>
+<title>AI Receptionist — an always-on phone agent for service businesses</title>
+<meta name="description" content="A voice + SMS AI receptionist that answers missed calls, routes emergencies, and learns from every interaction. Live demo — try it now.">
+<meta name="robots" content="index,follow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%237c3aed'/%3E%3C/svg%3E" />
 <style>
+:root {
+  --n-50:#f8fafc; --n-100:#f1f5f9; --n-200:#e2e8f0; --n-300:#cbd5e1;
+  --n-400:#94a3b8; --n-500:#64748b; --n-600:#475569; --n-700:#334155;
+  --n-800:#1e293b; --n-900:#0f172a;
+  --brand:#7c3aed; --brand-soft:#ede9fe; --brand-dark:#6d28d9;
+  --accent:#0d9488; --accent-soft:#ccfbf1;
+  --good:#059669; --warn:#d97706; --bad:#dc2626;
+  --bg:#ffffff; --card:#ffffff; --border:#e2e8f0; --fg:#0f172a; --muted:#64748b;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+  --shadow-md:0 4px 16px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);
+  --shadow-lg:0 24px 48px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.06);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 12px;
+  --radius-lg: 20px;
+}
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f5f6f8;
-    --panel: #ffffff;
-    --border: #e5e7eb;
-    --text: #0f172a;
-    --muted: #64748b;
-    --brand: #2563eb;
-    --brand-soft: #eff6ff;
-    --ai-bubble: #e9edf2;
-    --user-bubble: #2563eb;
-    --user-text: #ffffff;
-    --danger: #dc2626;
-    --danger-soft: #fef2f2;
-    --warn: #d97706;
-    --ok: #059669;
+    --bg:#0b1220; --card:#111a2e; --border:#1e2a44;
+    --fg:#e6edf7; --muted:#8aa0bd;
+    --n-50:#0c1628; --n-100:#111e38; --n-200:#1e2a44;
+    --brand-soft:#1d163a; --accent-soft:#0b2a27;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 4px 16px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.3);
+    --shadow-lg:0 24px 48px rgba(0,0,0,.5);
   }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 14px;
-  }
-  .app {
-    display: grid;
-    grid-template-columns: 280px 1fr 300px;
-    grid-template-rows: 56px 1fr;
-    grid-template-areas:
-      "header header header"
-      "sidebar chat memory";
-    height: 100vh;
-  }
-  header {
-    grid-area: header;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 20px;
-    gap: 12px;
-  }
-  header .logo {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: var(--brand);
-    color: white;
-    display: grid; place-items: center;
-    font-weight: 700;
-  }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
-  header .sub { color: var(--muted); font-size: 12px; margin-left: 4px; }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+a{color:var(--brand);text-decoration:none;}
+a:hover{text-decoration:underline;}
+a:focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:4px;}
+h1,h2,h3{letter-spacing:-0.02em;line-height:1.2;}
+h1{font-size:clamp(32px,5vw,52px);font-weight:800;margin:0;}
+h2{font-size:clamp(24px,3.5vw,34px);font-weight:700;margin:0 0 16px;}
+h3{font-size:20px;font-weight:600;margin:0 0 8px;}
+p{margin:0 0 12px;}
+code{font-family:var(--font-mono);font-size:.9em;background:var(--n-100);padding:2px 6px;border-radius:4px;}
 
-  /* Sidebar: missed calls */
-  aside.sidebar {
-    grid-area: sidebar;
-    background: var(--panel);
-    border-right: 1px solid var(--border);
-    overflow-y: auto;
-  }
-  .section-title {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-    padding: 16px 16px 8px;
-    font-weight: 600;
-  }
-  .call {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .call:hover { background: var(--brand-soft); }
-  .call.active { background: var(--brand-soft); border-left: 3px solid var(--brand); padding-left: 13px; }
-  .call .name { font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
-  .call .phone { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .call .preview { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
-  .badge {
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .badge.new     { background: #f1f5f9; color: var(--muted); }
-  .badge.return  { background: #ecfdf5; color: var(--ok); }
-  .badge.urgent  { background: #fee2e2; color: var(--danger); }
+/* ── Nav bar ─────────────────────────────────────────────── */
+.nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.2) blur(10px);border-bottom:1px solid var(--border);}
+@media (prefers-color-scheme: dark){.nav{background:rgba(11,18,32,.85);}}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;padding:14px 24px;gap:20px;}
+.nav-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:var(--fg);text-decoration:none;}
+.nav-brand .dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--brand),var(--accent));}
+.nav-links{margin-left:auto;display:flex;gap:20px;align-items:center;}
+.nav-links a{color:var(--n-600);font-weight:500;}
+.nav-links a:hover{color:var(--fg);text-decoration:none;}
+.btn{display:inline-block;padding:10px 18px;border-radius:8px;font-weight:600;border:1px solid var(--border);background:var(--card);color:var(--fg);text-decoration:none;font-size:14px;transition:transform .12s ease, box-shadow .12s ease;}
+.btn:hover{text-decoration:none;transform:translateY(-1px);box-shadow:var(--shadow-md);}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:white;}
+.btn.primary:hover{background:var(--brand-dark);border-color:var(--brand-dark);color:white;}
+.btn.ghost{background:transparent;}
 
-  /* Chat */
-  main.chat {
-    grid-area: chat;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    position: relative;
-  }
-  .chat-header {
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .chat-header .avatar {
-    width: 36px; height: 36px; border-radius: 50%;
-    background: var(--brand); color: white;
-    display: grid; place-items: center; font-weight: 600;
-  }
-  .chat-header .info .n { font-weight: 600; }
-  .chat-header .info .p { font-size: 12px; color: var(--muted); }
+/* ── Section wrapper ─────────────────────────────────────── */
+section{padding:80px 24px;}
+section.tight{padding:48px 24px;}
+.container{max-width:1100px;margin:0 auto;}
+.container.narrow{max-width:780px;}
 
-  .emergency-banner {
-    background: var(--danger);
-    color: white;
-    padding: 10px 20px;
-    font-weight: 600;
-    font-size: 13px;
-    display: none;
-    align-items: center;
-    gap: 8px;
-    animation: slideDown 0.3s ease;
-  }
-  .emergency-banner.show { display: flex; }
-  @keyframes slideDown {
-    from { transform: translateY(-100%); opacity: 0; }
-    to   { transform: translateY(0); opacity: 1; }
-  }
+/* ── Hero ────────────────────────────────────────────────── */
+.hero{padding:88px 24px 56px;position:relative;overflow:hidden;}
+.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 20% 0%,var(--brand-soft) 0%,transparent 50%),radial-gradient(circle at 80% 90%,var(--accent-soft) 0%,transparent 50%);pointer-events:none;z-index:-1;}
+.hero-kicker{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:var(--brand-soft);color:var(--brand);font-size:13px;font-weight:600;letter-spacing:.01em;}
+.hero h1{margin-top:16px;max-width:920px;}
+.hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.hero-sub{max-width:700px;margin-top:20px;color:var(--muted);font-size:18px;line-height:1.55;}
+.hero-ctas{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap;}
+.hero-proof{margin-top:36px;display:flex;gap:28px;flex-wrap:wrap;color:var(--muted);font-size:13px;}
+.hero-proof strong{color:var(--fg);font-weight:700;font-size:18px;display:block;}
 
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .msg {
-    max-width: 70%;
-    padding: 10px 14px;
-    border-radius: 18px;
-    line-height: 1.4;
-    word-wrap: break-word;
-    animation: pop 0.2s ease;
-  }
-  @keyframes pop {
-    from { transform: scale(0.95); opacity: 0; }
-    to   { transform: scale(1); opacity: 1; }
-  }
-  .msg.ai {
-    background: var(--ai-bubble);
-    color: var(--text);
-    align-self: flex-start;
-    border-bottom-left-radius: 4px;
-  }
-  .msg.user {
-    background: var(--user-bubble);
-    color: var(--user-text);
-    align-self: flex-end;
-    border-bottom-right-radius: 4px;
-  }
-  .msg-meta {
-    font-size: 10px;
-    color: var(--muted);
-    margin: 2px 6px;
-  }
-  .msg-meta.user { align-self: flex-end; }
-  .typing {
-    align-self: flex-start;
-    background: var(--ai-bubble);
-    padding: 12px 16px;
-    border-radius: 18px;
-    display: none;
-  }
-  .typing.show { display: block; }
-  .typing span {
-    display: inline-block;
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--muted);
-    margin: 0 2px;
-    animation: bounce 1.2s infinite;
-  }
-  .typing span:nth-child(2) { animation-delay: 0.15s; }
-  .typing span:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes bounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-6px); opacity: 1; }
-  }
+/* ── Feature grid ────────────────────────────────────────── */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+@media (max-width:900px){.features{grid-template-columns:1fr;}}
+.feature{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-sm);}
+.feature .icon{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand-soft),var(--accent-soft));display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px;}
+.feature p{color:var(--muted);font-size:14px;margin:0;}
 
-  .composer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--border);
-    background: var(--panel);
-    display: flex;
-    gap: 10px;
-  }
-  .composer input {
-    flex: 1;
-    padding: 11px 16px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    font-size: 14px;
-    outline: none;
-    font-family: inherit;
-  }
-  .composer input:focus { border-color: var(--brand); }
-  .composer button {
-    background: var(--brand);
-    color: white;
-    border: none;
-    padding: 0 20px;
-    border-radius: 999px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* ── Chat demo section ──────────────────────────────────── */
+.demo{background:linear-gradient(180deg,var(--n-50) 0%,var(--bg) 100%);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.demo .eyebrow{color:var(--accent);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.demo-shell{margin-top:32px;display:grid;grid-template-columns:280px 1fr;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;}
+@media (max-width:760px){.demo-shell{grid-template-columns:1fr;}}
+.callers{background:var(--n-50);padding:16px;border-right:1px solid var(--border);}
+@media (max-width:760px){.callers{border-right:none;border-bottom:1px solid var(--border);}}
+.callers h4{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin:8px 8px 12px;}
+.caller{display:block;padding:12px;border-radius:10px;cursor:pointer;color:inherit;transition:background .12s;margin-bottom:4px;border:1px solid transparent;}
+.caller:hover{background:var(--card);text-decoration:none;}
+.caller.active{background:var(--card);border-color:var(--border);box-shadow:var(--shadow-sm);}
+.caller .name{font-weight:600;font-size:14px;}
+.caller .preview{color:var(--muted);font-size:12px;margin-top:2px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.caller .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;margin-top:6px;text-transform:uppercase;letter-spacing:.04em;}
+.caller .pill.new{background:var(--accent-soft);color:var(--accent);}
+.caller .pill.return{background:var(--brand-soft);color:var(--brand);}
 
-  /* Memory panel */
-  aside.memory {
-    grid-area: memory;
-    background: var(--panel);
-    border-left: 1px solid var(--border);
-    overflow-y: auto;
-    padding: 0 0 20px;
-  }
-  .mem-block { padding: 14px 18px; border-bottom: 1px solid var(--border); }
-  .mem-block .label {
-    font-size: 10px;
-    text-transform: uppercase;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-    font-weight: 600;
-    margin-bottom: 6px;
-  }
-  .mem-block .value { font-size: 13px; line-height: 1.5; }
-  .mem-block .value.empty { color: var(--muted); font-style: italic; }
-  .pill {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .pill.p-low  { background: #ecfdf5; color: var(--ok); }
-  .pill.p-med  { background: #fef3c7; color: var(--warn); }
-  .pill.p-high { background: #fee2e2; color: var(--danger); }
-  .history-item {
-    padding: 8px 10px;
-    background: #f8fafc;
-    border-radius: 8px;
-    margin-bottom: 6px;
-    font-size: 12px;
-  }
-  .history-item .date { color: var(--muted); font-size: 10px; }
+.conv{display:flex;flex-direction:column;min-height:560px;}
+.conv-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+.conv-head .avatar{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--accent));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;}
+.conv-head .title{font-weight:700;font-size:15px;}
+.conv-head .sub{color:var(--muted);font-size:12px;}
+.conv-body{flex:1;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;max-height:480px;}
+.msg{max-width:78%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;}
+.msg.ai{background:var(--n-100);color:var(--fg);align-self:flex-start;border-bottom-left-radius:4px;}
+.msg.user{background:var(--brand);color:white;align-self:flex-end;border-bottom-right-radius:4px;}
+.msg.system{background:transparent;color:var(--muted);font-size:12px;text-align:center;align-self:center;padding:4px 10px;}
+.msg.loading{color:var(--muted);font-style:italic;}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);}
+.tag.emergency{background:#fee2e2;color:var(--bad);}
+@media (prefers-color-scheme: dark){.tag.emergency{background:#2e0d0d;}}
+.conv-input{border-top:1px solid var(--border);padding:14px 16px;display:flex;gap:10px;background:var(--card);}
+.conv-input input{flex:1;padding:11px 14px;border:1px solid var(--border);border-radius:10px;font-family:var(--font);font-size:14px;background:var(--bg);color:var(--fg);}
+.conv-input input:focus{outline:2px solid var(--brand);outline-offset:-1px;border-color:transparent;}
+.conv-input button{border:none;background:var(--brand);color:white;padding:11px 18px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;transition:background .12s;}
+.conv-input button:hover{background:var(--brand-dark);}
+.conv-input button:disabled{background:var(--n-300);cursor:not-allowed;}
 
-  .empty-state {
-    flex: 1;
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    text-align: center;
-    padding: 40px;
-  }
-  .empty-state h2 { margin: 0 0 8px; color: var(--text); font-size: 18px; }
-  .empty-state p { margin: 0; font-size: 13px; line-height: 1.5; }
+.suggestions{padding:12px 16px 0;display:flex;gap:8px;flex-wrap:wrap;}
+.suggestion{font-size:12px;padding:6px 12px;border-radius:999px;background:var(--brand-soft);color:var(--brand);border:none;cursor:pointer;font-weight:500;}
+.suggestion:hover{opacity:.85;}
+
+/* ── How-it-works ───────────────────────────────────────── */
+.how{background:var(--n-50);}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:32px;}
+@media (max-width:860px){.steps{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:500px){.steps{grid-template-columns:1fr;}}
+.step{padding:20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);}
+.step .num{color:var(--brand);font-weight:800;font-size:28px;letter-spacing:-.02em;}
+.step h3{margin-top:8px;}
+.step p{color:var(--muted);font-size:13px;margin:0;}
+
+/* ── Code / terminal teaser ──────────────────────────────── */
+.terminal{background:#0b1220;color:#e6edf7;padding:20px 24px;border-radius:var(--radius);font-family:var(--font-mono);font-size:13px;line-height:1.7;box-shadow:var(--shadow-lg);}
+.terminal .prompt{color:#a78bfa;margin-right:6px;}
+.terminal .out{color:#94a3b8;}
+.terminal .hl{color:#10b981;}
+
+/* ── CTA footer ─────────────────────────────────────────── */
+.cta{background:linear-gradient(135deg,var(--brand) 0%,var(--accent) 140%);color:white;text-align:center;padding:72px 24px;}
+.cta h2{color:white;margin-bottom:12px;}
+.cta p{color:rgba(255,255,255,.92);font-size:17px;max-width:620px;margin:0 auto 24px;}
+.cta .btn{background:white;color:var(--brand);font-weight:700;border-color:white;}
+.cta .btn:hover{background:var(--n-100);color:var(--brand);}
+
+footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;}
+.footer-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <div class="logo">A</div>
-    <h1>Ace HVAC & Plumbing</h1>
-    <span class="sub">· AI Receptionist</span>
-  </header>
 
-  <aside class="sidebar">
-    <div class="section-title">Missed Calls (3)</div>
-    <div id="call-list"></div>
-  </aside>
-
-  <main class="chat">
-    <div id="chat-header" class="chat-header" style="display:none;">
-      <div class="avatar" id="chat-avatar">?</div>
-      <div class="info">
-        <div class="n" id="chat-name"></div>
-        <div class="p" id="chat-phone"></div>
-      </div>
+<!-- ═════ Nav ═════ -->
+<div class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand"><span class="dot"></span>AI Receptionist</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#demo">Try it</a>
+      <a href="https://github.com/harshilkikani/AI_Receptionist" target="_blank" rel="noopener">GitHub</a>
+      <a href="#contact" class="btn primary">Talk to us</a>
     </div>
-    <div id="emergency-banner" class="emergency-banner">
-      ⚠ EMERGENCY DETECTED — Routing to on-call technician
-    </div>
-    <div id="messages" class="messages">
-      <div class="empty-state">
-        <div>
-          <h2>Select a missed call</h2>
-          <p>Click a caller on the left to trigger the AI recovery message.<br/>
-             Then try typing things like <em>"my pipe just burst"</em> or <em>"what's your pricing?"</em></p>
-        </div>
-      </div>
-    </div>
-    <form id="composer" class="composer" style="display:none;">
-      <input id="input" autocomplete="off" placeholder="Type a message..." />
-      <button type="submit">Send</button>
-    </form>
-  </main>
-
-  <aside class="memory">
-    <div class="section-title">Caller Memory</div>
-    <div id="memory-content">
-      <div class="mem-block">
-        <div class="value empty">No caller selected</div>
-      </div>
-    </div>
-  </aside>
+  </div>
 </div>
 
-<script>
-// ─── API helpers ──────────────────────────────────────────────────────────
-async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    let msg = `${res.status} ${path}`;
-    try {
-      const j = JSON.parse(body);
-      if (j.detail) msg = j.detail;
-    } catch {}
-    throw new Error(msg);
-  }
-  return res.json();
-}
-
-// ─── State ────────────────────────────────────────────────────────────────
-const state = {
-  currentCallerId: null,
-  callers: {},      // id -> caller record (populated from /missed-calls)
-  local: {},        // id -> [{role, text, intent, priority}] for THIS session
-  openedOnce: {},   // id -> true once we've triggered recovery
-};
-
-// ─── Load missed callers from backend ─────────────────────────────────────
-async function loadCallers() {
-  const list = await api("/missed-calls");
-  state.callers = {};
-  list.forEach(c => { state.callers[c.id] = c; });
-  renderCallList();
-}
-
-// ─── Render: call list ────────────────────────────────────────────────────
-function renderCallList() {
-  const el = document.getElementById("call-list");
-  el.innerHTML = "";
-  Object.values(state.callers).forEach(c => {
-    const div = document.createElement("div");
-    div.className = "call" + (state.currentCallerId === c.id ? " active" : "");
-    const badgeClass = c.type === "new" ? "new" : c.id === "dave" ? "urgent" : "return";
-    const badgeText  = c.type === "new" ? "New" : c.id === "dave" ? "Priority" : "Return";
-    div.innerHTML = `
-      <div class="name">${escapeHtml(c.name)} <span class="badge ${badgeClass}">${badgeText}</span></div>
-      <div class="phone">${escapeHtml(c.phone)}</div>
-      <div class="preview">${escapeHtml(c.preview || "")}</div>
-    `;
-    div.onclick = () => openCaller(c.id);
-    el.appendChild(div);
-  });
-}
-
-// ─── Render: memory panel ─────────────────────────────────────────────────
-function renderMemory(callerId) {
-  const el = document.getElementById("memory-content");
-  if (!callerId) {
-    el.innerHTML = `<div class="mem-block"><div class="value empty">No caller selected</div></div>`;
-    return;
-  }
-  const c = state.callers[callerId];
-  if (!c) return;
-  const history = c.history || [];
-  const intent   = c.lastIntent;
-  const priority = c.lastPriority;
-  const priorityPill = intent
-    ? `<span class="pill p-${priority === 'high' ? 'high' : 'low'}">${intent} · ${priority || 'low'}</span>`
-    : `<span class="value empty">—</span>`;
-
-  el.innerHTML = `
-    <div class="mem-block">
-      <div class="label">Caller</div>
-      <div class="value"><strong>${escapeHtml(c.name)}</strong><br/>${escapeHtml(c.phone)}</div>
+<!-- ═════ Hero ═════ -->
+<section class="hero">
+  <div class="container">
+    <span class="hero-kicker">● One of the AI agents we build</span>
+    <h1>The phone that <em>always</em> picks up — and only calls you when it matters.</h1>
+    <p class="hero-sub">
+      A voice + SMS receptionist for service businesses that can't afford to miss a call.
+      Answers in under a second, routes real emergencies to your cell, remembers every
+      customer by phone number, and gets better every night from its own mistakes.
+    </p>
+    <div class="hero-ctas">
+      <a href="#demo" class="btn primary">Try the live demo →</a>
+      <a href="https://github.com/harshilkikani/AI_Receptionist" target="_blank" rel="noopener" class="btn ghost">View the code</a>
     </div>
-    <div class="mem-block">
-      <div class="label">Address</div>
-      <div class="value ${c.address ? "" : "empty"}">${escapeHtml(c.address || "Unknown — new lead")}</div>
+    <div class="hero-proof">
+      <div><strong>&lt;1s</strong>first-turn latency</div>
+      <div><strong>24/7</strong>answered, every call</div>
+      <div><strong>9</strong>languages, caller's choice</div>
+      <div><strong>229</strong>tests, continuously green</div>
     </div>
-    <div class="mem-block">
-      <div class="label">Equipment on File</div>
-      <div class="value ${c.equipment ? "" : "empty"}">${escapeHtml(c.equipment || "None on file")}</div>
-    </div>
-    <div class="mem-block">
-      <div class="label">Current Intent / Priority</div>
-      <div class="value">${priorityPill}</div>
-    </div>
-    <div class="mem-block">
-      <div class="label">Call History (${history.length})</div>
-      <div class="value">
-        ${history.length
-          ? history.map(h => `<div class="history-item"><div class="date">${escapeHtml(h.date)}</div>${escapeHtml(h.note)}</div>`).join("")
-          : `<span class="empty">No prior calls</span>`}
+  </div>
+</section>
+
+<!-- ═════ Features ═════ -->
+<section class="tight">
+  <div class="container">
+    <div class="features">
+      <div class="feature">
+        <div class="icon">🚨</div>
+        <h3>Emergencies reach you, the rest doesn't</h3>
+        <p>Keyword-tuned detection transfers real emergencies to your cell — with an SMS briefing that hits your phone <em>before</em> the call bridges. No blind transfers.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🧠</div>
+        <h3>Remembers every caller</h3>
+        <p>Keyed by phone number. Returning customers get greeted by name. Address on file, prior issues, preferences — all loaded into the next conversation automatically.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">📈</div>
+        <h3>Gets better while you sleep</h3>
+        <p>Every non-emergency call gets a YES/NO follow-up text. NO replies become new test cases. Regressions are caught before the next customer sees them.</p>
       </div>
     </div>
-    <div class="mem-block">
-      <div class="label">Notes</div>
-      <div class="value ${c.notes ? "" : "empty"}">${escapeHtml(c.notes || "None")}</div>
+  </div>
+</section>
+
+<!-- ═════ Live demo ═════ -->
+<section class="demo" id="demo">
+  <div class="container">
+    <div class="eyebrow">Live demo · Septic Pro</div>
+    <h2>Type a message like a customer. Get a real receptionist reply in under a second.</h2>
+    <p style="color:var(--muted);max-width:700px;">
+      This is the actual production agent running against Anthropic Claude. Pick a
+      caller on the left — returning customers come in with their history pre-loaded.
+      Try an emergency. Try a wrong number. Try getting a price.
+    </p>
+
+    <div class="demo-shell">
+      <aside class="callers" id="callers">
+        <h4>Demo callers</h4>
+      </aside>
+
+      <div class="conv">
+        <div class="conv-head">
+          <div class="avatar">J</div>
+          <div>
+            <div class="title">Joanna · Septic Pro</div>
+            <div class="sub" id="conv-sub">Pick a caller to start</div>
+          </div>
+        </div>
+
+        <div class="conv-body" id="conv-body">
+          <div class="msg system">Select a caller on the left — or use one of the quick prompts below.</div>
+        </div>
+
+        <div class="suggestions" id="suggestions">
+          <button class="suggestion" data-msg="My toilets are backing up and there's sewage in the basement!">🚨 Overflow emergency</button>
+          <button class="suggestion" data-msg="Hey, I need to schedule a routine pumping.">Book a pump-out</button>
+          <button class="suggestion" data-msg="How much does a pump-out cost?">Price check</button>
+          <button class="suggestion" data-msg="Sorry, wrong number.">Wrong number</button>
+        </div>
+
+        <form class="conv-input" id="conv-form" autocomplete="off">
+          <input id="conv-input" type="text" placeholder="Type as the customer…" aria-label="Message" disabled />
+          <button type="submit" id="conv-send" disabled>Send</button>
+        </form>
+      </div>
     </div>
-  `;
-}
+  </div>
+</section>
 
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, ch => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[ch]));
-}
+<!-- ═════ How it works ═════ -->
+<section class="how" id="how">
+  <div class="container">
+    <h2>Built for the phone, not the web.</h2>
+    <p style="color:var(--muted);max-width:700px;">
+      The customer experience is a phone call. No app, no login, no QR code. Your
+      side is a single bookmarkable URL that shows call log + invoice, plus a daily
+      text with the numbers. That's it.
+    </p>
 
-// ─── Chat rendering ───────────────────────────────────────────────────────
-function renderMessages(callerId) {
-  const box = document.getElementById("messages");
-  box.innerHTML = "";
-  const turns = state.local[callerId] || [];
-  turns.forEach(t => {
+    <div class="steps">
+      <div class="step">
+        <div class="num">01</div>
+        <h3>Customer calls your number</h3>
+        <p>Your business line forwards to a Twilio number after hours (or always). Caller hears a real-sounding receptionist in under a second.</p>
+      </div>
+      <div class="step">
+        <div class="num">02</div>
+        <h3>AI handles whatever it can</h3>
+        <p>Books appointments, quotes ballpark prices, exits gracefully on wrong numbers. Remembers returning callers by phone number.</p>
+      </div>
+      <div class="step">
+        <div class="num">03</div>
+        <h3>Emergencies reach your cell</h3>
+        <p>SMS brief lands before the call bridges. You pick up already knowing who + what + where. No "who is this?" handoffs.</p>
+      </div>
+      <div class="step">
+        <div class="num">04</div>
+        <h3>You sleep. The agent learns.</h3>
+        <p>10 PM daily summary. Every non-emergency call gets a YES/NO follow-up. Regressions flagged automatically overnight.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ Tech teaser ═════ -->
+<section>
+  <div class="container narrow">
+    <h2 style="text-align:center;">Full source. No magic.</h2>
+    <p style="color:var(--muted);text-align:center;margin-bottom:28px;">
+      Claude Haiku 4.5 + Twilio + FastAPI. Multi-tenant YAML configs.
+      229 tests. MIT-licensed. Clone it, read it, change it.
+    </p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> git clone https://github.com/harshilkikani/AI_Receptionist</div>
+      <div><span class="prompt">$</span> pip install -r requirements.txt</div>
+      <div><span class="prompt">$</span> pytest tests/</div>
+      <div class="out">................................ <span class="hl">229 passed</span></div>
+      <div><span class="prompt">$</span> uvicorn main:app --port 8765</div>
+      <div class="out">📞 ready on :8765</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ CTA ═════ -->
+<section class="cta" id="contact">
+  <h2>Your phone doesn't have to keep ringing out.</h2>
+  <p>We build AI agents for service businesses — receptionist, support triage, inbound sales. Whatever line keeps missing the calls you can't afford to miss, we build the agent for it.</p>
+  <a href="mailto:hello@example.com" class="btn">Let's talk →</a>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div>© 2026 AI Receptionist · built with Claude</div>
+    <div>
+      <a href="https://github.com/harshilkikani/AI_Receptionist" target="_blank" rel="noopener">GitHub</a> ·
+      <a href="/admin">Admin</a> ·
+      <a href="mailto:hello@example.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+const DEMO_CLIENT_ID = "septic_pro";
+const PREFERRED_ORDER = ["ellen", "linda", "travis", "sarah", "dave", "mike"];
+
+let activeCaller = null;
+let callersById = {};
+
+const $body = document.getElementById("conv-body");
+const $sub  = document.getElementById("conv-sub");
+const $input = document.getElementById("conv-input");
+const $send  = document.getElementById("conv-send");
+const $form  = document.getElementById("conv-form");
+const $callers = document.getElementById("callers");
+
+function escapeHTML(s){return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+function appendMsg(role, text, opts){
+  opts = opts || {};
+  const div = document.createElement("div");
+  div.className = "msg " + role + (opts.loading ? " loading":"");
+  div.textContent = text;
+  if(opts.meta){
     const m = document.createElement("div");
-    // Backend uses "assistant"; CSS uses "ai"
-    m.className = "msg " + (t.role === "assistant" || t.role === "ai" ? "ai" : "user");
-    m.textContent = t.text;
-    box.appendChild(m);
-  });
-  const typing = document.createElement("div");
-  typing.className = "typing";
-  typing.id = "typing";
-  typing.innerHTML = "<span></span><span></span><span></span>";
-  box.appendChild(typing);
-  box.scrollTop = box.scrollHeight;
-}
-
-function appendLocal(callerId, role, text, meta = {}) {
-  state.local[callerId] = state.local[callerId] || [];
-  state.local[callerId].push({ role, text, ...meta });
-  renderMessages(callerId);
-}
-
-function showTyping(show) {
-  const t = document.getElementById("typing");
-  if (t) t.className = "typing" + (show ? " show" : "");
-  const box = document.getElementById("messages");
-  if (box) box.scrollTop = box.scrollHeight;
-}
-
-function setEmergency(on) {
-  document.getElementById("emergency-banner").className =
-    "emergency-banner" + (on ? " show" : "");
-}
-
-// ─── Actions ──────────────────────────────────────────────────────────────
-async function openCaller(id) {
-  state.currentCallerId = id;
-  const c = state.callers[id];
-  if (!c) return;
-
-  document.getElementById("chat-header").style.display = "flex";
-  document.getElementById("composer").style.display = "flex";
-  document.getElementById("chat-avatar").textContent = c.name[0];
-  document.getElementById("chat-name").textContent = c.name;
-  document.getElementById("chat-phone").textContent = c.phone;
-  setEmergency(false);
-  renderCallList();
-  renderMemory(id);
-  renderMessages(id);
-
-  // First open? Trigger real recovery call via Claude.
-  if (!state.openedOnce[id]) {
-    state.openedOnce[id] = true;
-    state.local[id] = [];
-    renderMessages(id);
-    showTyping(true);
-    try {
-      const r = await api(`/recover/${id}`, { method: "POST" });
-      showTyping(false);
-      appendLocal(id, "assistant", r.reply);
-      state.callers[id] = r.caller;
-      renderMemory(id);
-    } catch (err) {
-      showTyping(false);
-      appendLocal(id, "assistant", `[error contacting Claude: ${err.message}]`);
-    }
-  }
-}
-
-async function handleUserMessage(text) {
-  const id = state.currentCallerId;
-  if (!id) return;
-
-  appendLocal(id, "user", text);
-  showTyping(true);
-
-  try {
-    const r = await api("/chat", {
-      method: "POST",
-      body: JSON.stringify({ caller_id: id, message: text }),
+    m.className = "meta";
+    opts.meta.forEach(t=>{
+      const span = document.createElement("span");
+      span.className = "tag" + (/emergency|high/i.test(t) ? " emergency":"");
+      span.textContent = t;
+      m.appendChild(span);
     });
-    showTyping(false);
-    appendLocal(id, "assistant", r.reply);
-    state.callers[id] = r.caller;
-    if (r.priority === "high") setEmergency(true);
-    renderMemory(id);
-  } catch (err) {
-    showTyping(false);
-    appendLocal(id, "assistant", `[error contacting Claude: ${err.message}]`);
+    div.appendChild(m);
+  }
+  $body.appendChild(div);
+  $body.scrollTop = $body.scrollHeight;
+  return div;
+}
+
+function appendSystem(text){
+  const div = document.createElement("div");
+  div.className = "msg system";
+  div.textContent = text;
+  $body.appendChild(div);
+  $body.scrollTop = $body.scrollHeight;
+}
+
+async function loadCallers(){
+  try {
+    const r = await fetch("/missed-calls");
+    const list = await r.json();
+    list.forEach(c => callersById[c.id] = c);
+    list.sort((a, b) => {
+      const ai = PREFERRED_ORDER.indexOf(a.id), bi = PREFERRED_ORDER.indexOf(b.id);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+    $callers.innerHTML = `<h4>Demo callers</h4>` + list.map(c=>`
+      <a class="caller" data-id="${escapeHTML(c.id)}" href="#">
+        <div class="name">${escapeHTML(c.name)}</div>
+        <div class="preview">${escapeHTML(c.preview || "(inbound contact)")}</div>
+        <span class="pill ${c.type === "return" ? "return":"new"}">${c.type === "return" ? "Returning" : "New"}</span>
+      </a>
+    `).join("");
+    $callers.querySelectorAll(".caller").forEach(el=>{
+      el.addEventListener("click", e=>{ e.preventDefault(); selectCaller(el.dataset.id); });
+    });
+    const first = list[0];
+    if(first) selectCaller(first.id);
+  } catch(e){
+    $callers.innerHTML = `<div style="padding:16px;color:var(--muted)">Backend not reachable.<br>Start: <code>uvicorn main:app</code></div>`;
   }
 }
 
-// ─── Wire up ──────────────────────────────────────────────────────────────
-document.getElementById("composer").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const input = document.getElementById("input");
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = "";
-  handleUserMessage(text);
+function selectCaller(id){
+  activeCaller = id;
+  document.querySelectorAll(".caller").forEach(el => el.classList.toggle("active", el.dataset.id === id));
+  const c = callersById[id];
+  $body.innerHTML = "";
+  appendSystem(`You're now ${c.name} · ${c.phone}`);
+  if(c.type === "return" && c.address){
+    appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
+  }
+  $sub.textContent = `${c.name} · ${c.phone}`;
+  $input.disabled = false;
+  $send.disabled = false;
+  $input.focus();
+}
+
+async function send(text){
+  if(!activeCaller || !text.trim()) return;
+  appendMsg("user", text);
+  $input.value = "";
+  $input.disabled = true;
+  $send.disabled = true;
+  const loading = appendMsg("ai", "…", {loading:true});
+  try {
+    const r = await fetch("/chat", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({caller_id: activeCaller, message: text, client_id: DEMO_CLIENT_ID}),
+    });
+    if(!r.ok){
+      const detail = await r.text();
+      loading.remove();
+      appendSystem(`Error ${r.status}: ${detail.slice(0,120)}`);
+      return;
+    }
+    const data = await r.json();
+    loading.remove();
+    const meta = [];
+    if(data.intent) meta.push(data.intent);
+    if(data.priority === "high") meta.push("priority: high");
+    appendMsg("ai", data.reply, {meta});
+  } catch(e){
+    loading.remove();
+    appendSystem("Network error — is the server running?");
+  } finally {
+    $input.disabled = false;
+    $send.disabled = false;
+    $input.focus();
+  }
+}
+
+$form.addEventListener("submit", e=>{ e.preventDefault(); send($input.value); });
+document.getElementById("suggestions").addEventListener("click", e=>{
+  const btn = e.target.closest(".suggestion");
+  if(btn && !$input.disabled){ send(btn.dataset.msg); }
 });
 
-loadCallers().catch(err => {
-  document.getElementById("call-list").innerHTML =
-    `<div style="padding:16px;color:#dc2626">Backend not reachable.<br/>Start: <code>uvicorn main:app --reload</code></div>`;
-});
+loadCallers();
 </script>
 </body>
 </html>

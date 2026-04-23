@@ -124,6 +124,10 @@ async def _api_err(request: Request, exc: anthropic.APIError):
 class ChatIn(BaseModel):
     caller_id: str
     message: str
+    # V5 — optional tenant override so the website landing page can
+    # demo a specific tenant (e.g. septic_pro) regardless of what the
+    # sole-real-tenant fallback would pick.
+    client_id: str | None = None
 
 
 def _run_pipeline(caller: dict, user_message: str, client: dict = None,
@@ -204,10 +208,15 @@ def chat(body: ChatIn):
     caller = memory.get_caller(body.caller_id)
     if not caller:
         raise HTTPException(404, "caller not found")
-    # Web chat has no inbound number — use single-tenant fallback
-    # (load_client_by_number("") returns the sole real tenant if exactly one
-    # is configured, otherwise _default)
-    client = tenant.load_client_by_number("")
+    # V5 — if the request specified a tenant (e.g. the landing-page
+    # showcase embeds `client_id: "septic_pro"`), use it. Otherwise fall
+    # back to the sole-real-tenant heuristic.
+    if body.client_id:
+        client = tenant.load_client_by_id(body.client_id)
+        if client is None or (client.get("id") or "").startswith("_"):
+            raise HTTPException(404, f"client {body.client_id!r} not found")
+    else:
+        client = tenant.load_client_by_number("")
     return _run_pipeline(caller, body.message, client=client)
 
 

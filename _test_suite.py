@@ -86,8 +86,12 @@ def test_index_html():
     code, body = http("GET", "/")
     assert code == 200, code
     assert "<html" in body.lower()
-    assert "Ace HVAC" in body
-    return f"{len(body)}B HTML"
+    # V5 — index.html is now the generic showcase landing, not the old
+    # Ace HVAC chat UI. Check for the landing-page hero + the embedded
+    # demo's tenant selector.
+    assert "AI Receptionist" in body
+    assert "septic_pro" in body  # JS embeds this as the demo tenant
+    return f"{len(body)}B HTML (landing page)"
 
 def test_missed_calls():
     code, body = http("GET", "/missed-calls")
