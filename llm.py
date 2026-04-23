@@ -111,6 +111,15 @@ def _render_stable_text(client: Optional[dict]) -> str:
     rendered = template
     for k, v in substitutions.items():
         rendered = rendered.replace(k, str(v))
+    # V3.8 — personality snippet. Appended to the cacheable block since
+    # it's constant for a tenant; doesn't invalidate the prompt cache.
+    try:
+        from src import personality
+        p = personality.snippet(client)
+        if p:
+            rendered = rendered + "\n\n" + p
+    except Exception:
+        pass
     return rendered
 
 
