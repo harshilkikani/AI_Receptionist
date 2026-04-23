@@ -160,3 +160,130 @@ def ready():
 
     payload = {"status": "ok" if overall_ok else "degraded", "checks": checks}
     return JSONResponse(payload, status_code=200 if overall_ok else 503)
+
+
+# ── /metrics (V3.15) ───────────────────────────────────────────────────
+
+def _render_metrics() -> str:
+    """Build Prometheus text-exposition output. Pure function so tests
+    can call it without starting the app."""
+    lines: list = []
+
+    def helpline(name, desc, kind):
+        lines.append(f"# HELP {name} {desc}")
+        lines.append(f"# TYPE {name} {kind}")
+
+    def _esc_label(s: str) -> str:
+        return (s or "").replace("\\", "\\\\").replace('"', '\\"')
+
+    # Process uptime
+    helpline("receptionist_uptime_seconds",
+             "Seconds since process start.", "gauge")
+    lines.append(f"receptionist_uptime_seconds {int(time.time() - _START_TS)}")
+
+    # Active calls (call_timer)
+    try:
+        from src import call_timer
+        snap = call_timer.snapshot()
+        active = len(snap)
+        emergency_active = sum(1 for v in snap.values() if v.get("emergency"))
+        helpline("receptionist_active_calls",
+                 "Calls currently in flight.", "gauge")
+        lines.append(f"receptionist_active_calls {active}")
+        helpline("receptionist_active_emergency_calls",
+                 "In-flight calls tagged as emergency.", "gauge")
+        lines.append(f"receptionist_active_emergency_calls {emergency_active}")
+    except Exception:
+        pass
+
+    # LLM degradation counter
+    try:
+        from llm import degradation_stats
+        d = degradation_stats()
+        helpline("receptionist_llm_degradations_total",
+                 "Total LLM degradation events by reason.", "counter")
+        for reason, n in (d.get("by_reason") or {}).items():
+            lines.append(
+                f'receptionist_llm_degradations_total{{reason="{_esc_label(reason)}"}} {n}'
+            )
+        if not (d.get("by_reason") or {}):
+            # Emit a zero sample so scrape never returns empty counters
+            lines.append('receptionist_llm_degradations_total{reason="none"} 0')
+    except Exception:
+        pass
+
+    # Per-client metrics from usage aggregates
+    try:
+        from src import tenant, usage
+        helpline("receptionist_calls_total",
+                 "Calls in current month by client + outcome.", "counter")
+        helpline_added = False
+        for c in tenant.list_all():
+            cid = c.get("id") or ""
+            if cid.startswith("_"):
+                continue
+            if not (c.get("inbound_number") or ""):
+                continue
+            s = usage.monthly_summary(cid)
+            # Emit
+            lines.append(
+                f'receptionist_calls_total{{client="{_esc_label(cid)}",outcome="all"}} '
+                f'{s["total_calls"]}'
+            )
+            lines.append(
+                f'receptionist_calls_total{{client="{_esc_label(cid)}",outcome="handled"}} '
+                f'{s["calls_handled"]}'
+            )
+            lines.append(
+                f'receptionist_calls_total{{client="{_esc_label(cid)}",outcome="filtered"}} '
+                f'{s["calls_filtered"]}'
+            )
+        helpline("receptionist_minutes_total",
+                 "Total call minutes in current month by client.", "counter")
+        helpline("receptionist_emergencies_total",
+                 "Emergency calls in current month by client.", "counter")
+        helpline("receptionist_margin_pct",
+                 "Current-month margin percent by client.", "gauge")
+        for c in tenant.list_all():
+            cid = c.get("id") or ""
+            if cid.startswith("_"):
+                continue
+            if not (c.get("inbound_number") or ""):
+                continue
+            m = usage.margin_for(c)
+            lines.append(
+                f'receptionist_minutes_total{{client="{_esc_label(cid)}"}} '
+                f'{m["total_minutes"]:.1f}'
+            )
+            lines.append(
+                f'receptionist_emergencies_total{{client="{_esc_label(cid)}"}} '
+                f'{m["emergencies"]}'
+            )
+            lines.append(
+                f'receptionist_margin_pct{{client="{_esc_label(cid)}"}} '
+                f'{m["margin_pct"]}'
+            )
+    except Exception:
+        pass
+
+    # Sentiment-escalation counter (process-local)
+    try:
+        from src import sentiment_tracker
+        escalated = sum(
+            1 for v in sentiment_tracker.snapshot().values()
+            if v.get("escalated"))
+        helpline("receptionist_sentiment_escalations_active",
+                 "Active calls where sentiment has escalated.", "gauge")
+        lines.append(f"receptionist_sentiment_escalations_active {escalated}")
+    except Exception:
+        pass
+
+    return "\n".join(lines) + "\n"
+
+
+@router.get("/metrics", response_class=Response)
+def metrics():
+    """Prometheus text-exposition /metrics endpoint. No auth (same as
+    /health /ready — scrapers don't carry Basic)."""
+    return Response(_render_metrics(),
+                    media_type="text/plain; version=0.0.4")

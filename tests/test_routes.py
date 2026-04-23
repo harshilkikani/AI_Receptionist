@@ -21,6 +21,7 @@ EXPECTED_ROUTES: Set[tuple] = {
     # V7 — ops probes
     ("GET",  "/health"),
     ("GET",  "/ready"),
+    ("GET",  "/metrics"),                             # V3.15
 
     # V3.12 — self-serve signup
     ("GET",  "/signup"),
