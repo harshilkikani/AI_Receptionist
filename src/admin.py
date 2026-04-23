@@ -36,6 +36,7 @@ security = HTTPBasic(auto_error=False)
 NAV: list = [
     ("Overview",     "/admin"),
     ("Recent calls", "/admin/calls"),
+    ("Live",         "/admin/live"),
     ("Bookings",     "/admin/bookings"),
     ("Analytics",    "/admin/analytics"),
     ("Evals",        "/admin/evals"),
@@ -392,6 +393,60 @@ def flags_view(user=Depends(_check_auth)):
         nav=NAV, active="/admin/flags",
         brand="Receptionist · Ops",
     ))
+
+
+@router.get("/live", response_class=HTMLResponse)
+def live_calls(user=Depends(_check_auth)):
+    """V3.14 — list of in-flight calls (from call_timer) with transcript
+    counts. Auto-refreshes every 3 seconds via meta refresh."""
+    import time as _time
+    from src import call_timer
+    from src import transcripts as _tr
+    snap = call_timer.snapshot()
+    rows = []
+    for sid, entry in snap.items():
+        elapsed = int(_time.time() - entry["start_ts"])
+        emergency = entry.get("emergency", False)
+        turns = _tr.get_transcript(sid)
+        last_text = ""
+        if turns:
+            last = turns[-1]
+            last_text = (last.get("text") or "")[:80]
+            if len(last.get("text") or "") > 80:
+                last_text += "…"
+        detail = (
+            f'<a href="/admin/call/{html.escape(sid)}?live=1">watch</a>'
+        )
+        rows.append([
+            (f'<code class="mono">{html.escape(sid[:12])}…</code>', "mono"),
+            html.escape(entry.get("client_id") or "—"),
+            (f'{elapsed}s', "num"),
+            "🚨" if emergency else "",
+            (f'{len(turns)}', "num"),
+            (html.escape(last_text) or "(no speech yet)", "muted"),
+            detail,
+        ])
+
+    subtitle = (f"{len(rows)} in-flight call(s) — page auto-refreshes every 3 seconds."
+                if rows else "No calls in flight right now.")
+    table = data_table(
+        headers=["Call SID", "Client", ("Elapsed", "num"), "Flag",
+                 ("Turns", "num"), "Latest caller line", ""],
+        rows=rows,
+        empty_text="Nothing live.",
+    )
+    body = card(table, title="In-flight calls", subtitle=subtitle)
+    # Embed meta-refresh so the page reloads itself
+    extra = '<meta http-equiv="refresh" content="3">'
+    rendered = page(
+        title="Live calls", body=body,
+        nav=NAV, active="/admin/live",
+        brand="Receptionist · Ops",
+        footer_note="auto-refresh: 3s",
+    )
+    # Inject the meta into <head>
+    rendered = rendered.replace("<head>\n", f"<head>\n{extra}\n", 1)
+    return HTMLResponse(rendered)
 
 
 @router.get("/agency/{agency_id}", response_class=HTMLResponse)
