@@ -28,10 +28,11 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("POST", "/voice/status"),
     ("POST", "/sms/incoming"),
 
-    # Admin (P0, J, P7, P10)
+    # Admin (P0, J, P7, P10, V4)
     ("GET",  "/admin"),
     ("GET",  "/admin/"),
     ("GET",  "/admin/calls"),
+    ("GET",  "/admin/call/{call_sid}"),          # V4 — per-call detail
     ("GET",  "/admin/export.csv"),
     ("GET",  "/admin/flags"),
     ("GET",  "/admin/alerts/trigger"),
