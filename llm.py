@@ -130,7 +130,8 @@ def _wrap_up_suffix(wrap_up_mode: Optional[str], client: Optional[dict]) -> str:
 
 def _render_system_blocks(caller: Optional[dict], client: Optional[dict],
                           wrap_up_mode: Optional[str] = None,
-                          recover_suffix: Optional[str] = None) -> list:
+                          recover_suffix: Optional[str] = None,
+                          user_message: Optional[str] = None) -> list:
     """Return the system-prompt blocks to pass to the Anthropic API.
 
     Block 1 (cacheable): the tenant-scoped prompt body. Same for every
@@ -138,14 +139,28 @@ def _render_system_blocks(caller: Optional[dict], client: Optional[dict],
     router reuses this prefix for 5 minutes, saving ~90% on input cost
     for the prefix tokens.
 
-    Block 2+ (not cached): caller-specific memory + optional wrap-up
-    cue + optional recover suffix — all volatile.
+    Block 2+ (not cached): caller-specific memory + V3.5 knowledge
+    injection + optional wrap-up cue + optional recover suffix — all
+    volatile.
     """
     stable = _render_stable_text(client)
     memory_text = "## Caller memory (injected per-call)\n" + _format_memory(caller)
     wrap_up = _wrap_up_suffix(wrap_up_mode, client)
 
+    # V3.5 — pull relevant KB sections for this tenant based on the
+    # caller's current message. Empty string when no KB file or no hits.
+    kb_block = ""
+    if user_message and client is not None:
+        try:
+            from src import knowledge
+            kb_block = knowledge.build_kb_injection(
+                client.get("id") or "", user_message)
+        except Exception:
+            kb_block = ""
+
     volatile_parts = [memory_text]
+    if kb_block:
+        volatile_parts.append(kb_block)
     if wrap_up:
         volatile_parts.append(wrap_up.lstrip())
     if recover_suffix:
@@ -359,7 +374,8 @@ def chat_with_usage(caller: Optional[dict], user_message: str,
     tuple element is a ChatResponse; the second is a plain tuple
     (input_tokens, output_tokens) for backwards compatibility."""
     system_blocks = _render_system_blocks(caller, client,
-                                          wrap_up_mode=wrap_up_mode)
+                                          wrap_up_mode=wrap_up_mode,
+                                          user_message=user_message)
     messages = _build_messages(conversation or [], user_message)
     try:
         response = _anthropic.beta.messages.parse(
