@@ -1,0 +1,49 @@
+# Septic Pro — primary demo tenant for website showcase.
+# inbound_number intentionally empty: this is a demonstration/marketing
+# tenant, not wired to a real Twilio number. The live production tenant
+# is ace_hvac.yaml.
+#
+# Used by:
+#   - index.html (website showcase embedded web chat)
+#   - docs/SHOWCASE_SCRIPT.md (3-min video script scenarios)
+#   - docs/DEMO_SCRIPT.md (30-min prospect walkthrough)
+id: septic_pro
+name: "Septic Pro"
+owner_name: "Bob"
+owner_email: ""
+owner_cell: ""
+timezone: "America/New_York"
+inbound_number: ""                    # demo-only — not wired live
+escalation_phone: "+15559876543"      # placeholder; demo doesn't dial
+services: "Septic pumping, tank repair, emergency overflow response, drain field inspections, new system installs"
+pricing_summary: "Pumping from $475. Emergency response 24/7. Full tank install $6000-12000."
+service_area: "Lancaster County and surrounding townships"
+hours: "Mon-Fri 7am-6pm, emergency 24/7"
+emergency_keywords:
+  - flooding
+  - backing up
+  - overflow
+  - overflowing
+  - sewage
+  - sewage smell
+  - smell
+  - burst
+  - toilets are backing up
+  - can't flush
+  - drain field flooded
+plan:
+  tier: "pro"
+  monthly_price: 497
+  included_calls: 400
+  included_minutes: 800
+  overage_rate_per_call: 0.65
+  max_call_duration_seconds: 240
+  max_call_duration_emergency: 420       # longer for septic — addresses are rural, takes time
+  voice_tier_main: "premium"
+  voice_tier_transactional: "flash"
+  robocall_gate: false
+  sms_max_per_call: 3
+integrations:
+  calendar: null
+  crm: null
+default_language: "en"

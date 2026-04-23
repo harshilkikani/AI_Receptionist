@@ -93,14 +93,16 @@ def test_missed_calls():
     code, body = http("GET", "/missed-calls")
     assert code == 200
     callers = json.loads(body)
-    assert len(callers) == 3, f"expected 3 callers, got {len(callers)}"
     ids = {c["id"] for c in callers}
-    assert ids == {"sarah", "mike", "dave"}, ids
+    # Require the core HVAC seeds (legacy callers) to still be present.
+    # Septic seeds (ellen/travis/linda) were added in V1 for the showcase.
+    for expected in ("sarah", "mike", "dave"):
+        assert expected in ids, f"missing seed caller {expected!r} — got {ids}"
     sarah = next(c for c in callers if c["id"] == "sarah")
     assert sarah["name"] == "Sarah Mitchell"
     assert len(sarah["history"]) == 2
     assert "Carrier" in sarah["equipment"]
-    return f"3 callers (sarah/mike/dave)"
+    return f"{len(callers)} callers (HVAC + septic seeds)"
 
 def test_memory_get_known():
     code, body = http("GET", "/memory/dave")

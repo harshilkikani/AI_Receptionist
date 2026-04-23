@@ -2,6 +2,15 @@
 
 Goal: get the prospect to hear their business answered by the AI using their actual company name + services within 20 minutes of the call starting. They pay the $5 Twilio credit themselves.
 
+**The baked-in demo tenant is `septic_pro` (Septic Pro / Bob).** It's
+fully configured and available in `/admin`, `/client/septic_pro`, and
+the website showcase. Use it as a 60-second warm-up if the prospect
+wants to hear what the AI sounds like before giving you their own
+company details. The full showcase script — the 3-minute video we
+embed on our site — is in `docs/SHOWCASE_SCRIPT.md` and is entirely
+septic-flavored. When in doubt, open the showcase video first, THEN
+pivot to spinning up a tenant for their business.
+
 ---
 
 ## Pre-call prep (10 minutes before)

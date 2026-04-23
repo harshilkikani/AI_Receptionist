@@ -11,6 +11,7 @@ from typing import Optional
 MEMORY_FILE = Path(__file__).parent / "memory.json"
 
 SEED = {
+    # HVAC seeds — retained for the live ace_hvac tenant and legacy tests
     "sarah": {
         "id": "sarah",
         "name": "Sarah Mitchell",
@@ -54,6 +55,56 @@ SEED = {
         "history": [
             {"date": "Jan 08", "note": "Emergency: water heater burst — replaced same day"},
             {"date": "Jan 09", "note": "Follow-up: checked drain pan and shutoff"},
+        ],
+        "conversation": [],
+        "lastIntent": None,
+        "lastPriority": None,
+    },
+    # Septic seeds — primary showcase tenant (septic_pro). Used by the
+    # website landing demo in index.html and the SHOWCASE_SCRIPT.md.
+    "ellen": {
+        "id": "ellen",
+        "name": "Ellen Kovacs",
+        "phone": "(717) 555-0104",
+        "type": "return",
+        "address": "88 Ridge Road, Willow Street",
+        "equipment": "1000-gal concrete septic tank (pumped Sep 2025)",
+        "notes": "Two-week panic-level backup risk if overdue. Prefers evening callbacks after 6.",
+        "preview": "Need a pump-out before the holidays...",
+        "history": [
+            {"date": "Sep 14", "note": "Routine pump-out — tank was 70% full"},
+            {"date": "Jun 02", "note": "Called about gurgling sounds — resolved, vent was clogged"},
+        ],
+        "conversation": [],
+        "lastIntent": None,
+        "lastPriority": None,
+    },
+    "travis": {
+        "id": "travis",
+        "name": "Travis Yoder",
+        "phone": "(717) 555-0187",
+        "type": "new",
+        "address": None,
+        "equipment": None,
+        "notes": None,
+        "preview": "New house, never pumped — what do I do?",
+        "history": [],
+        "conversation": [],
+        "lastIntent": None,
+        "lastPriority": None,
+    },
+    "linda": {
+        "id": "linda",
+        "name": "Linda Brenneman",
+        "phone": "(717) 555-0122",
+        "type": "return",
+        "address": "3411 Mill Creek Road",
+        "equipment": "1500-gal tank, drain field replaced Mar 2024",
+        "notes": "Second emergency in 18 months. Husband is a contractor — knows the system.",
+        "preview": "Toilets backing up again — came home to a mess",
+        "history": [
+            {"date": "Mar 18", "note": "Emergency: drain field failure — replaced over 3 days"},
+            {"date": "Mar 21", "note": "Follow-up: field holding. Switched to bacterial additive"},
         ],
         "conversation": [],
         "lastIntent": None,
