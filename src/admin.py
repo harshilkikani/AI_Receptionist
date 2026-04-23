@@ -36,6 +36,7 @@ security = HTTPBasic(auto_error=False)
 NAV: list = [
     ("Overview",     "/admin"),
     ("Recent calls", "/admin/calls"),
+    ("Bookings",     "/admin/bookings"),
     ("Analytics",    "/admin/analytics"),
     ("Evals",        "/admin/evals"),
     ("Export CSV",   "/admin/export.csv"),
@@ -389,6 +390,52 @@ def flags_view(user=Depends(_check_auth)):
     return HTMLResponse(page(
         title="Feature flags", body=body,
         nav=NAV, active="/admin/flags",
+        brand="Receptionist · Ops",
+    ))
+
+
+@router.get("/bookings", response_class=HTMLResponse)
+def bookings_view(client_id: str = "", limit: int = 50,
+                  user=Depends(_check_auth)):
+    """V3.6 — admin bookings list."""
+    from src import bookings as _bk
+    rows_raw = _bk.list_bookings(client_id=client_id or None, limit=limit)
+    rows = []
+    for r in rows_raw:
+        created = datetime.fromtimestamp(r["created_ts"], tz=timezone.utc).strftime(
+            "%b %d %H:%M UTC")
+        call_link = (
+            f'<a href="/admin/call/{html.escape(r["call_sid"])}">call</a>'
+            if r.get("call_sid") else ""
+        )
+        status_variant = {"pending": "warn", "confirmed": "good",
+                          "completed": "good", "cancelled": "bad"}.get(
+            r.get("status") or "pending", "ghost")
+        rows.append([
+            (html.escape(created), "muted"),
+            html.escape(r["client_id"]),
+            html.escape(r.get("caller_name") or "—"),
+            (html.escape(r.get("caller_phone") or ""), "muted"),
+            html.escape(r.get("address") or "—"),
+            html.escape(r.get("requested_when") or "—"),
+            html.escape(r.get("service") or "—"),
+            pill(r.get("status") or "pending", status_variant),
+            call_link,
+        ])
+
+    header_filter = f' · filter: <code>{html.escape(client_id)}</code>' if client_id else ""
+    table = data_table(
+        headers=["Created", "Client", "Name", "Phone", "Address",
+                 "When", "Service", "Status", ""],
+        rows=rows,
+        empty_text="No bookings yet. Bookings appear when a Scheduling call completes "
+                   "with a committed appointment.",
+    )
+    body = card(table, title="Bookings",
+                subtitle=f"Last {limit}{header_filter}")
+    return HTMLResponse(page(
+        title="Bookings", body=body,
+        nav=NAV, active="/admin/bookings",
         brand="Receptionist · Ops",
     ))
 

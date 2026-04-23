@@ -30,6 +30,7 @@ from src import transcripts as _transcripts
 from src import owner_commands as _owner_commands
 from src import voice_style as _voice_style
 from src import call_summary as _call_summary
+from src import bookings as _bookings
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -635,6 +636,13 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
             _call_summary.generate_summary(CallSid)
         except Exception as e:
             log.error("call_summary.generate_summary error: %s", e)
+
+        # V3.6 — booking extraction. Only runs for outcome='normal' calls
+        # with a Scheduling intent turn + transcript. Best-effort.
+        try:
+            _bookings.maybe_extract_from_call(CallSid)
+        except Exception as e:
+            log.error("bookings.maybe_extract_from_call error: %s", e)
 
         # P11 — post-call feedback SMS (opt-in via ENFORCE_FEEDBACK_SMS).
         # Only fire for natural call completions; spam/duration-capped/
