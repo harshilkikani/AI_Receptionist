@@ -369,6 +369,12 @@ def _cli(argv: Optional[list] = None,
     nd = sub.add_parser("new-demo", help="one-day disposable tenant for sales demos")
     nd.add_argument("--id", default=None, help="override demo id (default: random)")
     sub.add_parser("purge-expired", help="move expired demo YAMLs to clients/_expired/")
+    w = sub.add_parser("welcome", help="send the welcome SMS to a client's owner_cell")
+    w.add_argument("client_id")
+    w.add_argument("--to", default=None,
+                   help="override owner_cell (useful when rehearsing)")
+    w.add_argument("--dry-run", action="store_true",
+                   help="print the body but don't actually send")
     args = p.parse_args(argv)
 
     if args.cmd == "new":
@@ -396,6 +402,31 @@ def _cli(argv: Optional[list] = None,
         else:
             writer("No expired demo tenants to purge.")
         return 0
+
+    if args.cmd == "welcome":
+        client = tenant.load_client_by_id(args.client_id)
+        if client is None or (client.get("id") or "").startswith("_"):
+            writer(f"Unknown or reserved client: {args.client_id}",
+                   file=sys.stderr)
+            return 2
+        from src import owner_commands
+        body = owner_commands.build_welcome_body(client)
+        to = args.to or client.get("owner_cell") or ""
+        if args.dry_run or not to:
+            writer(f"Would send to: {to or '(no owner_cell set)'}")
+            writer("---")
+            writer(body)
+            return 0 if to else 2
+        try:
+            import main as _main
+            tw = _main._twilio_client()
+        except Exception:
+            tw = None
+        result = owner_commands.send_welcome_sms(
+            client, twilio_client=tw, to_override=args.to)
+        import json as _json
+        writer(_json.dumps({k: v for k, v in result.items() if k != "body"}))
+        return 0 if result.get("sent") else 1
     return 1
 
 

@@ -27,6 +27,7 @@ from src import tenant, usage, call_timer, spam_filter, sms_limiter, alerts, own
 from src import scheduler as _scheduler
 from src import feedback as _feedback
 from src import transcripts as _transcripts
+from src import owner_commands as _owner_commands
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 
@@ -678,6 +679,25 @@ def sms_incoming(From: str = Form(...), Body: str = Form(...),
     # Log the inbound message toward this "conversation" (keyed by phone)
     sms_conv_key = f"SMS_{memory.normalize_phone(From)}"
     usage.log_sms(sms_conv_key, client["id"], From, Body, direction="inbound")
+
+    # V6 — HELP-style command short-circuit. If the inbound body is
+    # "HELP" / "INFO" / "STATUS" / "LINK", reply with a cheat sheet
+    # (portal URL for known owners, polite redirect for strangers) and
+    # skip the LLM entirely.
+    try:
+        help_result = _owner_commands.handle_help_sms(
+            Body, from_phone=From, client=client,
+            twilio_client=None,  # reply via TwiML is cheaper than REST
+        )
+    except Exception as e:
+        log.error("owner_commands.handle_help_sms error: %s", e)
+        help_result = {"handled": False}
+    if help_result.get("handled"):
+        log.info("help_sms variant=%s to=%s",
+                 help_result.get("variant"), From)
+        mr = MessagingResponse()
+        mr.message(help_result["reply"])
+        return _twiml(str(mr))
 
     # P11 — if this body is a YES/NO reply to a prior feedback SMS,
     # record it + (on NO) dump the transcript to negative_feedback.jsonl.
