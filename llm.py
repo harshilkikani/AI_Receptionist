@@ -42,6 +42,9 @@ class ChatResponse(BaseModel):
     reply: str
     intent: Literal["Emergency", "Scheduling", "Quote", "Follow-up", "General"]
     priority: Literal["low", "high"]
+    # V3.7 — the CALLER's tone on this specific turn. Defaults to
+    # "neutral" so older Claude outputs that omit the field still parse.
+    sentiment: Literal["neutral", "positive", "frustrated", "angry"] = "neutral"
 
 
 # ── Prompt loading + rendering ─────────────────────────────────────────

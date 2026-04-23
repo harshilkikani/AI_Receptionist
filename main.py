@@ -31,6 +31,7 @@ from src import owner_commands as _owner_commands
 from src import voice_style as _voice_style
 from src import call_summary as _call_summary
 from src import bookings as _bookings
+from src import sentiment_tracker as _sentiment
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -199,6 +200,7 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
         "reply": result.reply,
         "intent": result.intent,
         "priority": result.priority,
+        "sentiment": getattr(result, "sentiment", "neutral"),
         "caller": memory.get_caller(caller["id"]),
     }
 
@@ -573,6 +575,18 @@ def voice_gather(From: str = Form(...),
     # ── The entire flow: speech → Claude → one response → one gather ──
     result = _run_pipeline(caller, SpeechResult, client=client,
                            call_sid=CallSid, wrap_up_mode=timer["wrap_up_mode"])
+
+    # V3.7 — sentiment tracking. If the caller has been frustrated/angry
+    # for N consecutive turns, promote this to a priority=high call so
+    # the rest of the handler routes them to escalation_phone.
+    sentiment_result = _sentiment.record(CallSid, result.get("sentiment") or "neutral")
+    if sentiment_result["should_escalate"] and result["priority"] != "high":
+        log.warning(
+            "sentiment_escalation overriding priority call_sid=%s consecutive=%d",
+            CallSid, sentiment_result["consecutive"],
+        )
+        result["priority"] = "high"
+        result["sentiment_escalation"] = True
 
     if result["priority"] == "high":
         # Mark the call as emergency — extends cap to 360s for any subsequent turns
