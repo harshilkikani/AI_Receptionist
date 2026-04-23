@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    image: ai-receptionist:v3
+    container_name: ai-receptionist-app
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8765:8765"
+    volumes:
+      # SQLite DB + logs live on the host so rebuilding the image
+      # doesn't wipe state.
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Client + agency YAMLs edited on the host, read inside the container.
+      - ./clients:/app/clients
+      - ./agencies:/app/agencies
+      # Eval history + cache live alongside data but exposed explicitly
+      # in case an operator wants to version just the eval artifacts.
+      - ./evals:/app/evals
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8765/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# To add Cloudflare tunneling alongside the app:
+#
+#   tunnel:
+#     image: cloudflare/cloudflared:latest
+#     restart: unless-stopped
+#     command: tunnel --no-autoupdate run
+#     environment:
+#       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+#     depends_on:
+#       - app
+#
+# See docs/ROLLOUT.md for the named-tunnel setup.
