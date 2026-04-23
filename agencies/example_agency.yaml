@@ -1,0 +1,9 @@
+# Example agency config — Acme AI Agency (worked example).
+# Adds an aggregate view at /admin/agency/acme_ai showing only the
+# clients listed below. Root admin at /admin still sees everything.
+id: acme_ai
+name: "Acme AI Agency"
+contact_email: "ops@acme.example"
+owned_clients:
+  - ace_hvac
+  - septic_pro

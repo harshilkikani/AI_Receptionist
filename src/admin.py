@@ -394,6 +394,72 @@ def flags_view(user=Depends(_check_auth)):
     ))
 
 
+@router.get("/agency/{agency_id}", response_class=HTMLResponse)
+def agency_view(agency_id: str, user=Depends(_check_auth)):
+    """V3.9 — aggregate overview for one agency's clients only."""
+    from src import agency as _agency
+    a = _agency.get_agency(agency_id)
+    if a is None:
+        raise HTTPException(404, "agency not found")
+
+    owned_ids = set(_agency.clients_for_agency(agency_id))
+    month = _now_month()
+    all_active = _active_clients()
+    owned_active = [c for c in all_active if c["id"] in owned_ids]
+
+    totals = {"calls": 0, "minutes": 0.0, "emergencies": 0,
+              "cost": 0.0, "revenue": 0.0}
+    rows = []
+    for c in owned_active:
+        m = usage.margin_for(c, month=month)
+        totals["calls"] += m["total_calls"]
+        totals["minutes"] += m["total_minutes"]
+        totals["emergencies"] += m["emergencies"]
+        totals["cost"] += m["platform_cost_usd"]
+        totals["revenue"] += m["revenue_usd"]
+        rows.append(_margin_row(m))
+
+    margin = totals["revenue"] - totals["cost"]
+    margin_pct = int((margin / totals["revenue"] * 100)) if totals["revenue"] else 0
+    top_stats = stats([
+        stat_card("Owned clients", len(owned_active)),
+        stat_card("Calls this month", f'{totals["calls"]:,}'),
+        stat_card("Emergencies", totals["emergencies"]),
+        stat_card("Revenue", f'${totals["revenue"]:.0f}',
+                  delta=f"{margin_pct}% margin",
+                  direction=("up" if margin_pct >= 50 else
+                             "flat" if margin_pct > 0 else "down")),
+    ])
+
+    table = data_table(
+        headers=[
+            "Client",
+            ("Calls", "num"), ("Filtered", "num"),
+            ("Minutes", "num"), ("In tokens", "num"),
+            ("SMS", "num"), ("Cost", "num"),
+            ("Revenue", "num"), ("Margin $", "num"),
+            "Health",
+        ],
+        rows=rows,
+        empty_text="No active clients owned by this agency yet.",
+    )
+
+    body = top_stats + card(
+        table,
+        title=f"{a.get('name') or agency_id} — client aggregate",
+        subtitle=f"Month: {month}"
+                 f" · Contact: {html.escape(a.get('contact_email') or '—')}",
+    )
+    return HTMLResponse(page(
+        title=f"{a.get('name') or agency_id}",
+        body=body,
+        nav=NAV, active="/admin",
+        subtitle=f"Agency view · {len(owned_active)} active client(s)",
+        brand="Receptionist · Ops",
+        footer_note=f"agency={agency_id}",
+    ))
+
+
 @router.get("/bookings", response_class=HTMLResponse)
 def bookings_view(client_id: str = "", limit: int = 50,
                   user=Depends(_check_auth)):

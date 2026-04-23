@@ -44,6 +44,7 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("GET",  "/admin/analytics"),
     ("GET",  "/admin/evals"),
     ("GET",  "/admin/bookings"),
+    ("GET",  "/admin/agency/{agency_id}"),           # V3.9 — agency aggregate
 
     # Client portal (P1, V3 polish, V4 detail)
     ("GET",  "/client/{client_id}"),
