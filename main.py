@@ -38,6 +38,7 @@ from src import webhooks as _webhooks
 from src import tts as _tts
 from src import humanize_speech as _humanize
 from src import anti_robot as _anti_robot
+from src import grounding as _grounding
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -177,13 +178,23 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
         if fired:
             log.info("anti_robot fired rules=%d call_sid=%s",
                      len(fired), call_sid)
-            # Mutate the reply in place — ChatResponse is a Pydantic
-            # model so we use copy + assign.
             try:
                 result = result.model_copy(update={"reply": scrubbed})
             except AttributeError:
-                # Older Pydantic
                 result.reply = scrubbed
+
+    # V4.4 — strict grounding. Replaces sentences containing prices the
+    # tenant never advertised with a "let me get the exact number" line.
+    # Critical trust feature: a customer who hears "$249" expects $249.
+    grounded, violations = _grounding.verify_reply(result.reply, client)
+    if violations:
+        log.warning("grounding fired count=%d call_sid=%s prices=%s",
+                    len(violations), call_sid,
+                    [v["prices_quoted"] for v in violations])
+        try:
+            result = result.model_copy(update={"reply": grounded})
+        except AttributeError:
+            result.reply = grounded
 
     # Track LLM + TTS usage (TTS char count = length of reply, since Polly
     # bills by synthesized character)
