@@ -269,6 +269,26 @@ def call_detail(call_sid: str, user=Depends(_check_auth)):
                           f'<span style="font-style:italic">{html.escape(summary)}</span>'])
     meta_table = data_table(headers=["Field", "Value"], rows=meta_rows)
 
+    # V4.5 — recording playback if available
+    rec_html = ""
+    try:
+        from src import recordings as _rec
+        rec = _rec.get_recording(call_sid)
+        if rec and rec.get("recording_url"):
+            duration = rec.get("duration_s") or 0
+            rec_html = card(
+                f'<audio controls preload="none" '
+                f'src="/admin/recording/{html.escape(call_sid)}.mp3" '
+                f'style="width:100%"></audio>'
+                f'<p class="muted" style="margin-top:var(--s-2);">'
+                f'Duration: {duration}s · '
+                f'Recording SID: <code>{html.escape(rec.get("recording_sid") or "")}</code>'
+                f'</p>',
+                title="Audio recording",
+            )
+    except Exception:
+        rec_html = ""
+
     if turns:
         conv_html = '<div style="display:flex;flex-direction:column;gap:var(--s-3);">'
         for t in turns:
@@ -299,6 +319,7 @@ def call_detail(call_sid: str, user=Depends(_check_auth)):
 
     body = (
         card(meta_table, title="Call metadata") +
+        rec_html +
         card(conv_html, title="Conversation transcript",
              subtitle=f"{len(turns)} turn(s)")
     )

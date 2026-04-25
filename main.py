@@ -39,6 +39,7 @@ from src import tts as _tts
 from src import humanize_speech as _humanize
 from src import anti_robot as _anti_robot
 from src import grounding as _grounding
+from src import recordings as _recordings
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -108,6 +109,9 @@ app.include_router(_signup_module.router)
 # V4.1 — /audio/<hash>.mp3 cache server for ElevenLabs (and any future
 # pre-rendered TTS provider)
 app.include_router(_tts.audio_router)
+
+# V4.5 — /admin/recording/{call_sid}.mp3 streams the Twilio recording
+app.include_router(_recordings.router)
 
 
 @app.exception_handler(anthropic.AuthenticationError)
@@ -498,6 +502,18 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
     usage.start_call(CallSid, client["id"], From, To)
     call_timer.record_start(CallSid, client["id"])
 
+    # V4.5 — call recording. Best-effort REST API call after start_call.
+    if _recordings.is_enabled(client):
+        try:
+            base = (os.environ.get("PUBLIC_BASE_URL", "") or "").rstrip("/")
+            if base and CallSid:
+                _recordings.start_recording_via_rest(
+                    CallSid, _twilio_client(),
+                    callback_url=f"{base}/voice/recording",
+                )
+        except Exception as e:
+            log.error("call recording start failed: %s", e)
+
     # V3.11 — hard usage cap. If the tenant has set plan.hard_cap_calls
     # and the current month's total has hit it, politely refuse rather
     # than burning more LLM tokens for a client who's beyond their plan.
@@ -542,6 +558,10 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
         return _twiml(str(vr))
 
     # New caller — language selection (only time this ever happens)
+    # V4.5 — recording disclosure (legal in 2-party-consent states)
+    if _recordings.is_enabled(client):
+        vr.say(_recordings.disclosure_text(),
+               voice=_voice_for("en", client, mode="transactional"))
     vr.say(f"Hey, thanks for calling {client['name']}.", voice=_voice_for("en"))
     vr.say("For English, press 1.", voice=_voice_for("en"))
     vr.say("Para espanol, presione 2.", voice=_voice_for("es"))
@@ -805,6 +825,31 @@ def voice_status(From: str = Form(...), CallStatus: str = Form(...),
     # verify the flow without real Twilio credentials
     return {"ok": True, "action": "generated_only",
             "message": sms_decision["body"]}
+
+
+@app.post("/voice/recording")
+def voice_recording(CallSid: str = Form(default=""),
+                    RecordingSid: str = Form(default=""),
+                    RecordingUrl: str = Form(default=""),
+                    RecordingDuration: str = Form(default="0"),
+                    RecordingStatus: str = Form(default="")):
+    """V4.5 — Twilio's recording-status callback. Fires when a call's
+    recording completes. We persist the metadata onto the calls row."""
+    log.info("recording_callback call_sid=%s rec_sid=%s status=%s duration=%s",
+             CallSid, RecordingSid, RecordingStatus, RecordingDuration)
+    if RecordingStatus and RecordingStatus != "completed":
+        return {"ok": True, "skipped": RecordingStatus}
+    try:
+        duration = int(RecordingDuration or "0")
+    except ValueError:
+        duration = 0
+    _recordings.store_recording(
+        call_sid=CallSid,
+        recording_sid=RecordingSid,
+        recording_url=RecordingUrl,
+        duration_s=duration,
+    )
+    return {"ok": True}
 
 
 @app.post("/sms/incoming")

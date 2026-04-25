@@ -30,6 +30,10 @@ EXPECTED_ROUTES: Set[tuple] = {
     # V4.1 — TTS cache server
     ("GET",  "/audio/{filename}"),
 
+    # V4.5 — recording callback + admin playback proxy
+    ("POST", "/voice/recording"),
+    ("GET",  "/admin/recording/{call_sid}.mp3"),
+
     ("POST", "/recover/{caller_id}"),
     ("GET",  "/memory/{caller_id}"),
     ("POST", "/memory/{caller_id}"),
