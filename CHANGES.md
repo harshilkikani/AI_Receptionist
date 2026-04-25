@@ -1027,6 +1027,113 @@ Competitive positioning (from the v3 research brief):
 **v3 totals:** 475 passing pytest cases. 17 new feature commits + 1
 final audit commit. Zero regressions on the ship-production baseline.
 
+---
+
+# v4.0 major upgrade — V4.1–V4.7
+
+Voice quality + trust pass for blue-collar service businesses. Goal:
+make the receptionist sound and feel as real as Cortana/Siri/Claude
+voice/GPT voice — so a Bob's-Septic customer doesn't realize they're
+talking to a bot in the first 5 seconds. Plus: never lie about prices,
+real calendar integration, recall across calls.
+
+## V4.1 — Pluggable TTS abstraction + ElevenLabs adapter _(complete)_
+
+`src/tts.py` introduces TtsProvider with PollyProvider (default,
+unchanged behavior) and ElevenLabsProvider (opt-in, generates audio
+bytes via the streaming API, caches to data/audio/<sha256[:24]>.mp3,
+serves via FastAPI /audio/<filename>.mp3 endpoint with strict path-
+traversal validation). Per-tenant `tts_provider` + `tts_voice_id` +
+`tts_voice_settings` YAML fields. Always falls back to Polly on any
+error so a provider outage never drops a call. main._respond branches
+on payload.kind ∈ {polly, play}. 22 tests.
+
+## V4.2 — Natural speech preprocessing _(complete)_
+
+`src/humanize_speech.py::humanize_for_speech(text)` runs before TTS to
+turn "$475 at 4273 Mill Creek Road by 9:30 AM, call (555) 219-3987" into
+"four hundred seventy-five dollars at forty-two seventy-three Mill Creek
+Road by nine thirty A M, call five five five, two one nine, three nine
+eight seven". stdlib only. Per-tenant `humanize_speech: false` opts out
+(default ON). Internal exception handler returns raw text on any error.
+56 tests covering currency, phones, times, addresses, and combined
+sentences.
+
+## V4.3 — Anti-robot scrubber _(complete)_
+
+prompts/receptionist_core.md updated to ban "Certainly", "Absolutely",
+"I apologize for the inconvenience", "So you're asking about X", "I
+understand your concern", "How may I assist you today?", "Let me help
+you with that". Added explicit varied-ack guidance ("got it / okay /
+sure thing / mhm / yeah / no problem"). New `src/anti_robot.py::scrub`
+post-processor strips robotic phrases anywhere in the reply, substitutes
+"Certainly!" → "Sure," etc., and capitalizes the first letter after
+stripping. Per-tenant `anti_robot_scrub: false` opts out (default ON).
+21 tests.
+
+## V4.4 — Strict grounding (anti-hallucination) _(complete)_
+
+`src/grounding.py::verify_reply` extracts $-prices from the reply and
+cross-checks against the tenant's pricing_summary + KB. Sentences
+containing prices outside ±20% of any allowed value are replaced with
+"Let me check the exact number — I'll have someone call you right back."
+Multiple violations collapse to one fallback line. Per-tenant
+`strict_grounding: false` opts out (default ON for v4+). Logs violation
+count for audit. 25 tests.
+
+## V4.5 — Twilio call recording + admin playback _(complete)_
+
+`src/recordings.py` lazy-migrates recording_sid + recording_url +
+recording_duration_s columns onto the calls table. New /voice/recording
+webhook receives Twilio's recording-status callback when complete and
+stores the metadata. /admin/call/{sid} renders an HTML5 <audio> player
+sourced from /admin/recording/{sid}.mp3, a server-side proxy that adds
+Twilio Basic auth so the operator's browser never sees the auth token.
+Disclosure phrase ("This call may be recorded for quality") prepended
+to the greeting when recording is on. Per-tenant `record_calls: true`
+opts in (default OFF — privacy + storage). 19 tests.
+
+## V4.6 — Per-tenant ICS calendar feed _(complete)_
+
+`src/bookings.py::generate_feed_ics(bookings, tenant_name)` emits an
+RFC 5545 multi-event VCALENDAR. New `src/calendar_feed.py` exposes
+GET /calendar/{client_id}.ics?t=<token> with HMAC-signed token (reuses
+CLIENT_PORTAL_SECRET). Bob pastes the URL into Google Calendar /
+Apple Calendar / Outlook via "Add by URL" and bookings auto-appear,
+refreshing hourly via X-PUBLISHED-TTL hint. CLI: `python -m
+src.calendar_feed url <client_id>`. 16 tests.
+
+## V4.7 — Cross-call recall _(complete)_
+
+`src/recall.py::prior_calls` queries the calls table for non-spam
+calls from the same number to the same tenant within max_days
+(default 7), excluding the in-flight call. `build_recall_block`
+renders a "## Recent calls from this same number" system-prompt block
+with each prior call's when ("yesterday around 4 PM"), outcome, and
+AI summary (V3.4). Soft guidance prompt: "If the caller is following
+up on one of these, lead with that — 'hey, calling back about
+yesterday?'". llm.chat_with_usage builds this automatically when the
+caller has a phone. Cross-platform _humanize_when handles Windows
+strftime quirks. 23 tests.
+
+---
+
+**v4 totals:** 657 passing pytest cases. 7 new feature modules:
+src/tts, src/humanize_speech, src/anti_robot, src/grounding,
+src/recordings, src/calendar_feed, src/recall. 7 new feature commits.
+Zero regressions across v1.0/v2.0/v3.0/v4.0 surface.
+
+Voice naturalness focus areas:
+ - Voice quality: opt-in ElevenLabs (V4.1) + SSML prosody (V3.3)
+ - Speech-rendering: prices/phones/times/addresses spoken human-like (V4.2)
+ - No corporate-speak: "Certainly" stripped, varied acks instead (V4.3)
+
+Trust focus areas:
+ - Never invents prices (V4.4 strict grounding)
+ - Recordings for audit + dispute resolution (V4.5)
+ - Real calendar that Bob's phone will sync (V4.6)
+ - "Hey, calling back about yesterday?" continuity (V4.7)
+
 
 
 

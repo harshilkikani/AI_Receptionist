@@ -1,10 +1,10 @@
 # SHIP_REPORT — AI Receptionist
 
-_Branches: `margin-protection-refactor` → `ship-production` (v1.0 @ tag `v1.0-ship-production`) → **v2.0 major upgrade** → **v3.0 major upgrade (current tip)**_
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0 (current tip)**_
 
-_Test suite: **475 pytest cases, all passing** (~70 seconds). Legacy
+_Test suite: **657 pytest cases, all passing** (~60 seconds). Legacy
 `_test_suite.py` integration harness: 19 cases against a live server.
-209 new tests since v2.0._
+182 new tests since v3.0; 392 since v2.0._
 
 ---
 
@@ -227,3 +227,78 @@ base, plain markdown with `# Section` headers.
 - **Warm transfer whisper** — owner_notify sends an SMS brief right
   before the dial; a true whisper (AI narrates context as owner
   connects) is a larger Twilio Conference refactor.
+
+---
+
+# v4.0 — Voice quality + trust pass (V4.1–V4.7)
+
+Goal: agent that doesn't sound or behave like a bot to a blue-collar
+business owner's customer in 2026. Voice quality, speech rendering,
+trust (no invented prices, recordings, real calendar sync), continuity.
+
+| # | Feature | Tests | Highlights |
+|---|---|---:|---|
+| V4.1 | **Pluggable TTS + ElevenLabs adapter** | 22 | Per-tenant `tts_provider` knob. Polly default; ElevenLabs opt-in via cached MP3 + Twilio `<Play>`. Falls back to Polly on every error. |
+| V4.2 | **Natural speech preprocessing** | 56 | Prices, phones, times, addresses spoken human-like. "$475" → "four hundred seventy-five dollars". stdlib only. |
+| V4.3 | **Anti-robot scrubber** | 21 | Strips "Certainly", "I understand your concern", "Let me help you with that"; rotates soft acks. Prompt + post-processor. |
+| V4.4 | **Strict grounding (anti-hallucination)** | 25 | Replaces sentences quoting prices not in pricing_summary/KB with "Let me check the exact number." ±20% tolerance. |
+| V4.5 | **Twilio call recording + admin playback** | 19 | `record_calls: true` triggers REST-API recording. /voice/recording webhook stores RecordingUrl. /admin/call/{sid} plays via server-proxied audio. Disclosure prepended to greeting. |
+| V4.6 | **Per-tenant ICS calendar feed** | 16 | `/calendar/{id}.ics?t=<token>` — Bob subscribes once in Google Calendar, every booking auto-appears, refresh hourly. |
+| V4.7 | **Cross-call recall** | 23 | `## Recent calls from this same number` block injected into prompt when caller's phone has prior calls in last 7 days. Enables "hey — calling back about yesterday?" naturally. |
+
+## New env vars introduced in v4
+
+| Var | Default | Purpose |
+|---|---|---|
+| `ELEVENLABS_API_KEY` | *(unset)* | V4.1 — required to use ElevenLabs TTS |
+| `ELEVENLABS_VOICE_ID` | `EXAVITQu4vr4xnSDxMaL` | V4.1 — default voice id |
+| `ELEVENLABS_MODEL` | `eleven_turbo_v2_5` | V4.1 — TTS model id |
+
+## New YAML fields introduced in v4
+
+Optional per tenant:
+- `tts_provider: polly|elevenlabs` (V4.1)
+- `tts_voice_id: <voice_id>` (V4.1)
+- `tts_voice_settings: {stability, similarity}` (V4.1)
+- `humanize_speech: false` to opt out (V4.2; default on)
+- `anti_robot_scrub: false` to opt out (V4.3; default on)
+- `strict_grounding: false` to opt out (V4.4; default on for v4+)
+- `record_calls: true` to opt in (V4.5; default OFF)
+
+## Three-command go-live (v4 unchanged from v3 — Docker preferred)
+
+```bash
+cp .env.example .env  # fill values incl. CLIENT_PORTAL_SECRET, ADMIN_USER/PASS
+docker-compose up -d --build
+python scripts/reclaim_tunnel.py
+```
+
+Then mint per-tenant calendar + portal URLs:
+
+```bash
+python -m src.client_portal issue ace_hvac
+python -m src.calendar_feed url ace_hvac
+```
+
+Send Bob both URLs. He bookmarks the portal, subscribes the calendar
+feed in his phone calendar app. Done.
+
+## Gaps deferred to v5
+
+Honestly framed:
+ - **True sub-300ms latency** — speech-to-speech (gpt-realtime, Sonic-3,
+   ElevenLabs Conversational with WebSockets via Twilio Media Streams).
+   The current pipeline is request/response TwiML; getting under ~700ms
+   first-word latency requires a transport rewrite.
+ - **Voice cloning of the owner** — Bob's actual voice via ElevenLabs
+   IVC. Easy on the API side, just needs a per-tenant onboarding flow
+   that records + uploads a sample. Skipped for legal-sensitivity
+   reasons (consent, deepfake regulation).
+ - **OAuth Google Calendar (write-side)** — V4.6 ICS feed is read-only
+   from Bob's perspective (we publish). Two-way sync (Bob edits in his
+   calendar, our DB updates) requires OAuth.
+ - **Real-time spam captcha** — robocall detection beyond regex.
+ - **Multi-agent specialist handoff** — booking-specialist agent + AI
+   triage; current single-prompt covers most cases.
+ - **Voicemail detection (AMD) for outbound** — no outbound flow shipped
+   yet (V3.X listed it as deferred too).

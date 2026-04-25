@@ -2,16 +2,16 @@
 
 > A voice + SMS AI receptionist for service businesses. Answers missed calls in under a second, routes emergencies to the owner's cell with an SMS brief **before** the bridge, remembers callers across calls, bills per-minute automatically, and improves itself overnight from its own mistakes.
 
-- **475 passing tests**
+- **657 passing tests**
 - **Real production stack** — FastAPI, Twilio, Anthropic Claude Haiku 4.5, SQLite
 - **Multi-tenant** — one YAML per business, one Twilio number per tenant
 - **Zero-framework frontend** — pure HTML + CSS for every UI surface
 - **MIT licensed** — clone it, read it, change it
 
-![status](https://img.shields.io/badge/tests-475%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-657%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![version](https://img.shields.io/badge/version-v3.0-violet)
+![version](https://img.shields.io/badge/version-v4.0-violet)
 
 ---
 
@@ -55,6 +55,13 @@ Full three-command go-live: see [`SHIP_REPORT.md`](SHIP_REPORT.md).
 | 🩺 **Ops-ready** | `/health`, `/ready`, **`/metrics`** (V3.15) in Prometheus format, `X-Request-ID` correlation, structured logging. |
 | 🛡️ **Graceful degradation** (V3.1) | LLM rate limits / timeouts / auth failures get canned-response fallbacks so the call never 503's out. |
 | 🐳 **Docker-ready** (V3.17) | `docker-compose up` — image with tini, health checks, non-root user. |
+| 🎤 **Pluggable TTS** (V4.1) | Polly default, ElevenLabs Conversational opt-in via cached MP3 + `<Play>`. Falls back to Polly on any error. |
+| 💬 **Natural speech** (V4.2) | Prices, phones, addresses, times spoken human-like ("$475" → "four hundred seventy-five dollars"). |
+| 🤖❌ **Anti-robot scrubber** (V4.3) | Strips "Certainly / I understand your concern / Let me help you with that" before TTS. |
+| 🛡️ **Strict grounding** (V4.4) | Replaces invented prices with "Let me check the exact number — I'll have someone call you right back." |
+| 🎙️ **Call recording + playback** (V4.5) | Twilio recordings surfaced in admin via server-proxied audio player. Disclosure prepended. |
+| 📅 **ICS calendar feed** (V4.6) | `/calendar/{id}.ics?t=<token>` subscribes in Google/Apple/Outlook — Bob's bookings auto-sync. |
+| ⏪ **Cross-call recall** (V4.7) | "Hey, calling back about yesterday?" — prior calls from same number injected into prompt. |
 
 ## Architecture
 
