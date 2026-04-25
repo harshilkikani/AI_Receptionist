@@ -27,6 +27,20 @@ import threading
 _state_lock = threading.Lock()
 _calls: dict = {}  # call_sid -> {start_ts, client_id, emergency, grace_used}
 
+# V5.1 — defensive bound. If something fails to call record_end (a bug,
+# a Twilio status callback never arriving, etc.), we cap the dict size
+# and evict oldest-by-start_ts so memory stays bounded indefinitely.
+MAX_CONCURRENT_CALLS = 5000
+
+
+def _evict_oldest_if_full():
+    """Caller must already hold _state_lock."""
+    if len(_calls) <= MAX_CONCURRENT_CALLS:
+        return
+    # Drop the entry with the smallest start_ts
+    oldest_sid = min(_calls.items(), key=lambda kv: kv[1].get("start_ts", 0))[0]
+    _calls.pop(oldest_sid, None)
+
 
 def _now() -> float:
     return time.time()
@@ -69,12 +83,22 @@ def record_start(call_sid: str, client_id: str):
                 "emergency": False,
                 "grace_used": False,
             }
+            _evict_oldest_if_full()
 
 
 def record_end(call_sid: str):
-    """Called when call ends. Clears in-memory state."""
+    """Called when call ends. Clears in-memory state — both call_timer's
+    AND sentiment_tracker's, since they're co-keyed by call_sid and both
+    need cleanup on EVERY terminal path. Centralizing here means
+    callers only need one record_end() instead of two."""
     with _state_lock:
         _calls.pop(call_sid, None)
+    # V5.1 — also evict sentiment state. Lazy-import avoids a cycle.
+    try:
+        from src import sentiment_tracker
+        sentiment_tracker.record_end(call_sid)
+    except Exception:
+        pass
 
 
 def mark_emergency(call_sid: str):

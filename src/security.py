@@ -31,6 +31,18 @@ from starlette.responses import Response, JSONResponse
 _bucket_lock = threading.Lock()
 _buckets: dict = {}  # ip -> {tokens: float, last: float}
 
+# V5.1 — bound to prevent year-of-distinct-IPs memory growth. On
+# overflow, evict the LEAST-recently-used IP (oldest .last).
+MAX_BUCKETS = 10_000
+
+
+def _evict_lru_if_full():
+    """Caller must hold _bucket_lock."""
+    if len(_buckets) <= MAX_BUCKETS:
+        return
+    oldest_ip = min(_buckets.items(), key=lambda kv: kv[1].get("last", 0))[0]
+    _buckets.pop(oldest_ip, None)
+
 
 def _default_rate() -> int:
     try:
@@ -63,6 +75,7 @@ def _take_token(ip: str, rate_per_min: int) -> bool:
         b = _buckets.get(ip)
         if b is None:
             _buckets[ip] = {"tokens": capacity - 1.0, "last": now}
+            _evict_lru_if_full()
             return True
         elapsed = now - b["last"]
         b["tokens"] = min(capacity, b["tokens"] + elapsed * refill)

@@ -35,6 +35,37 @@ log = logging.getLogger("scheduler")
 _sent_today: dict = {}  # (client_id, date_iso) -> True
 _task: Optional[asyncio.Task] = None
 
+# V5.1 — keep at most this many days of dedup state. Past entries are
+# never going to fire again (they're date-keyed), so we prune them.
+DEDUP_RETENTION_DAYS = 14
+
+
+def _prune_old_dedup_keys(now_local_date_iso: str):
+    """Drop (client_id, date_iso) keys older than DEDUP_RETENTION_DAYS."""
+    if not _sent_today:
+        return
+    try:
+        from datetime import date
+        today = date.fromisoformat(now_local_date_iso)
+    except (ValueError, TypeError):
+        return
+    cutoff_iso = (today.toordinal() - DEDUP_RETENTION_DAYS)
+    stale = [k for k in _sent_today
+             if isinstance(k, tuple) and len(k) == 2
+             and isinstance(k[1], str)
+             and len(k[1]) >= 10
+             and _date_ord_or_max(k[1]) < cutoff_iso]
+    for k in stale:
+        _sent_today.pop(k, None)
+
+
+def _date_ord_or_max(iso_str: str) -> int:
+    try:
+        from datetime import date
+        return date.fromisoformat(iso_str[:10]).toordinal()
+    except (ValueError, TypeError):
+        return 10**9   # unparseable → treat as "future" so it's not pruned
+
 
 def _reset_state():
     """Test hook."""
@@ -137,6 +168,14 @@ def tick(now_utc: Optional[datetime] = None):
 
     # Eval regression (independent of clients)
     _maybe_run_eval_regression(now_utc)
+
+    # V5.1 — opportunistic dedup-state prune. Cheap; runs every tick.
+    try:
+        # Use UTC date for prune key reference; precision doesn't matter
+        # since the retention window is days
+        _prune_old_dedup_keys(now_utc.date().isoformat())
+    except Exception as e:
+        log.error("dedup prune error: %s", e)
 
 
 async def _loop():

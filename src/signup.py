@@ -65,7 +65,11 @@ def _client_ip(request: Request) -> str:
 
 
 def _check_rate_limit(ip: str) -> bool:
-    """Return True if the IP is under its hourly quota."""
+    """Return True if the IP is under its hourly quota.
+
+    V5.1 — prunes empty buckets (IPs whose hits all aged out) so the
+    dict stays bounded over time. Also caps total dict size at 5000
+    entries; on overflow, oldest-by-most-recent-hit gets evicted."""
     now = time.time()
     cutoff = now - 3600
     limit = _limit_per_hour()
@@ -76,6 +80,17 @@ def _check_rate_limit(ip: str) -> bool:
             return False
         bucket.append(now)
         _rate_buckets[ip] = bucket
+        # Periodic prune: drop empty buckets every ~50 calls (keep cheap)
+        if len(_rate_buckets) > 100 and (int(now) % 50) == 0:
+            for stale_ip in [
+                k for k, v in _rate_buckets.items() if not v
+            ]:
+                _rate_buckets.pop(stale_ip, None)
+        # Hard cap: 5000 active IPs in the last hour is well past abuse
+        if len(_rate_buckets) > 5000:
+            oldest_ip = min(_rate_buckets.items(),
+                            key=lambda kv: max(kv[1]) if kv[1] else 0)[0]
+            _rate_buckets.pop(oldest_ip, None)
         return True
 
 

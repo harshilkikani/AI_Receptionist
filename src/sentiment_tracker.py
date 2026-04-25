@@ -26,6 +26,21 @@ HOT_SENTIMENTS = {"frustrated", "angry"}
 _state_lock = threading.Lock()
 _state: dict = {}  # call_sid -> {"consecutive": int, "last": str, "escalated": bool}
 
+# V5.1 — defensive cap. record_end() should fire on every terminal call
+# path (call_timer.record_end now invokes it transitively), but if a
+# call slips through, oldest-evict keeps the dict bounded.
+MAX_TRACKED_CALLS = 5000
+
+
+def _evict_if_full():
+    """Caller must hold _state_lock."""
+    if len(_state) <= MAX_TRACKED_CALLS:
+        return
+    # No timestamps in this dict; evict an arbitrary oldest by insertion order
+    if _state:
+        first_key = next(iter(_state))
+        _state.pop(first_key, None)
+
 
 def _enforcement_active() -> bool:
     global_on = os.environ.get("MARGIN_PROTECTION_ENABLED", "true").lower() != "false"
@@ -61,8 +76,11 @@ def record(call_sid: str, sentiment: str) -> dict:
                 "escalated_now": False, "enforcement_active": enforce}
 
     with _state_lock:
+        is_new = call_sid not in _state
         entry = _state.setdefault(
             call_sid, {"consecutive": 0, "last": "neutral", "escalated": False})
+        if is_new:
+            _evict_if_full()
         if sentiment in HOT_SENTIMENTS:
             entry["consecutive"] += 1
         else:
