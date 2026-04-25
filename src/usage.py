@@ -83,6 +83,21 @@ def _init_schema(conn: sqlite3.Connection):
             month          TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_sms_client_month ON sms(client_id, month);
+
+        -- V5.8 — per-tenant per-provider character counts.
+        -- ElevenLabs charges per character. We charge per minute. To
+        -- keep margin sane we cap a tenant's monthly elevenlabs spend
+        -- via plan.elevenlabs_monthly_cap_chars. Tracked here.
+        CREATE TABLE IF NOT EXISTS tts_provider_usage (
+            client_id      TEXT NOT NULL,
+            provider       TEXT NOT NULL,        -- 'elevenlabs', etc.
+            month          TEXT NOT NULL,        -- YYYY-MM
+            chars          INTEGER NOT NULL DEFAULT 0,
+            updated_ts     INTEGER NOT NULL,
+            PRIMARY KEY (client_id, provider, month)
+        );
+        CREATE INDEX IF NOT EXISTS idx_tts_provider_usage_month
+            ON tts_provider_usage(month);
     """)
 
 
@@ -302,3 +317,67 @@ def recent_calls(client_id: Optional[str] = None, limit: int = 50) -> list:
             """, (limit,)).fetchall()
         conn.close()
     return [dict(r) for r in rows]
+
+
+# ── V5.8 — TTS provider usage (ElevenLabs char tracking) ──────────────
+
+def bump_tts_chars(client_id: str, provider: str, n: int):
+    """Add `n` characters to (client_id, provider, current month). No-op
+    on empty client_id, unknown provider, or n <= 0. Idempotent across
+    crashes — uses INSERT ... ON CONFLICT, so two writers can race
+    safely."""
+    if not client_id or not provider or n <= 0:
+        return
+    month = _now_month()
+    ts = _now_ts()
+    with _db_lock:
+        conn = _connect()
+        try:
+            _init_schema(conn)
+            conn.execute("""
+                INSERT INTO tts_provider_usage(client_id, provider, month, chars, updated_ts)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(client_id, provider, month) DO UPDATE
+                  SET chars = chars + excluded.chars,
+                      updated_ts = excluded.updated_ts
+            """, (client_id, provider, month, int(n), ts))
+        finally:
+            conn.close()
+
+
+def tts_chars_for(client_id: str, provider: str = "elevenlabs",
+                  month: Optional[str] = None) -> int:
+    """Current month's char count for (client, provider). 0 if no row."""
+    if not client_id:
+        return 0
+    month = month or _now_month()
+    with _db_lock:
+        conn = _connect()
+        try:
+            _init_schema(conn)
+            row = conn.execute("""
+                SELECT chars FROM tts_provider_usage
+                 WHERE client_id = ? AND provider = ? AND month = ?
+            """, (client_id, provider, month)).fetchone()
+            return int(row["chars"]) if row else 0
+        finally:
+            conn.close()
+
+
+def tts_chars_summary(month: Optional[str] = None) -> list:
+    """[(client_id, provider, chars), ...] for the given month, sorted
+    by chars desc. Used by /admin/analytics."""
+    month = month or _now_month()
+    with _db_lock:
+        conn = _connect()
+        try:
+            _init_schema(conn)
+            rows = conn.execute("""
+                SELECT client_id, provider, chars FROM tts_provider_usage
+                 WHERE month = ?
+                 ORDER BY chars DESC
+            """, (month,)).fetchall()
+            return [(r["client_id"], r["provider"], int(r["chars"]))
+                    for r in rows]
+        finally:
+            conn.close()

@@ -121,7 +121,7 @@ def test_elevenlabs_handles_api_failure(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
     monkeypatch.setattr(tts, "_fetch_elevenlabs",
-                        lambda text, vid, settings, path: (False, "http_500"))
+                        lambda text, vid, settings, path, **k: (False, "http_500"))
     out = tts.ElevenLabsProvider().render("uncached", voice_id="vid")
     assert out.kind == "polly"
     assert tts.render_stats()["fallback"] >= 1
@@ -131,7 +131,7 @@ def test_elevenlabs_render_writes_cache_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
 
-    def fake_fetch(text, vid, settings, path):
+    def fake_fetch(text, vid, settings, path, **k):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"audio data")
         return True, None

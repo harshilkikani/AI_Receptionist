@@ -116,7 +116,9 @@ class TtsProvider:
 
     def render(self, text: str, lang: str = "en",
                voice_id: Optional[str] = None,
-               settings: Optional[dict] = None) -> TtsPayload:
+               settings: Optional[dict] = None,
+               client_id: Optional[str] = None,
+               cap_chars: Optional[int] = None) -> TtsPayload:
         raise NotImplementedError
 
 
@@ -125,7 +127,8 @@ class PollyProvider(TtsProvider):
     — no audio bytes generated locally; Twilio Polly synthesizes."""
     name = "polly"
 
-    def render(self, text, lang="en", voice_id=None, settings=None):
+    def render(self, text, lang="en", voice_id=None, settings=None,
+               client_id=None, cap_chars=None):
         _bump("polly")
         return TtsPayload(
             kind="polly",
@@ -134,19 +137,40 @@ class PollyProvider(TtsProvider):
         )
 
 
+def _over_monthly_cap(client_id: str, cap_chars: int,
+                      prospective_chars: int) -> bool:
+    """V5.8 — would adding `prospective_chars` push the tenant past
+    `cap_chars` for the current month? Database errors return False
+    (open by default — never block a call on telemetry trouble)."""
+    if not client_id or not cap_chars or cap_chars <= 0:
+        return False
+    try:
+        from src import usage as _usage
+        used = _usage.tts_chars_for(client_id, "elevenlabs")
+        return (used + max(0, prospective_chars)) >= int(cap_chars)
+    except Exception as e:
+        log.warning("tts cap check failed for %s: %s", client_id, e)
+        return False
+
+
 class ElevenLabsProvider(TtsProvider):
     """Generates audio bytes via the ElevenLabs HTTP API, caches them
     to data/audio/<hash>.mp3, and emits a TwiML <Play> URL.
 
     Required env: ELEVENLABS_API_KEY.
     Optional env: ELEVENLABS_MODEL (default eleven_turbo_v2_5).
+
+    V5.8 — when the tenant has exceeded `plan.elevenlabs_monthly_cap_chars`
+    for the current month, this provider silently falls back to Polly
+    (cache hits remain free — caps only block NEW renders).
     """
     name = "elevenlabs"
 
     DEFAULT_MODEL = "eleven_turbo_v2_5"
     DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"   # Rachel — generic example
 
-    def render(self, text, lang="en", voice_id=None, settings=None):
+    def render(self, text, lang="en", voice_id=None, settings=None,
+               client_id=None, cap_chars=None):
         api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
         if not (text or "").strip() or not api_key:
             # Fall back silently. Caller should already have a Polly
@@ -163,8 +187,18 @@ class ElevenLabsProvider(TtsProvider):
             _bump("cache_hit")
             return self._payload_for(h, text)
 
+        # V5.8 — cap check: cache hits above are free, but a fresh
+        # render is billable. If over cap, silently fall back to Polly.
+        if cap_chars and client_id and _over_monthly_cap(
+                client_id, int(cap_chars), len(text)):
+            _bump("cap_fallback")
+            log.info("elevenlabs cap reached for %s; falling back to Polly",
+                     client_id)
+            return PollyProvider().render(text, lang)
+
         _bump("cache_miss")
-        ok, error = _fetch_elevenlabs(text, vid, settings or {}, path)
+        ok, error = _fetch_elevenlabs(text, vid, settings or {}, path,
+                                      client_id=client_id)
         if not ok:
             _bump("fallback")
             log.warning("elevenlabs render failed (%s); falling back to Polly", error)
@@ -249,9 +283,14 @@ def _request_post(path: str, headers: dict, body: bytes,
 
 
 def _fetch_elevenlabs(text: str, voice_id: str, settings: dict,
-                      out_path: Path) -> tuple:
+                      out_path: Path,
+                      *, client_id: Optional[str] = None) -> tuple:
     """V5.7 — POST to the streaming endpoint, write the response body to
     disk. Reuses the pooled HTTPS connection. Returns (ok, error_string).
+
+    V5.8 — on success, records `len(text)` characters against
+    `(client_id, 'elevenlabs', current month)` in usage.db so admin and
+    cap-check code can read the running total.
 
     `urllib.request.urlopen` (the v4.1 implementation) opened a fresh
     TCP+TLS connection for every render. That's ~150-300ms of overhead
@@ -295,6 +334,14 @@ def _fetch_elevenlabs(text: str, voice_id: str, settings: dict,
     if reused:
         _bump("connection_reused")
     _bump("chars_rendered", len(text))
+    # V5.8 — telemetry persisted to usage.db. Best-effort; a DB hiccup
+    # mustn't fail the call.
+    if client_id:
+        try:
+            from src import usage as _usage
+            _usage.bump_tts_chars(client_id, "elevenlabs", len(text))
+        except Exception as e:
+            log.warning("tts.bump_tts_chars failed for %s: %s", client_id, e)
     return True, None
 
 
@@ -328,6 +375,21 @@ def voice_settings_for(client: Optional[dict]) -> dict:
     return {}
 
 
+def cap_chars_for(client: Optional[dict]) -> Optional[int]:
+    """V5.8 — read plan.elevenlabs_monthly_cap_chars. None = unlimited."""
+    if not client:
+        return None
+    plan = client.get("plan") or {}
+    cap = plan.get("elevenlabs_monthly_cap_chars")
+    if cap is None:
+        return None
+    try:
+        c = int(cap)
+        return c if c > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def render(text: str, *, client: Optional[dict] = None,
            lang: str = "en") -> TtsPayload:
     """Convenience wrapper: pick provider, render. Always returns a
@@ -340,6 +402,8 @@ def render(text: str, *, client: Optional[dict] = None,
             text, lang=lang,
             voice_id=voice_id_for(client),
             settings=voice_settings_for(client),
+            client_id=(client or {}).get("id"),
+            cap_chars=cap_chars_for(client),
         )
     except Exception as e:
         log.error("tts render failed (%s); falling back to Polly: %s",
