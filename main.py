@@ -82,6 +82,23 @@ async def _lifespan(app: FastAPI):
     except Exception as e:
         log.error("startup: demo purge failed: %s", e)
 
+    # V5.6 — bound the audio cache + pre-warm common phrases for every
+    # ElevenLabs tenant so the first caller doesn't fall back to Polly.
+    # Both are best-effort; an audio-cache hiccup never blocks startup.
+    try:
+        from src import audio_cache as _audio_cache
+        ev = _audio_cache.evict_if_needed()
+        if ev.get("evicted_age") or ev.get("evicted_size"):
+            log.info("startup: audio cache evicted age=%d size=%d freed=%d bytes",
+                     ev["evicted_age"], ev["evicted_size"], ev["bytes_freed"])
+        pw = _audio_cache.prewarm_all()
+        if pw.get("tenants_prewarmed"):
+            log.info("startup: audio cache prewarmed tenants=%d rendered=%d skipped=%d errors=%d",
+                     pw["tenants_prewarmed"], pw["rendered"],
+                     pw["skipped"], pw["errors"])
+    except Exception as e:
+        log.error("startup: audio cache step failed: %s", e)
+
     # Startup — kick off alert digest loop if enforcement is on
     alerts.start_background_loop()
     # P4 — per-client owner end-of-day digest (10 PM local)
