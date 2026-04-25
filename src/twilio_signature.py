@@ -137,8 +137,21 @@ class TwilioSignatureMiddleware(BaseHTTPMiddleware):
                 request.url.path, reason or "invalid_signature",
             )
 
-        # Re-yield the body to the downstream receive channel
+        # V5.3 — re-yield the body to the downstream receive channel.
+        # CRITICAL: ASGI receive must signal end-of-stream after the
+        # body is delivered. A naive receive() that keeps returning the
+        # same body causes downstream Form-parsers (newer Starlette) to
+        # spin forever waiting for the next chunk. Track delivery so
+        # the second call returns http.disconnect, the proper signal.
+        body_delivered = False
+
         async def receive():
-            return {"type": "http.request", "body": body, "more_body": False}
+            nonlocal body_delivered
+            if not body_delivered:
+                body_delivered = True
+                return {"type": "http.request",
+                        "body": body, "more_body": False}
+            return {"type": "http.disconnect"}
+
         request._receive = receive
         return await call_next(request)
