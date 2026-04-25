@@ -143,7 +143,8 @@ def _wrap_up_suffix(wrap_up_mode: Optional[str], client: Optional[dict]) -> str:
 def _render_system_blocks(caller: Optional[dict], client: Optional[dict],
                           wrap_up_mode: Optional[str] = None,
                           recover_suffix: Optional[str] = None,
-                          user_message: Optional[str] = None) -> list:
+                          user_message: Optional[str] = None,
+                          recall_block: Optional[str] = None) -> list:
     """Return the system-prompt blocks to pass to the Anthropic API.
 
     Block 1 (cacheable): the tenant-scoped prompt body. Same for every
@@ -171,6 +172,9 @@ def _render_system_blocks(caller: Optional[dict], client: Optional[dict],
             kb_block = ""
 
     volatile_parts = [memory_text]
+    # V4.7 — recall block (if caller has prior calls in the last week)
+    if recall_block:
+        volatile_parts.append(recall_block)
     if kb_block:
         volatile_parts.append(kb_block)
     if wrap_up:
@@ -385,9 +389,22 @@ def chat_with_usage(caller: Optional[dict], user_message: str,
     under the same tenant hit the Anthropic ephemeral cache. The first
     tuple element is a ChatResponse; the second is a plain tuple
     (input_tokens, output_tokens) for backwards compatibility."""
+    # V4.7 — pull recall block for callers with prior history
+    recall_block = ""
+    try:
+        if caller and (caller.get("phone") or "") and client:
+            from src import recall
+            recall_block = recall.build_recall_block(
+                client_id=client.get("id") or "",
+                from_phone=caller.get("phone") or "",
+            )
+    except Exception:
+        recall_block = ""
+
     system_blocks = _render_system_blocks(caller, client,
                                           wrap_up_mode=wrap_up_mode,
-                                          user_message=user_message)
+                                          user_message=user_message,
+                                          recall_block=recall_block)
     messages = _build_messages(conversation or [], user_message)
     try:
         response = _anthropic.beta.messages.parse(
