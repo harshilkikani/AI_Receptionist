@@ -21,15 +21,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from src import tenant, usage, alerts
+from src.admin_auth import check_admin_auth, auth_required
 from src.design import (
     card, data_table, heatbar, page, pill, sparkline, stat_card, stats,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-security = HTTPBasic(auto_error=False)
 
 
 # Nav items shown on every admin page
@@ -45,21 +44,10 @@ NAV: list = [
 ]
 
 
-def _auth_required() -> bool:
-    return bool(os.environ.get("ADMIN_USER")) and bool(os.environ.get("ADMIN_PASS"))
-
-
-def _check_auth(creds: Optional[HTTPBasicCredentials] = Depends(security)):
-    if not _auth_required():
-        return None
-    if not creds:
-        raise HTTPException(status_code=401, detail="Admin auth required",
-                            headers={"WWW-Authenticate": "Basic"})
-    if (creds.username != os.environ.get("ADMIN_USER")
-            or creds.password != os.environ.get("ADMIN_PASS")):
-        raise HTTPException(status_code=401, detail="Invalid admin credentials",
-                            headers={"WWW-Authenticate": "Basic"})
-    return creds.username
+# Backwards-compat shims so the rest of admin.py (and any test that
+# imports the names directly) keeps working after the V5.2 refactor.
+_auth_required = auth_required
+_check_auth = check_admin_auth
 
 
 def _now_month() -> str:

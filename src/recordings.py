@@ -132,8 +132,10 @@ def disclosure_text() -> str:
 import urllib.request
 import base64
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, Response
+
+from src.admin_auth import check_admin_auth as _check_admin_auth
 
 router = APIRouter(prefix="/admin", tags=["recordings"])
 
@@ -144,16 +146,22 @@ def _twilio_creds() -> tuple:
 
 
 @router.get("/recording/{call_sid}.mp3")
-def proxy_recording(call_sid: str):
+def proxy_recording(call_sid: str, user=Depends(_check_admin_auth)):
     """Stream the Twilio recording for the given call_sid through our
     server. Authenticates server-side with the Twilio Basic creds so
     the operator's browser never sees the auth token.
 
-    Operator MUST be authenticated to /admin/* — this route inherits
-    the prefix so the existing AdminRateLimitMiddleware applies. (We
-    don't add HTTP Basic admin auth dependency here because the route
-    is hit from within an already-authenticated /admin/call detail page.)
+    V5.2 — admin Basic-auth dependency added. Previously this route
+    was open even when ADMIN_USER/ADMIN_PASS were set; every other
+    /admin/* route 401'd correctly but this proxy slipped through.
+
+    V5.2 — also reject path-traversal attempts in the call_sid.
     """
+    # Defense in depth: call_sid should always look like Twilio's
+    # CA<32hex> shape. Reject anything with path separators or non-
+    # safe characters before we hit the DB.
+    if "/" in call_sid or ".." in call_sid or "\\" in call_sid:
+        raise HTTPException(400, "invalid call_sid")
     rec = get_recording(call_sid)
     if not rec or not rec.get("recording_url"):
         raise HTTPException(404, "no recording for that call")

@@ -36,8 +36,11 @@ log = logging.getLogger("twilio_signature")
 
 
 # Paths we guard. All other paths pass through untouched.
+# V5.2 — /voice/recording added: previously open, allowing anyone with
+# the URL to forge RecordingUrl into the calls table.
 PROTECTED_PATHS: tuple = ("/voice/incoming", "/voice/setlang",
                           "/voice/gather", "/voice/status",
+                          "/voice/recording",
                           "/sms/incoming")
 
 
