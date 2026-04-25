@@ -56,6 +56,21 @@ ROOT = Path(__file__).parent
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    # V5.4 — run consolidated SQLite migrations FIRST. Idempotent;
+    # every additive column from V3.4 + V4.5 is applied here so fresh
+    # deploys don't depend on lazy in-module migrations firing later.
+    try:
+        from src import migrations as _migrations
+        result = _migrations.run_all()
+        if result.get("applied"):
+            log.info("startup: migrations applied: %s",
+                     ", ".join(result["applied"]))
+        if result.get("errors"):
+            log.error("startup: migration errors: %s",
+                      ", ".join(result["errors"]))
+    except Exception as e:
+        log.error("startup: migrations crashed: %s", e)
+
     # P5 — prune expired demo tenants at startup so stale demo YAMLs
     # don't accidentally route live traffic after their 24h window.
     try:
