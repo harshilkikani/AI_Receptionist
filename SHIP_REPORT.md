@@ -2,9 +2,9 @@
 
 _Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0 (current tip)**_
 
-_Test suite: **719 pytest cases, all passing** (~65 seconds). Legacy
+_Test suite: **782 pytest cases, all passing** (~115 seconds). Legacy
 `_test_suite.py` integration harness: 19 cases against a live server.
-60 new tests since v4.0; 244 since v3.0; 454 since v2.0._
+123 new tests since v4.0; 307 since v3.0; 517 since v2.0._
 
 ---
 
@@ -317,7 +317,11 @@ features. Five focused tasks, all complete.
 | V5.2 | **Auth + signature audit** | 20 | `/admin/recording/{sid}.mp3` was missing Basic auth (CLOSED). `/voice/recording` was missing Twilio signature verification (CLOSED). Path-traversal hardening on dynamic routes. Shared `src/admin_auth.py` so every admin route uses one helper. |
 | V5.3 | **Pipeline order + the deselected test** | 10 | Fixed the v4 hang in `TwilioSignatureMiddleware` (ASGI receive() must signal end-of-stream after first body delivery). Rewrote the deselected test to call `_run_pipeline` directly. Locked in `anti_robot → grounding → humanize → tts` order with explicit negative-case regression guards. |
 | V5.4 | **DB migration consolidation + isolation** | 20 | New `src/migrations.py` runs all additive ALTERs idempotently on startup. Lazy migrations kept as defense in depth. `tests/test_tenant_isolation.py` confirms every customer-facing surface refuses cross-tenant tokens. |
-| V5.5 | **Dead code + docs** | 0 | Static unused-import sweep. Two real dead imports removed. CHANGES.md + SHIP_REPORT.md + README updated. This file. |
+| V5.5 | **Dead code sweep** | 0 | Static unused-import sweep. Two real dead imports removed. |
+| V5.6 | **Audio cache pre-warm + bounded eviction** | 14 | New `src/audio_cache.py`. Pre-renders greeting (×4 langs), force-end goodbye, and the 10 `_DEGRADED_PHRASES` for every ElevenLabs tenant on startup so the first caller hears the upgraded voice. Two-pass eviction (age 30d → size 500MB) keeps `data/audio/` bounded. |
+| V5.7 | **ElevenLabs streaming + pooled HTTPS + 32kbps mp3** | 13 | Switch to `/stream` endpoint with `output_format=mp3_22050_32`. ~4× smaller files. Singleton `http.client.HTTPSConnection` with keep-alive; ~150-300 ms saved per render after the first. One-shot retry on stale-socket close. |
+| V5.8 | **Cost telemetry + per-tenant monthly cap** | 23 | New `tts_provider_usage` table (client_id, provider, month → chars). `plan.elevenlabs_monthly_cap_chars` triggers silent fall-back to Polly when exceeded. Cache hits ignore the cap (free). Surface for `/admin/analytics`. |
+| V5.9 | **Hot-path sweep** | 13 | One-shot `_init_schema` (saves ~5ms per LLM turn). 30-second TTL cache for `recall.build_recall_block` (eliminates 7+ redundant DB fetches per call). |
 
 ## What v5 changed in practice
 

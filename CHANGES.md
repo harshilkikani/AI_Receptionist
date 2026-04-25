@@ -1253,26 +1253,138 @@ Static unused-import audit caught two real dead imports:
    summary column.
  - `from typing import Optional` in `src/migrations.py` — never used.
 
-Both removed. README badge bumped 657 → 719 tests, version v4.0 → v5.0.
-SHIP_REPORT.md gains a v5 section. This block in CHANGES.md.
+Both removed.
+
+## V5.6 — Audio cache pre-warm + bounded LRU eviction _(complete)_
+
+ElevenLabs renders cost real money + 1-3s of latency. Cache hits cost
+nothing and serve in <50ms. The v4.1 implementation had two gaps:
+data/audio/ grew forever, and the first caller of every phrase missed
+the cache and got Polly fallback (when PUBLIC_BASE_URL is unset) or a
+slow synthesis.
+
+`src/audio_cache.py` (new):
+  - `prewarm_for_tenant(client)` — renders greeting (en/es/hi/gu),
+    force-end goodbye, and the 10 `_DEGRADED_PHRASES` from llm.py for
+    every tenant on `tts_provider: elevenlabs`. No-op for Polly tenants
+    (Twilio synthesizes server-side, no local audio).
+  - `prewarm_all()` — walks tenants, skips `_default`/`_template`/
+    `demo_*` so short-lived demos don't burn API budget.
+  - `evict_if_needed()` — two-pass cleanup. (1) drop files older than
+    max_age_days (default 30). (2) if total still over max_total_mb
+    (default 500), drop oldest by mtime until under cap.
+  - `cache_stats()` — file count + bytes, surfaced for /admin later.
+
+Wired into main.py lifespan: evict → prewarm → start. Both best-effort;
+a cache hiccup never blocks boot. 14 tests in `test_audio_cache.py`.
+
+## V5.7 — ElevenLabs streaming + pooled HTTPS + lower bitrate _(complete)_
+
+Three compounding wins on the ElevenLabs render path:
+
+1. **Streaming endpoint.** `/v1/text-to-speech/{voice}/stream` returns
+   audio bytes as fast as ElevenLabs can produce them.
+2. **Lower-bitrate output.** Phone audio is 8 kHz; 128 kbps default is
+   massive overkill. `ELEVENLABS_OUTPUT_FORMAT` defaults to
+   `mp3_22050_32` — ~4× smaller files, faster transfer, faster cache
+   write. Override-able via env for tenants who want broadcast quality.
+3. **Pooled HTTPS connection.** v4.1 used `urllib.request.urlopen`
+   which opens a fresh TCP+TLS handshake (~150-300 ms) on every render.
+   `_request_post` reuses one `http.client.HTTPSConnection` across
+   calls with `Connection: keep-alive`, with a one-shot retry when the
+   server closes an idle socket.
+
+Telemetry: `render_stats()` gains `connection_reused` (true keep-alive
+working) and `chars_rendered` (V5.8 cost telemetry feeds off this).
+13 tests in `test_tts_streaming.py`.
+
+## V5.8 — ElevenLabs cost telemetry + per-tenant monthly cap _(complete)_
+
+We bill per minute. ElevenLabs charges per character. Without
+visibility, a chatty tenant on the elevenlabs upgrade can blow our
+margin without anyone noticing.
+
+New `tts_provider_usage` table in `usage.db`:
+```
+(client_id, provider, month) PRIMARY KEY → chars
+```
+Idempotent `INSERT … ON CONFLICT DO UPDATE`, race-safe.
+
+API additions:
+ - `usage.bump_tts_chars(client_id, provider, n)`
+ - `usage.tts_chars_for(client_id, provider, month)`
+ - `usage.tts_chars_summary(month)` — for /admin/analytics
+
+`_fetch_elevenlabs` records `len(text)` characters on every successful
+render (cache hits don't bump — they don't cost anything).
+
+New optional YAML field: `plan.elevenlabs_monthly_cap_chars`.
+`ElevenLabsProvider` checks usage AFTER cache lookup but BEFORE the
+billable API call — over cap = silent fall-back to Polly. Cache hits
+keep serving the upgraded audio for free regardless of cap.
+
+23 tests in `test_tts_cost_cap.py` covering roundtrip, cap edges,
+cache-hit-ignores-cap, persistence rules, and top-level `render()`
+threading the new `client_id` + `cap_chars` keywords.
+
+## V5.9 — Final tokens/speed/cost sweep _(complete)_
+
+Two cheap wins from a hot-path audit:
+
+1. **One-shot schema init.** `usage._init_schema` was firing 3+ times
+   per LLM turn from every read/write entry point. Each call ran six
+   `CREATE TABLE IF NOT EXISTS` statements — fast individually
+   (~500us) but adding up to seconds per day. The function is now
+   guarded by a `_schema_initialized` flag; `migrations.run_all()` at
+   lifespan startup ensures the schema exists before any handler
+   runs. Tests call `_reset_schema_cache()` after monkey-patching
+   `DB_PATH`.
+
+2. **Recall block TTL cache.** `recall.build_recall_block` was firing
+   on every `chat_with_usage` call (= every LLM turn). The underlying
+   prior-calls list doesn't change during a single phone call, so a
+   30-second TTL cache keyed by
+   `(client_id, normalized_phone, max_days, exclude_call_sid)`
+   eliminates 7+ redundant DB fetches per call. Bounded at 5,000
+   entries with oldest-by-expiry eviction. `now_ts` overrides bypass
+   the cache so deterministic tests still work.
+
+What I deliberately did NOT change:
+ - DB connection pooling. Per-write `_connect()` plus a global lock
+   serializes everything, but SQLite WAL is fast and removing the
+   lock is risky. Skip.
+ - Prompt caching tweaks. P8 stable block is 1,085 tokens; Haiku 4.5's
+   minimum is 4,096. Restructuring to hit the cache would cost more
+   than the savings. Already documented in v1.0 SHIP_REPORT.
+ - Output token cap. Already 80; cutting further hurts conversational
+   quality.
+ - Conversation compression. Already kicks in at 10 turns (V3.2).
+
+13 tests in `test_v59_perf.py` cover both optimizations + the helpers
+behind them.
 
 ---
 
-**v5 totals:** 719 passing pytest cases (60 new since v4.0). 1 new
-module (`src/admin_auth.py`), 1 new system (`src/migrations.py`).
-4 net code commits + 1 docs commit. Zero regressions.
+**v5 totals:** 782 passing pytest cases (123 new since v4.0). 2 new
+modules (`src/admin_auth.py`, `src/audio_cache.py`), 1 new system
+(`src/migrations.py`). 8 code commits + 1 docs commit. Zero
+regressions.
 
 What v5 changed in practice:
- - Three real leaks bounded; if a fourth slips in, the cap activates
-   silently rather than running the box out of memory.
+ - Three real state leaks bounded; if a fourth slips in, the cap
+   activates silently rather than running the box out of memory.
  - Two real auth holes closed with explicit regression guards.
  - One always-deselected test now runs (and passes).
  - DB schema is reproducible from `migrations.run_all()` alone.
- - Cross-tenant rejection is a regression suite, not just a code review.
+ - Cross-tenant rejection is a regression suite, not just a code-review
+   item that drifted out of date.
+ - ElevenLabs renders 4× smaller, ~150-300 ms faster per call after
+   the first render, capped per tenant per month, and the first caller
+   already hits the cache.
 
 What v5 deliberately did NOT do:
  - No new user-visible features. Pure quality pass.
- - No prompt-caching tweaks (P8 is still $0 on Haiku — unchanged).
+ - No prompt-caching tweaks (P8 is still $0 on Haiku 4.5 — unchanged).
  - No new TTS provider, voice cloning, or conversational rewrites.
 
 

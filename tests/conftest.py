@@ -31,6 +31,9 @@ def _isolate_env(monkeypatch, tmp_path):
     # Redirect the usage DB to a temp location
     from src import usage
     monkeypatch.setattr(usage, "DB_PATH", tmp_path / "usage_test.db")
+    # V5.9 — _init_schema is now one-shot per process; reset the flag so
+    # the first call against this tmp DB actually creates the tables.
+    usage._reset_schema_cache()
 
     # V3.16 — tests should never accidentally hit the on-disk eval cache.
     # EVAL_CACHE_DISABLE=true forces runner.run_case to bypass it.
@@ -41,6 +44,14 @@ def _isolate_env(monkeypatch, tmp_path):
     # Clear any cached state in modules we touch
     from src import tenant
     tenant.reload()
+
+    # V5.9 — recall block has a 30s TTL cache; tests recreate the DB per
+    # case so stale cached blocks would falsely pass.
+    try:
+        from src import recall
+        recall.reset_recall_cache()
+    except Exception:
+        pass
 
     yield
 

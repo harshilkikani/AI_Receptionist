@@ -14,11 +14,18 @@ We exclude:
   - Spam/silence outcomes (those weren't real conversations)
   - The current in-flight call (matched by call_sid argument when
     available — phone-matching alone could include the just-started call)
+
+V5.9 — `build_recall_block` is invoked on every chat_with_usage call.
+The underlying prior_calls list doesn't materially change during a
+single phone call (5 minutes), so a small TTL cache keyed by
+(client_id, normalized_phone, max_days) eliminates 7+ redundant DB
+fetches per call without affecting correctness.
 """
 from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -151,32 +158,94 @@ def prior_calls(client_id: str, from_phone: str, *,
     return out
 
 
+# V5.9 — TTL cache. Within a single phone call (~5 min), the prior-
+# calls list doesn't change, so caching the rendered block for 30s
+# eliminates 7+ redundant DB fetches per call. Bounded at 5000 entries
+# with naive oldest-first eviction (good enough; entries expire on
+# their own). Keyed by (client_id, normalized_phone, max_days,
+# exclude_call_sid) so different SIDs sharing the same phone don't
+# collide.
+_RECALL_CACHE_TTL = 30.0
+_RECALL_CACHE_MAX = 5000
+_recall_cache: dict = {}
+_recall_cache_lock = threading.Lock()
+
+
+def _recall_cache_get(key: tuple, now: float) -> Optional[str]:
+    with _recall_cache_lock:
+        entry = _recall_cache.get(key)
+        if entry is None:
+            return None
+        block, expires_at = entry
+        if expires_at > now:
+            return block
+        _recall_cache.pop(key, None)
+        return None
+
+
+def _recall_cache_put(key: tuple, block: str, now: float) -> None:
+    with _recall_cache_lock:
+        _recall_cache[key] = (block, now + _RECALL_CACHE_TTL)
+        if len(_recall_cache) > _RECALL_CACHE_MAX:
+            # Drop the 100 oldest entries by expiry timestamp
+            victims = sorted(_recall_cache.items(),
+                             key=lambda kv: kv[1][1])[:100]
+            for k, _ in victims:
+                _recall_cache.pop(k, None)
+
+
+def reset_recall_cache():
+    """Tests + ops can flush the cache without restarting the process."""
+    with _recall_cache_lock:
+        _recall_cache.clear()
+
+
 def build_recall_block(client_id: str, from_phone: str, *,
                        exclude_call_sid: str = "",
                        max_days: int = 7,
                        now_ts: Optional[int] = None) -> str:
     """Render a system-prompt-friendly recall block. Empty string when
-    there's nothing recent to mention (so the prompt stays clean)."""
+    there's nothing recent to mention (so the prompt stays clean).
+
+    V5.9 — cached for 30s per (client, phone, max_days, exclude_sid).
+    `now_ts` overrides bypass the cache so tests stay deterministic."""
+    if not (client_id and from_phone):
+        return ""
+
+    use_cache = now_ts is None
+    now = time.time()
+    cache_key = (client_id, _normalize_phone(from_phone),
+                 max_days, exclude_call_sid)
+    if use_cache:
+        cached = _recall_cache_get(cache_key, now)
+        if cached is not None:
+            return cached
+
     rows = prior_calls(client_id, from_phone,
                        exclude_call_sid=exclude_call_sid,
                        max_days=max_days, now_ts=now_ts)
     if not rows:
-        return ""
-    lines = ["## Recent calls from this same number"]
-    for r in rows:
-        bullet = f"- {r['when_human']}"
-        if r["emergency"]:
-            bullet += " (emergency)"
-        if r["outcome"]:
-            bullet += f" · outcome: {r['outcome']}"
-        if r["duration_s"]:
-            bullet += f" · {r['duration_s']}s"
-        if r["summary"]:
-            bullet += f" — {r['summary']}"
-        lines.append(bullet)
-    lines.append(
-        "If the caller is following up on one of these, lead with that "
-        "instead of starting fresh ('hey, calling back about yesterday?'). "
-        "Don't repeat the summary verbatim; reference it lightly."
-    )
-    return "\n".join(lines)
+        block = ""
+    else:
+        lines = ["## Recent calls from this same number"]
+        for r in rows:
+            bullet = f"- {r['when_human']}"
+            if r["emergency"]:
+                bullet += " (emergency)"
+            if r["outcome"]:
+                bullet += f" · outcome: {r['outcome']}"
+            if r["duration_s"]:
+                bullet += f" · {r['duration_s']}s"
+            if r["summary"]:
+                bullet += f" — {r['summary']}"
+            lines.append(bullet)
+        lines.append(
+            "If the caller is following up on one of these, lead with that "
+            "instead of starting fresh ('hey, calling back about yesterday?'). "
+            "Don't repeat the summary verbatim; reference it lightly."
+        )
+        block = "\n".join(lines)
+
+    if use_cache:
+        _recall_cache_put(cache_key, block, now)
+    return block

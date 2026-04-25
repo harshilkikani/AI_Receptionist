@@ -20,6 +20,7 @@ from src import tts, usage
 def _isolated_db(monkeypatch, tmp_path):
     """Each test gets its own SQLite file."""
     monkeypatch.setattr(usage, "DB_PATH", tmp_path / "usage_v58.db")
+    usage._reset_schema_cache()
     yield
 
 

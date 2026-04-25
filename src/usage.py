@@ -27,6 +27,24 @@ RATE_CARD_PATH = _ROOT / "config" / "rate_card.json"
 
 _db_lock = threading.Lock()
 
+# V5.9 — `_init_schema` was being called from every read/write path
+# (3+ times per LLM turn). Each call runs six CREATE TABLE IF NOT EXISTS
+# statements. Individually cheap (~500us) but it added up: ~5ms wasted
+# per turn × 8 turns × 200 calls/day = several seconds of needless
+# work. We now run the table creation once per process. The public
+# `_init_schema` name is preserved for backwards compatibility with
+# every external module that imports it (recall, transcripts, etc.) —
+# subsequent calls become no-ops thanks to the guard flag.
+_schema_initialized = False
+_schema_lock = threading.Lock()
+
+
+def _reset_schema_cache():
+    """Tests call this after monkey-patching DB_PATH to a tmp file."""
+    global _schema_initialized
+    with _schema_lock:
+        _schema_initialized = False
+
 
 def _ensure_parent_dir():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -41,6 +59,20 @@ def _connect() -> sqlite3.Connection:
 
 
 def _init_schema(conn: sqlite3.Connection):
+    """Public name preserved for backwards compatibility. One-shot
+    guarded — first call runs CREATE TABLE IF NOT EXISTS, subsequent
+    calls are no-ops."""
+    global _schema_initialized
+    if _schema_initialized:
+        return
+    with _schema_lock:
+        if _schema_initialized:
+            return
+        _create_tables(conn)
+        _schema_initialized = True
+
+
+def _create_tables(conn: sqlite3.Connection):
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS calls (
             call_sid       TEXT PRIMARY KEY,

@@ -204,6 +204,7 @@ def test_admin_bookings_empty_state(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from src import usage
     monkeypatch.setattr(usage, "DB_PATH", tmp_path / "fresh.db")
+    usage._reset_schema_cache()
     monkeypatch.setenv("TWILIO_VERIFY_SIGNATURES", "false")
     monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
     from src import security
