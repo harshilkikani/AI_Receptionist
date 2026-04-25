@@ -27,6 +27,9 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("GET",  "/signup"),
     ("POST", "/signup"),
 
+    # V4.1 — TTS cache server
+    ("GET",  "/audio/{filename}"),
+
     ("POST", "/recover/{caller_id}"),
     ("GET",  "/memory/{caller_id}"),
     ("POST", "/memory/{caller_id}"),

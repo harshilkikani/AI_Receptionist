@@ -35,6 +35,7 @@ from src import sentiment_tracker as _sentiment
 from src import usage_cap as _usage_cap
 from src import signup as _signup_module
 from src import webhooks as _webhooks
+from src import tts as _tts
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -100,6 +101,10 @@ app.include_router(_client_portal_module.router)
 
 # V3.12 — public /signup form for self-serve demo tenants
 app.include_router(_signup_module.router)
+
+# V4.1 — /audio/<hash>.mp3 cache server for ElevenLabs (and any future
+# pre-rendered TTS provider)
+app.include_router(_tts.audio_router)
 
 
 @app.exception_handler(anthropic.AuthenticationError)
@@ -418,12 +423,15 @@ def _greeting_for(client: dict, lang: str) -> str:
 
 
 def _respond(vr, message: str, lang: str, client: dict = None):
-    """The ONE pattern used everywhere: Say inside Gather. Nothing else.
-    Caller can interrupt. If they stay silent, Twilio re-fires /voice/gather
-    with empty SpeechResult and we handle it there — one layer, no chains.
+    """The ONE pattern used everywhere: Say (or Play) inside Gather.
+    Caller can interrupt. If they stay silent, Twilio re-fires
+    /voice/gather with empty SpeechResult and we handle it there.
 
-    V3.3 — if the client opts into `voice_style`, the message is wrapped
-    in Polly-friendly SSML for more natural pacing.
+    V3.3 — Polly path can wrap in SSML for natural pacing.
+    V4.1 — Pluggable TTS. If the tenant opts into ElevenLabs (or
+    another non-Polly provider), the response uses <Play> with a cached
+    audio URL. On any failure we transparently fall back to Polly so
+    the call survives.
     """
     g = vr.gather(
         input="speech dtmf",
@@ -434,9 +442,16 @@ def _respond(vr, message: str, lang: str, client: dict = None):
         enhanced=True,
         language=_stt_lang(lang),
     )
-    style = _voice_style.style_for(client, mode="main")
-    payload = _voice_style.apply_ssml(message, style=style) if style else message
-    g.say(payload, voice=_voice_for(lang, client, mode="main"))
+    payload = _tts.render(message, client=client, lang=lang)
+    if payload.kind == "play" and payload.url:
+        g.play(payload.url)
+    else:
+        # Polly path keeps the SSML enhancement for opted-in tenants
+        style = _voice_style.style_for(client, mode="main")
+        ssml_text = (_voice_style.apply_ssml(payload.text, style=style)
+                     if style else payload.text)
+        polly_voice = payload.polly_voice or _voice_for(lang, client, mode="main")
+        g.say(ssml_text, voice=polly_voice)
 
 
 # ── Voice endpoints ───────────────────────────────────────────────────
