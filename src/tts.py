@@ -28,16 +28,25 @@ Caching:
   - Repeated phrases (greetings, goodbyes, capacity messages) hit the
     cache; Anthropic responses don't repeat so they re-render
 
+V5.7 — efficiency upgrades on the ElevenLabs render path:
+  - Use the /stream endpoint so we get the audio body as fast as
+    ElevenLabs can produce it.
+  - output_format=mp3_22050_32 — phone audio is 8kHz; 32kbps is plenty
+    and the file is ~4x smaller than the 128kbps default.
+  - Reuse a singleton http.client.HTTPSConnection so we skip the TLS
+    handshake on every call. ElevenLabs supports HTTP keep-alive.
+
 Failure handling:
   - Any provider error → fall back to PollyProvider so the call survives.
 """
 from __future__ import annotations
 
 import hashlib
+import http.client
 import logging
 import os
 import threading
-import urllib.request
+import urllib.request  # kept only for legacy callers; new path uses http.client
 import urllib.error
 import json
 from dataclasses import dataclass
@@ -48,9 +57,12 @@ log = logging.getLogger("tts")
 
 _AUDIO_DIR = Path(__file__).parent.parent / "data" / "audio"
 
-# In-memory tracker so tests can introspect without touching disk
+# In-memory tracker so tests can introspect without touching disk.
+# V5.7 — added connection_reused so we can confirm keep-alive works.
+# V5.7 — added chars_rendered which feeds the V5.8 cost telemetry.
 _render_stats: dict = {"polly": 0, "elevenlabs": 0, "fallback": 0,
-                       "cache_hit": 0, "cache_miss": 0}
+                       "cache_hit": 0, "cache_miss": 0,
+                       "connection_reused": 0, "chars_rendered": 0}
 _stats_lock = threading.Lock()
 
 
@@ -65,9 +77,9 @@ def reset_stats():
             _render_stats[k] = 0
 
 
-def _bump(key: str):
+def _bump(key: str, by: int = 1):
     with _stats_lock:
-        _render_stats[key] = _render_stats.get(key, 0) + 1
+        _render_stats[key] = _render_stats.get(key, 0) + by
 
 
 @dataclass
@@ -176,14 +188,83 @@ class ElevenLabsProvider(TtsProvider):
         )
 
 
+_ELEVENLABS_HOST = "api.elevenlabs.io"
+_DEFAULT_OUTPUT_FORMAT = "mp3_22050_32"   # V5.7 — phone audio is 8kHz; 32kbps is plenty
+
+# V5.7 — singleton HTTPS connection with keep-alive. ElevenLabs supports
+# HTTP keep-alive natively; reusing the connection skips ~50-150ms of
+# TLS handshake on every render.
+_conn_lock = threading.Lock()
+_conn: Optional[http.client.HTTPSConnection] = None
+
+
+def _release_connection():
+    """Drop the cached connection. Caller invokes when a request errored
+    or the server closed the socket."""
+    global _conn
+    if _conn is not None:
+        try:
+            _conn.close()
+        except Exception:
+            pass
+        _conn = None
+
+
+def close_connection():
+    """Public hook so tests + ops can force a reconnect."""
+    with _conn_lock:
+        _release_connection()
+
+
+def _request_post(path: str, headers: dict, body: bytes,
+                  timeout: float = 10.0) -> tuple:
+    """POST to ELEVENLABS_HOST + path on a pooled HTTPS connection.
+    Retries once if the persistent connection turns out to have been
+    closed by the server (ConnectionError / BadStatusLine).
+    Returns (status, body_bytes, reused: bool).
+    """
+    global _conn
+    with _conn_lock:
+        for attempt in (0, 1):
+            reused = _conn is not None
+            if _conn is None:
+                _conn = http.client.HTTPSConnection(_ELEVENLABS_HOST,
+                                                    timeout=timeout)
+            try:
+                _conn.request("POST", path, body=body, headers=headers)
+                resp = _conn.getresponse()
+                data = resp.read()
+                # Don't close — let the next render reuse it.
+                return resp.status, data, reused
+            except (http.client.RemoteDisconnected,
+                    http.client.BadStatusLine,
+                    ConnectionError,
+                    OSError):
+                # Connection was likely stale (server closed idle socket).
+                # Drop it and retry once with a fresh connection.
+                _release_connection()
+                if attempt == 1:
+                    raise
+        raise RuntimeError("_request_post fell through retry loop")
+
+
 def _fetch_elevenlabs(text: str, voice_id: str, settings: dict,
                       out_path: Path) -> tuple:
-    """Synchronous POST to the ElevenLabs streaming endpoint, write the
-    response body to disk. Returns (ok, error_string)."""
+    """V5.7 — POST to the streaming endpoint, write the response body to
+    disk. Reuses the pooled HTTPS connection. Returns (ok, error_string).
+
+    `urllib.request.urlopen` (the v4.1 implementation) opened a fresh
+    TCP+TLS connection for every render. That's ~150-300ms of overhead
+    per call. The pooled http.client connection cuts that to one
+    handshake per process lifetime under steady-state traffic.
+    """
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
     model = os.environ.get("ELEVENLABS_MODEL",
                             ElevenLabsProvider.DEFAULT_MODEL)
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    output_format = (os.environ.get("ELEVENLABS_OUTPUT_FORMAT")
+                     or _DEFAULT_OUTPUT_FORMAT)
+    path = (f"/v1/text-to-speech/{voice_id}/stream"
+            f"?output_format={output_format}")
     body = json.dumps({
         "text": text,
         "model_id": model,
@@ -196,22 +277,25 @@ def _fetch_elevenlabs(text: str, voice_id: str, settings: dict,
         "xi-api-key": api_key,
         "Content-Type": "application/json",
         "accept": "audio/mpeg",
+        "Connection": "keep-alive",
     }
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = r.read()
-        if not data:
-            return False, "empty_response"
-        out_path.write_bytes(data)
-        return True, None
-    except urllib.error.HTTPError as e:
-        return False, f"http_{e.code}"
-    except urllib.error.URLError as e:
-        return False, f"url_error:{e.reason}"
+        status, data, reused = _request_post(path, headers, body)
     except Exception as e:
         return False, type(e).__name__
+    if status != 200:
+        return False, f"http_{status}"
+    if not data:
+        return False, "empty_response"
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(data)
+    except OSError as e:
+        return False, f"write_failed:{type(e).__name__}"
+    if reused:
+        _bump("connection_reused")
+    _bump("chars_rendered", len(text))
+    return True, None
 
 
 # ── Provider resolution ──────────────────────────────────────────────
