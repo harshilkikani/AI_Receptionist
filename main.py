@@ -36,6 +36,7 @@ from src import usage_cap as _usage_cap
 from src import signup as _signup_module
 from src import webhooks as _webhooks
 from src import tts as _tts
+from src import humanize_speech as _humanize
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
 from src.ops import RequestIDMiddleware, router as _ops_router, install_logging as _install_logging
@@ -442,6 +443,9 @@ def _respond(vr, message: str, lang: str, client: dict = None):
         enhanced=True,
         language=_stt_lang(lang),
     )
+    # V4.2 — natural speech preprocessing for any TTS provider.
+    if _humanize.is_enabled(client):
+        message = _humanize.humanize_for_speech(message)
     payload = _tts.render(message, client=client, lang=lang)
     if payload.kind == "play" and payload.url:
         g.play(payload.url)
