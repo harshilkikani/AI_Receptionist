@@ -1134,8 +1134,146 @@ Trust focus areas:
  - Real calendar that Bob's phone will sync (V4.6)
  - "Hey, calling back about yesterday?" continuity (V4.7)
 
+---
 
+# v5.0 — Quality + refinement pass (V5.1–V5.5)
 
+After four releases of feature work, v5 was a deliberate pause to find
+the bugs that hide behind rapid feature delivery: leaks the test suite
+never noticed, security gaps the audits missed, schema drift, broken
+quiet tests. Five focused tasks; no new user-visible features. Code
+deltas are small; the value is the regression guards added underneath.
+
+## V5.1 — Shared-state leak audit _(complete)_
+
+`src/sentiment_tracker.py` recorded per-call state on every turn but its
+`record_end` was never wired into anything — every call leaked an entry.
+Same shape on smaller scale in `src/security.py` (admin rate-limit
+buckets per IP) and `src/signup.py` (signup rate-limit buckets per IP).
+`src/scheduler.py` accumulated dedup keys forever to avoid double-firing
+the daily digest.
+
+Fixes:
+ - `src/call_timer.py::record_end` now transitively clears
+   sentiment_tracker state — the call-end webhook fans out to every
+   per-call store from one place.
+ - Hard caps with LRU-by-last-seen eviction:
+   - `call_timer._calls`            → 5,000
+   - `sentiment_tracker._tracked`   → 5,000
+   - `security._buckets`            → 10,000
+   - `signup._rate_limits`          → 5,000 + periodic empty-bucket prune
+ - `scheduler.py` prunes dedup keys older than 14 days each tick.
+
+Why caps not "fix the leak completely": a forgotten leak path can
+re-leak silently. Caps make the worst case bounded even if a future
+caller forgets to clean up. New regression suite
+`tests/test_state_leaks.py` (12 tests) simulates 7,000-call churn and
+asserts steady-state size for every store.
+
+## V5.2 — Security + auth audit _(complete)_
+
+Two real holes from v4:
+ - `/admin/recording/{call_sid}.mp3` (V4.5) was missing
+   `Depends(_check_auth)`. Anyone with the URL could fetch a recording
+   even when admin Basic auth was configured. **Closed.**
+ - `/voice/recording` (V4.5) was not in `PROTECTED_PATHS` —
+   `X-Twilio-Signature` was never verified. An attacker could forge
+   `RecordingUrl` to point at a malicious server and we'd happily store
+   it in the calls table. **Closed.**
+
+Plus a hardening sweep:
+ - Path-traversal check on `/admin/recording/{call_sid}` rejects `..`,
+   `/`, `\`. The audio served-from-disk endpoint already had this.
+ - Extracted `src/admin_auth.py` so every admin route shares one auth
+   helper. Backwards-compat shim in `src/admin.py` keeps the old
+   `_check_auth` / `_auth_required` names working.
+
+Regression suite `tests/test_security_audit.py` (20 tests):
+ - `/admin/recording/*` requires auth when creds set; rejects wrong
+   auth; stays open without creds (consistent with rest of `/admin`).
+ - `/voice/recording` 403s when signature missing + enforcement on,
+   passes with valid signature.
+ - Path-traversal payloads on `/admin/recording/*` and `/audio/*`.
+ - Cross-route admin auth sweep + cross-route Twilio-sig coverage.
+ - Cross-tenant token rejection for `/client/*` and `/calendar/*.ics`.
+
+## V5.3 — Pipeline order audit + the deselected test _(complete)_
+
+`tests/test_llm_degradation.py::test_voice_gather_survives_llm_failure`
+had been deselected since v4 because it hung indefinitely under
+TestClient. Root cause: `TwilioSignatureMiddleware` re-yielded the body
+to ASGI receive() but kept returning the same chunk forever. Newer
+Starlette form-parsers loop on this waiting for more_body. **Fixed
+in `src/twilio_signature.py`** — track delivery; second receive() call
+returns `http.disconnect`, the proper end-of-stream signal.
+
+Then the test itself was rewritten to bypass TestClient form parsing
+entirely (it was stress-testing transport, not the feature). New
+version monkey-patches `llm.chat_with_usage` and calls
+`main._run_pipeline` directly to verify a degraded ChatResponse
+propagates through `anti_robot → grounding → humanize → tts`.
+
+Locked-in pipeline order in `tests/test_pipeline_order.py` (9 tests):
+asserts the ordering with both positive (right order works) and
+negative (wrong order corrupts grounding tokens) cases. If a future
+refactor moves humanize before grounding, the regression test fires.
+
+## V5.4 — DB migration consolidation + cross-tenant isolation _(complete)_
+
+`src/call_summary.py` (V3.4) and `src/recordings.py` (V4.5) both did
+their ALTER TABLE lazily on first write. That works but means a fresh
+deploy is missing those columns until the right code path runs. Anyone
+inspecting the schema right after `docker-compose up` would see drift.
+
+`src/migrations.py` (new) consolidates every additive migration into one
+idempotent `run_all()` that main.py's lifespan invokes at startup. Lazy
+ALTERs in the original modules are KEPT (defense in depth) but become
+no-ops after the consolidated pass. Non-raising — boots degraded rather
+than failing to come up. PRAGMA cache + race-safe re-check handle the
+case where two writers ALTER the same column concurrently.
+
+Adding a future migration: append a `(table, column, ddl)` tuple to
+`MIGRATIONS`. The next startup picks it up.
+
+Tests:
+ - `tests/test_migrations.py` (8 tests): empty DB, pre-V3.4 DB, fully
+   migrated DB, double-run, non-existent table, mid-run race.
+ - `tests/test_tenant_isolation.py` (12 tests): every customer-facing
+   surface (admin, portal, calendar, recordings, transcripts, bookings)
+   refuses to leak across tenants. Token signed for tenant A → 403 on
+   tenant B's URL. `?client_id=B` query string on tenant A's portal
+   URL is ignored.
+
+## V5.5 — Dead code sweep + docs reality-check _(complete)_
+
+Static unused-import audit caught two real dead imports:
+ - `from src import call_summary` inside
+   `src/admin.py::recent_calls` — left from a refactor where the route
+   used to render summaries inline. Now the rows already carry the
+   summary column.
+ - `from typing import Optional` in `src/migrations.py` — never used.
+
+Both removed. README badge bumped 657 → 719 tests, version v4.0 → v5.0.
+SHIP_REPORT.md gains a v5 section. This block in CHANGES.md.
+
+---
+
+**v5 totals:** 719 passing pytest cases (60 new since v4.0). 1 new
+module (`src/admin_auth.py`), 1 new system (`src/migrations.py`).
+4 net code commits + 1 docs commit. Zero regressions.
+
+What v5 changed in practice:
+ - Three real leaks bounded; if a fourth slips in, the cap activates
+   silently rather than running the box out of memory.
+ - Two real auth holes closed with explicit regression guards.
+ - One always-deselected test now runs (and passes).
+ - DB schema is reproducible from `migrations.run_all()` alone.
+ - Cross-tenant rejection is a regression suite, not just a code review.
+
+What v5 deliberately did NOT do:
+ - No new user-visible features. Pure quality pass.
+ - No prompt-caching tweaks (P8 is still $0 on Haiku — unchanged).
+ - No new TTS provider, voice cloning, or conversational rewrites.
 
 
 

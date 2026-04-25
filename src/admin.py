@@ -177,7 +177,6 @@ def overview(user=Depends(_check_auth)):
 
 @router.get("/calls", response_class=HTMLResponse)
 def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)):
-    from src import call_summary
     rows_raw = usage.recent_calls(client_id=client_id or None, limit=limit)
     rows = []
     for r in rows_raw:

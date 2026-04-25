@@ -1,10 +1,10 @@
 # SHIP_REPORT — AI Receptionist
 
-_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0 (current tip)**_
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0 (current tip)**_
 
-_Test suite: **657 pytest cases, all passing** (~60 seconds). Legacy
+_Test suite: **719 pytest cases, all passing** (~65 seconds). Legacy
 `_test_suite.py` integration harness: 19 cases against a live server.
-182 new tests since v3.0; 392 since v2.0._
+60 new tests since v4.0; 244 since v3.0; 454 since v2.0._
 
 ---
 
@@ -302,3 +302,56 @@ Honestly framed:
    triage; current single-prompt covers most cases.
  - **Voicemail detection (AMD) for outbound** — no outbound flow shipped
    yet (V3.X listed it as deferred too).
+
+---
+
+# v5.0 — Quality + refinement pass (V5.1–V5.5)
+
+After four releases of feature work, v5 was a deliberate pause to find
+the bugs that hide behind rapid feature delivery. No new user-visible
+features. Five focused tasks, all complete.
+
+| # | Section | Tests | Highlights |
+|---|---|---:|---|
+| V5.1 | **Shared-state leak audit** | 12 | `sentiment_tracker.record_end` was never wired up — every call leaked. Fixed via fan-out from `call_timer.record_end`. Hard caps + LRU eviction on every shared dict (`call_timer`, `sentiment_tracker`, `security`, `signup`). Scheduler dedup keys prune at 14 days. |
+| V5.2 | **Auth + signature audit** | 20 | `/admin/recording/{sid}.mp3` was missing Basic auth (CLOSED). `/voice/recording` was missing Twilio signature verification (CLOSED). Path-traversal hardening on dynamic routes. Shared `src/admin_auth.py` so every admin route uses one helper. |
+| V5.3 | **Pipeline order + the deselected test** | 10 | Fixed the v4 hang in `TwilioSignatureMiddleware` (ASGI receive() must signal end-of-stream after first body delivery). Rewrote the deselected test to call `_run_pipeline` directly. Locked in `anti_robot → grounding → humanize → tts` order with explicit negative-case regression guards. |
+| V5.4 | **DB migration consolidation + isolation** | 20 | New `src/migrations.py` runs all additive ALTERs idempotently on startup. Lazy migrations kept as defense in depth. `tests/test_tenant_isolation.py` confirms every customer-facing surface refuses cross-tenant tokens. |
+| V5.5 | **Dead code + docs** | 0 | Static unused-import sweep. Two real dead imports removed. CHANGES.md + SHIP_REPORT.md + README updated. This file. |
+
+## What v5 changed in practice
+
+ - Three real leaks bounded; if a fourth slips in later, the cap
+   activates silently rather than running the box out of memory.
+ - Two real auth holes closed, both with explicit regression guards.
+ - The always-deselected test now runs and passes.
+ - DB schema is reproducible from `migrations.run_all()` alone — no
+   "first call has to happen" startup hazard.
+ - Cross-tenant rejection is a regression suite, not just a code review
+   item that drifted out of date.
+
+## What v5 did NOT change
+
+ - No new features for the operator or caller. Pure quality pass.
+ - No prompt-caching changes (P8 still $0 on Haiku 4.5 — unchanged).
+ - No transport rewrite, no new TTS provider, no voice cloning.
+
+## Three-command go-live (unchanged from v4)
+
+```bash
+cp .env.example .env  # fill values incl. CLIENT_PORTAL_SECRET, ADMIN_USER/PASS
+docker-compose up -d --build
+python scripts/reclaim_tunnel.py
+```
+
+## Gaps still deferred (carried over from v4 + still true)
+
+ - True sub-300ms latency (transport rewrite for speech-to-speech)
+ - Voice cloning of the owner (legal-sensitivity, IVC)
+ - OAuth Google Calendar write-side
+ - Real-time spam captcha beyond regex
+ - Multi-agent specialist handoff
+ - Voicemail detection (AMD) for outbound
+
+None of these are fixable inside a quality pass — they need feature
+work and a new release line. v5 deliberately stayed in scope.

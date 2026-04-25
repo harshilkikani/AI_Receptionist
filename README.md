@@ -2,16 +2,16 @@
 
 > A voice + SMS AI receptionist for service businesses. Answers missed calls in under a second, routes emergencies to the owner's cell with an SMS brief **before** the bridge, remembers callers across calls, bills per-minute automatically, and improves itself overnight from its own mistakes.
 
-- **657 passing tests**
+- **719 passing tests**
 - **Real production stack** — FastAPI, Twilio, Anthropic Claude Haiku 4.5, SQLite
 - **Multi-tenant** — one YAML per business, one Twilio number per tenant
 - **Zero-framework frontend** — pure HTML + CSS for every UI surface
 - **MIT licensed** — clone it, read it, change it
 
-![status](https://img.shields.io/badge/tests-657%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-719%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![version](https://img.shields.io/badge/version-v4.0-violet)
+![version](https://img.shields.io/badge/version-v5.0-violet)
 
 ---
 
@@ -119,7 +119,7 @@ evals/
   cache_benchmark.py      prompt-caching savings measurement
 scripts/
   reclaim_tunnel.py       auto-capture cloudflared URL + repoint Twilio
-tests/                    265 pytest cases
+tests/                    719 pytest cases
 _test_suite.py            19-case legacy integration suite (live server)
 docs/                     ARCHITECTURE, OPS_RUNBOOK, CLIENT_PORTAL, INVOICES,
                           EVALS, DEMO_SCRIPT, SHOWCASE_SCRIPT, NEW_CLIENT_CHECKLIST
@@ -128,7 +128,7 @@ docs/                     ARCHITECTURE, OPS_RUNBOOK, CLIENT_PORTAL, INVOICES,
 ## Running the tests
 
 ```bash
-pytest tests/             # 265 cases, ~75 seconds
+pytest tests/             # 719 cases, ~65 seconds
 python _test_suite.py     # legacy 19-case integration suite (needs a live server)
 ```
 
