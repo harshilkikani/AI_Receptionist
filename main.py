@@ -113,6 +113,10 @@ app.include_router(_tts.audio_router)
 # V4.5 — /admin/recording/{call_sid}.mp3 streams the Twilio recording
 app.include_router(_recordings.router)
 
+# V4.6 — per-tenant ICS calendar feed
+from src import calendar_feed as _calendar_feed  # noqa: E402
+app.include_router(_calendar_feed.router)
+
 
 @app.exception_handler(anthropic.AuthenticationError)
 async def _auth_err(request: Request, exc: anthropic.AuthenticationError):

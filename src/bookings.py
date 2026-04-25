@@ -248,6 +248,93 @@ def maybe_extract_from_call(call_sid: str, *,
 
 # ── ICS generation ────────────────────────────────────────────────────
 
+def generate_feed_ics(bookings_list: list, *,
+                      tenant_name: str = "Bookings") -> str:
+    """V4.6 — multi-event ICS feed for a tenant's bookings.
+
+    Subscribable in Google Calendar / Apple Calendar / Outlook by URL.
+    All-day events anchored on the booking's `requested_when` if it
+    parses to a date, otherwise on `created_ts`. We DON'T try to be
+    clever about parsing free-text "Tuesday morning" — operators get
+    a placeholder date and confirm the real time.
+    """
+    from datetime import datetime, timedelta, timezone
+    import re as _re
+
+    now = datetime.now(timezone.utc)
+    dtstamp = now.strftime("%Y%m%dT%H%M%SZ")
+
+    lines: list = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//AI Receptionist//Booking Feed//EN",
+        f"X-WR-CALNAME:{(tenant_name or 'Bookings').replace(',', ' ')} bookings",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+        "X-PUBLISHED-TTL:PT1H",
+    ]
+
+    def _esc(s) -> str:
+        return (str(s or "")
+                .replace("\\", "\\\\")
+                .replace(",", "\\,")
+                .replace(";", "\\;")
+                .replace("\n", "\\n"))
+
+    for bk in bookings_list or []:
+        bk_id = bk.get("id") or f"bk_{int(now.timestamp())}"
+        # Anchor: requested_when if it's an ISO date, else created_ts
+        rw = (bk.get("requested_when") or "").strip()
+        anchor = None
+        if rw:
+            m = _re.match(r"(\d{4})-(\d{2})-(\d{2})", rw)
+            if m:
+                try:
+                    anchor = datetime(
+                        int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                        10, 0, tzinfo=timezone.utc,
+                    )
+                except ValueError:
+                    anchor = None
+        if anchor is None:
+            ts = int(bk.get("created_ts") or now.timestamp())
+            base = datetime.fromtimestamp(ts, tz=timezone.utc)
+            anchor = base.replace(hour=10, minute=0, second=0, microsecond=0)
+
+        end = anchor + timedelta(hours=1)
+        summary_bits = []
+        if bk.get("service"):
+            summary_bits.append(bk["service"])
+        if bk.get("caller_name"):
+            summary_bits.append(bk["caller_name"])
+        summary = " — ".join(summary_bits) or "Service appointment"
+
+        descr_parts = []
+        for k, label in [("caller_phone", "Phone"),
+                         ("address", "Address"),
+                         ("requested_when", "Requested"),
+                         ("notes", "Notes")]:
+            v = bk.get(k)
+            if v:
+                descr_parts.append(f"{label}: {v}")
+        description = "\\n".join(_esc(d) for d in descr_parts)
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{bk_id}@ai-receptionist",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART:{anchor.strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}",
+            f"SUMMARY:{_esc(summary)}",
+            f"DESCRIPTION:{description}",
+            f"STATUS:{(bk.get('status') or 'TENTATIVE').upper()}",
+            "END:VEVENT",
+        ])
+
+    lines.append("END:VCALENDAR")
+    # ICS spec wants CRLF
+    return "\r\n".join(lines) + "\r\n"
+
+
 def generate_ics(booking: dict, *, duration_hours: int = 1) -> str:
     """Produce a minimal RFC 5545 .ics calendar invite string. Uses
     'today' + the booking's created_ts as a placeholder DTSTART when no

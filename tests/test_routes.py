@@ -34,6 +34,9 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("POST", "/voice/recording"),
     ("GET",  "/admin/recording/{call_sid}.mp3"),
 
+    # V4.6 — per-tenant ICS calendar feed
+    ("GET",  "/calendar/{client_id}.ics"),
+
     ("POST", "/recover/{caller_id}"),
     ("GET",  "/memory/{caller_id}"),
     ("POST", "/memory/{caller_id}"),
