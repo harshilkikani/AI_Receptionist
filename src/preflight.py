@@ -1,4 +1,4 @@
-"""V6.3 — preflight diagnostic.
+"""V6.3 -- preflight diagnostic.
 
 Single command (`python -m src.preflight` or GET /admin/diagnose) that
 reports red/yellow/green status for every prerequisite the live demo
@@ -63,7 +63,7 @@ def check_anthropic_key(*, ping: bool = False) -> Check:
     if not key:
         return _fail(
             "ANTHROPIC_API_KEY",
-            "missing — voice calls will hit the v6.2 failsafe TwiML",
+            "missing -- voice calls will hit the v6.2 failsafe TwiML",
             detail="Set ANTHROPIC_API_KEY in .env",
         )
     if not key.startswith("sk-ant-"):
@@ -73,9 +73,9 @@ def check_anthropic_key(*, ping: bool = False) -> Check:
         )
     if not ping:
         return _ok("ANTHROPIC_API_KEY",
-                   f"set (sk-ant-…{key[-4:]}); not pinged",
+                   f"set (sk-ant-...{key[-4:]}); not pinged",
                    detail="Run with --ping to verify against the API")
-    # Optional live ping — 1-token "hi"
+    # Optional live ping -- 1-token "hi"
     try:
         import anthropic
         c = anthropic.Anthropic(api_key=key)
@@ -97,15 +97,15 @@ def check_twilio_creds(*, ping: bool = False) -> Check:
     if not sid or not tok:
         return _fail(
             "TWILIO_CREDENTIALS",
-            "missing — signature verification + outbound SMS off",
+            "missing -- signature verification + outbound SMS off",
             detail="Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in .env",
         )
     if not sid.startswith("AC"):
         return _warn("TWILIO_CREDENTIALS",
-                     f"SID doesn't start with 'AC': {sid[:6]}…")
+                     f"SID doesn't start with 'AC': {sid[:6]}...")
     if not ping:
         return _ok("TWILIO_CREDENTIALS",
-                   f"set (AC…{sid[-4:]}); not pinged",
+                   f"set (AC...{sid[-4:]}); not pinged",
                    detail="Run with --ping to verify against Twilio API")
     try:
         import base64
@@ -140,7 +140,7 @@ def check_signature_mode() -> Check:
         return _ok("TWILIO_VERIFY_SIGNATURES",
                    "enforced (recommended for production)")
     return _warn("TWILIO_VERIFY_SIGNATURES",
-                 "shadow mode — forged webhooks would be accepted",
+                 "shadow mode -- forged webhooks would be accepted",
                  detail="Flip to 'true' once webhooks are confirmed shaped right")
 
 
@@ -149,7 +149,7 @@ def check_public_base_url() -> Check:
     if not url:
         return _fail(
             "PUBLIC_BASE_URL",
-            "unset — Twilio signature verification + ElevenLabs <Play> "
+            "unset -- Twilio signature verification + ElevenLabs <Play> "
             "URLs both need it",
             detail="Set to your cloudflared tunnel URL "
                    "(scripts/reclaim_tunnel.py prints it)",
@@ -159,7 +159,7 @@ def check_public_base_url() -> Check:
                      f"doesn't look like a URL: {url[:48]!r}")
     if url.startswith("http://"):
         return _warn("PUBLIC_BASE_URL",
-                     "http (not https) — Twilio webhook is fine but "
+                     "http (not https) -- Twilio webhook is fine but "
                      "cloudflared usually provides https")
     return _ok("PUBLIC_BASE_URL", url)
 
@@ -170,7 +170,7 @@ def check_admin_creds() -> Check:
     if not user and not pw:
         return _warn(
             "ADMIN_CREDENTIALS",
-            "unset — /admin is open to anyone with the URL",
+            "unset -- /admin is open to anyone with the URL",
             detail="Safe for localhost; set before exposing via tunnel",
         )
     if not user or not pw:
@@ -178,7 +178,7 @@ def check_admin_creds() -> Check:
                      "only one of ADMIN_USER / ADMIN_PASS set")
     if len(pw) < 8:
         return _warn("ADMIN_CREDENTIALS",
-                     f"password is {len(pw)} chars — short")
+                     f"password is {len(pw)} chars -- short")
     return _ok("ADMIN_CREDENTIALS", "set")
 
 
@@ -187,12 +187,12 @@ def check_portal_secret() -> Check:
     if not s:
         return _fail(
             "CLIENT_PORTAL_SECRET",
-            "unset — /client/{id}?t=… tokens cannot be issued",
+            "unset -- /client/{id}?t=... tokens cannot be issued",
             detail="Set to 32+ random chars; rotate by changing the value",
         )
     if len(s) < 16:
         return _warn("CLIENT_PORTAL_SECRET",
-                     f"only {len(s)} chars — recommend 32+")
+                     f"only {len(s)} chars -- recommend 32+")
     return _ok("CLIENT_PORTAL_SECRET", f"set ({len(s)} chars)")
 
 
@@ -212,7 +212,7 @@ def check_tenants() -> Check:
     if not routable:
         return _warn("TENANTS",
                      f"{len(clients)} tenants, none with inbound_number")
-    names = ", ".join(f"{c['id']}→{c.get('inbound_number')}" for c in routable)
+    names = ", ".join(f"{c['id']}->{c.get('inbound_number')}" for c in routable)
     return _ok("TENANTS",
                f"{len(routable)}/{len(clients)} routable",
                detail=names)
@@ -245,7 +245,7 @@ def check_twilio_webhook_url(*, ping: bool = False) -> Check:
     if not base or not sid or not tok:
         return _warn(
             "TWILIO_WEBHOOK_URL",
-            "can't check — needs PUBLIC_BASE_URL + Twilio creds")
+            "can't check -- needs PUBLIC_BASE_URL + Twilio creds")
     try:
         from src import tenant
         routable = [c for c in tenant.list_all()
@@ -285,7 +285,7 @@ def check_twilio_webhook_url(*, ping: bool = False) -> Check:
             mismatches.append(f"{num}: lookup failed ({type(e).__name__})")
     if mismatches:
         return _fail("TWILIO_WEBHOOK_URL",
-                     "Twilio webhook URL drift — run scripts/reclaim_tunnel.py",
+                     "Twilio webhook URL drift -- run scripts/reclaim_tunnel.py",
                      detail="; ".join(mismatches))
     return _ok("TWILIO_WEBHOOK_URL",
                f"all routable numbers point at {expected_root}")
@@ -329,7 +329,7 @@ _COLORS = {
     "_off": "\033[0m",
 }
 
-_SYMBOLS = {"ok": "✓", "warn": "!", "fail": "✗"}
+_SYMBOLS = {"ok": "[OK]", "warn": "[!!]", "fail": "[X]"}
 
 
 def _render(result: dict, color: bool = True) -> str:
