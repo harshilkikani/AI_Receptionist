@@ -1,10 +1,10 @@
 # SHIP_REPORT — AI Receptionist
 
-_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0 (current tip)**_
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0** → **v6.0 (current tip)**_
 
-_Test suite: **782 pytest cases, all passing** (~115 seconds). Legacy
+_Test suite: **841 pytest cases, all passing** (~85 seconds). Legacy
 `_test_suite.py` integration harness: 19 cases against a live server.
-123 new tests since v4.0; 307 since v3.0; 517 since v2.0._
+59 new tests since v5.0; 182 since v4.0; 366 since v3.0; 576 since v2.0._
 
 ---
 
@@ -359,3 +359,52 @@ python scripts/reclaim_tunnel.py
 
 None of these are fixable inside a quality pass — they need feature
 work and a new release line. v5 deliberately stayed in scope.
+
+---
+
+# v6.0 — Demo reliability pass (V6.1–V6.5)
+
+After v5 shipped 9 audit passes, the live demo went dark and no test
+fired — caller heard "We are sorry, an application error has
+occurred." v6 exists to make that impossible.
+
+| # | Section | Tests | Highlights |
+|---|---|---:|---|
+| V6.1 | **End-to-end webhook smoke test + the bug it found** | 9 | `tests/test_e2e_call_flow.py` replays a realistic Twilio call (signed webhooks, full handler chain). Writing it surfaced a deadlock in `call_timer._state_lock` (plain `Lock` re-acquired by the same thread when `/voice/gather` arrived before `/voice/incoming`). Swapped to `RLock`. |
+| V6.2 | **Voice paths return TwiML on failure, not 5xx** | 10 | New `_voice_failure_twiml()` helper. Three Anthropic exception handlers and a new last-resort `Exception` handler now check `/voice/*` and return 200 + polite `<Say>` + `<Hangup>`. Non-voice paths still surface real errors. Voice routes relax `Form(...)` to defaults so Twilio retry quirks don't 422. |
+| V6.3 | **Preflight diagnostic + /admin/diagnose** | 32 | `python -m src.preflight` (and `/admin/diagnose` HTML + `/admin/diagnose.json`) reports red/yellow/green for every prerequisite. **Webhook URL drift detector** compares Twilio's configured URL against `PUBLIC_BASE_URL`. |
+| V6.4 | **Lifespan hardening — boot under failure** | 8 | `alerts`/`scheduler` start/stop all wrapped in try/except. App now boots even when migrations, audio cache, scheduler, alerts all crash simultaneously. Voice path is sacred. |
+| V6.5 | **Docs + retag** | 0 | This block. README badge 782 → 841. |
+
+## What v6 changed in practice
+
+ - **The bug behind every "application error" the live demo played
+   is fixed.** RLock fix; documented in CHANGES.md → V6.1.
+ - Every voice route returns 200 + caller-friendly TwiML on backend
+   failure, not 5xx. Anthropic outage, Twilio creds wrong, form
+   parse error, signature middleware crash — caller hears one
+   coherent sentence and hangs up.
+ - The live phone path is now a regression suite, not a manual test.
+ - `python -m src.preflight` surfaces every common misconfig before
+   the operator picks up the phone.
+ - The app boots even with broken background services.
+
+## Three-command go-live (unchanged + verify command added)
+
+```bash
+cp .env.example .env  # fill required values
+docker-compose up -d --build
+python scripts/reclaim_tunnel.py
+
+# V6.3 — verify everything before calling
+python -m src.preflight --ping
+```
+
+## Gaps still deferred (carried over from v4 + still true)
+
+ - True sub-300ms latency (transport rewrite for speech-to-speech)
+ - Voice cloning of the owner (legal-sensitivity, IVC)
+ - OAuth Google Calendar write-side
+ - Real-time spam captcha beyond regex
+ - Multi-agent specialist handoff
+ - Voicemail detection (AMD) for outbound

@@ -1387,8 +1387,145 @@ What v5 deliberately did NOT do:
  - No prompt-caching tweaks (P8 is still $0 on Haiku 4.5 — unchanged).
  - No new TTS provider, voice cloning, or conversational rewrites.
 
+---
 
+# v6.0 — Demo reliability pass (V6.1–V6.5)
 
+After v5 shipped 9 audit passes, the live demo went dark and no test
+fired. Caller heard "We are sorry, an application error has occurred."
+v6 exists to make that impossible: the live phone path is now
+covered by an end-to-end regression test, every backend failure mode
+degrades to caller-friendly TwiML instead of 5xx, and a preflight
+diagnostic catches misconfig before the operator picks up the phone.
+
+## V6.1 — End-to-end webhook smoke test + the bug it found _(complete)_
+
+Every test before today was a unit. The only thing proving the live
+phone path worked was actually picking up the phone. v6.1 closed that
+gap with `tests/test_e2e_call_flow.py` — a 9-case regression suite
+that replays a realistic Twilio call (signed webhooks, full handler
+chain) and asserts every step returns 200 + valid TwiML in <2s.
+
+Writing the test surfaced the actual bug:
+
+`src/call_timer.py::_state_lock` was `threading.Lock()`. When
+`/voice/gather` arrived before its matching `/voice/incoming` —
+Twilio retry, restart between webhooks, manual replay — `check()`
+acquired the lock and called `record_start()`, which tried to
+acquire the **same** lock. Plain `Lock` deadlocked the thread
+permanently. Twilio waited 15s, timed out, played "application
+error." Swapped to `threading.RLock()` (reentrant; same-thread
+re-acquisition is a no-op).
+
+The smoke test now covers: new caller full flow, returning caller
+skips menu, empty speech reprompts, emergency-priority code path,
+LLM crash recovery (via V6.2), signature rejection is 403 not 5xx,
+2s latency budget on every voice route, missing /voice/status fields,
+no Python traceback in any response body.
+
+## V6.2 — Voice paths return TwiML on failure, not 5xx _(complete)_
+
+Twilio displays "application error" on any non-2xx response or any
+non-TwiML body. The three existing exception handlers
+(`anthropic.AuthenticationError`, `TypeError` for missing-key,
+`anthropic.APIError`) all returned JSON 503. v6.2 makes them
+path-aware:
+
+  - Voice paths (`/voice/*`) get `_voice_failure_twiml()` — a polite
+    `<Say>` + `<Hangup>` response. Caller hears "I'm having a brief
+    issue, please give us a quick call back" instead of Twilio's
+    stock failure.
+  - Non-voice paths (admin, chat, etc.) still get JSON 503/500 so
+    debug isn't masked.
+  - New last-resort `@app.exception_handler(Exception)` catches
+    anything unhandled on `/voice/*` and converts to TwiML. Non-voice
+    re-raises so FastAPI's normal 500 fires.
+  - All voice routes (`/voice/incoming`, `setlang`, `gather`,
+    `status`) relax their `Form(...)` to `Form(default="")` so
+    Twilio retry quirks (missing fields) return 200 with `action:
+    none` instead of 422.
+
+Tests: `tests/test_voice_failsafe.py` (10 cases) covers Anthropic
+auth/API errors, missing-key TypeError, generic RuntimeError, the
+non-voice paths preserve debug output, voice/status field
+permissiveness, and the helper's TwiML is valid parseable XML.
+
+## V6.3 — Preflight diagnostic + /admin/diagnose _(complete)_
+
+A single command — `python -m src.preflight` — that reports red/
+yellow/green status for every prerequisite the live demo needs. Same
+checks rendered as HTML at `/admin/diagnose` + JSON at
+`/admin/diagnose.json` (both auth-gated).
+
+Checks:
+  - `ANTHROPIC_API_KEY` set, optionally pinged with a 1-token call
+  - `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` set, optionally
+    validated against api.twilio.com
+  - `TWILIO_VERIFY_SIGNATURES` enforced vs shadow vs garbage
+  - `PUBLIC_BASE_URL` https vs http vs missing vs garbage
+  - `ADMIN_USER` + `ADMIN_PASS` present + password length
+  - `CLIENT_PORTAL_SECRET` present + min length
+  - `clients/*.yaml` — at least one tenant with `inbound_number`
+  - `data/usage.db` writable (create-table probe)
+  - **Twilio webhook URL drift detector** — compares the URL Twilio
+    has configured for the live tenant number against
+    `PUBLIC_BASE_URL`. Mismatched = tunnel restarted, run
+    `scripts/reclaim_tunnel.py`.
+
+CLI exits non-zero on fail (CI-friendly). 32 tests cover individual
+checks, aggregate run, CLI rendering, JSON output, exit codes, route
+HTML + JSON + auth.
+
+## V6.4 — Lifespan hardening — boot under failure _(complete)_
+
+Lifespan is the app's only chance to bring up background loops, run
+migrations, pre-warm caches. If any of those crashed, the FastAPI
+process used to die — but voice webhooks worked just fine without
+them. v6.4 wraps every step so the demo answers the phone even when
+peripheral systems are broken.
+
+  - `alerts.start_background_loop`, `scheduler.start`,
+    `alerts.stop_background_loop`, `scheduler.stop` all now wrapped
+    in try/except. Previously a scheduler crash at boot killed the
+    app before any voice webhook could answer.
+  - Existing wrappers around `migrations.run_all`,
+    `onboarding.purge_expired_demos`, `audio_cache.evict_if_needed`,
+    `audio_cache.prewarm_all` unchanged (already defensive).
+
+Tests: `tests/test_lifespan_hardening.py` (8 cases) inject failure
+into each startup step and confirm `/health` still responds 200, plus
+a worst-case test where every startup step fails simultaneously and
+`/voice/incoming` still returns valid TwiML.
+
+## V6.5 — Docs + retag + push _(complete)_
+
+This section. CHANGES.md gains a v6.0 block; SHIP_REPORT.md gains a
+v6 table; README.md badges bump 782 → 841 tests, v5.0 → v6.0.
+
+---
+
+**v6 totals:** 841 passing pytest cases (59 new since v5.0). 1 new
+module (`src/preflight.py`). 4 code commits + 1 docs commit. Zero
+regressions across v1–v5.
+
+What v6 changed in practice:
+ - The bug behind every "application error" the live demo played is
+   fixed. (`call_timer` deadlock under `/voice/gather`-before-
+   `/voice/incoming`.)
+ - Every voice route now returns 200 + caller-friendly TwiML on
+   backend failure, not 5xx. Anthropic outage, Twilio creds wrong,
+   form parse error, signature middleware crash — caller hears one
+   coherent sentence and hangs up, never Twilio's stock error.
+ - The live phone path is now a regression suite, not a manual test.
+ - Misconfigs surface in `python -m src.preflight` (or
+   `/admin/diagnose`) before they reach a caller.
+ - The app boots even with broken background services — voice path
+   is sacred.
+
+What v6 deliberately did NOT do:
+ - No new features for the operator or caller.
+ - No prompt-caching changes.
+ - No new TTS provider, voice cloning, or transport rewrite.
 
 
 

@@ -2,16 +2,16 @@
 
 > A voice + SMS AI receptionist for service businesses. Answers missed calls in under a second, routes emergencies to the owner's cell with an SMS brief **before** the bridge, remembers callers across calls, bills per-minute automatically, and improves itself overnight from its own mistakes.
 
-- **782 passing tests**
+- **841 passing tests**
 - **Real production stack** — FastAPI, Twilio, Anthropic Claude Haiku 4.5, SQLite
 - **Multi-tenant** — one YAML per business, one Twilio number per tenant
 - **Zero-framework frontend** — pure HTML + CSS for every UI surface
 - **MIT licensed** — clone it, read it, change it
 
-![status](https://img.shields.io/badge/tests-782%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-841%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![version](https://img.shields.io/badge/version-v5.0-violet)
+![version](https://img.shields.io/badge/version-v6.0-violet)
 
 ---
 
@@ -24,13 +24,16 @@ pip install -r requirements.txt
 cp .env.example .env
 # edit .env — at minimum set ANTHROPIC_API_KEY and ADMIN_USER/ADMIN_PASS
 uvicorn main:app --port 8765
+
+# V6.3 — verify your config before picking up the phone
+python -m src.preflight --ping
 ```
 
 Open `http://localhost:8765` — the embedded chat demos the septic tenant
 live. `/admin` is the operator dashboard. `/client/septic_pro?t=<token>`
 is the client-facing portal (mint a token with
 `python -m src.client_portal issue septic_pro` after setting
-`CLIENT_PORTAL_SECRET`).
+`CLIENT_PORTAL_SECRET`). `/admin/diagnose` is the live preflight check.
 
 Full three-command go-live: see [`SHIP_REPORT.md`](SHIP_REPORT.md).
 
@@ -119,7 +122,7 @@ evals/
   cache_benchmark.py      prompt-caching savings measurement
 scripts/
   reclaim_tunnel.py       auto-capture cloudflared URL + repoint Twilio
-tests/                    782 pytest cases
+tests/                    841 pytest cases
 _test_suite.py            19-case legacy integration suite (live server)
 docs/                     ARCHITECTURE, OPS_RUNBOOK, CLIENT_PORTAL, INVOICES,
                           EVALS, DEMO_SCRIPT, SHOWCASE_SCRIPT, NEW_CLIENT_CHECKLIST
@@ -128,7 +131,7 @@ docs/                     ARCHITECTURE, OPS_RUNBOOK, CLIENT_PORTAL, INVOICES,
 ## Running the tests
 
 ```bash
-pytest tests/             # 782 cases, ~115 seconds
+pytest tests/             # 841 cases, ~85 seconds
 python _test_suite.py     # legacy 19-case integration suite (needs a live server)
 ```
 
