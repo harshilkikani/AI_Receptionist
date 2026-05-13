@@ -39,6 +39,7 @@ NAV: list = [
     ("Bookings",     "/admin/bookings"),
     ("Analytics",    "/admin/analytics"),
     ("Evals",        "/admin/evals"),
+    ("Diagnose",     "/admin/diagnose"),    # V6.3
     ("Export CSV",   "/admin/export.csv"),
     ("Feature flags", "/admin/flags"),
 ]
@@ -849,3 +850,57 @@ def _silence_rate(client_id: str, month: str) -> float:
     if total == 0:
         return 0.0
     return int(row["s"] or 0) / total
+
+
+# ── V6.3 — preflight diagnostic ─────────────────────────────────────────
+
+@router.get("/diagnose", response_class=HTMLResponse)
+def diagnose(ping: int = 0, user=Depends(_check_auth)):
+    """V6.3 — run the live-demo preflight check and render red/yellow/
+    green. `?ping=1` also hits Anthropic + Twilio APIs to verify creds
+    really work."""
+    from src import preflight
+    result = preflight.run_all(ping=bool(ping))
+
+    _variant_for = {"ok": "good", "warn": "warn", "fail": "bad"}
+    rows = []
+    for c in result["checks"]:
+        status = c["status"]
+        detail = html.escape(c["detail"]) if c.get("detail") else ""
+        rows.append([
+            pill(status.upper(), variant=_variant_for.get(status, "info")),
+            html.escape(c["name"]),
+            html.escape(c["message"]),
+            f'<span style="color:#888">{detail}</span>' if detail else "",
+        ])
+
+    summary = result["summary"]
+    counts = result["counts"]
+    summary_pill = pill(summary.upper(),
+                        variant=_variant_for.get(summary, "info"))
+    header_html = (
+        f'<div style="margin-bottom:1em">'
+        f'{summary_pill} &nbsp; '
+        f'{counts["ok"]} ok &nbsp; {counts["warn"]} warn &nbsp; '
+        f'{counts["fail"]} fail'
+        f'</div>'
+    )
+    ping_note = (
+        ' <span style="color:#888">(includes live API pings)</span>'
+        if ping else
+        ' <a href="?ping=1" style="color:#888">[run with API pings]</a>'
+    )
+    body = (
+        f'<h2>Preflight diagnostic{ping_note}</h2>'
+        + header_html
+        + data_table(["Status", "Check", "Result", "Detail"], rows)
+    )
+    return page(title="Preflight diagnostic", body=body, nav=NAV,
+                active="/admin/diagnose")
+
+
+@router.get("/diagnose.json")
+def diagnose_json(ping: int = 0, user=Depends(_check_auth)):
+    """Machine-readable variant — `curl /admin/diagnose.json?ping=1`."""
+    from src import preflight
+    return JSONResponse(preflight.run_all(ping=bool(ping)))
