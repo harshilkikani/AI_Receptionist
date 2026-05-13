@@ -31,6 +31,15 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
 
+# V6.6 -- when run via `python -m src.preflight` the dotenv hasn't fired
+# yet (main.py does load_dotenv() at import). Load .env explicitly so
+# the preflight CLI sees the same env that the running server would.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv()
+except Exception:
+    pass
+
 log = logging.getLogger("preflight")
 
 _ROOT = Path(__file__).parent.parent
