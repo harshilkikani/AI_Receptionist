@@ -39,6 +39,7 @@ from src import tts as _tts
 from src import humanize_speech as _humanize
 from src import anti_robot as _anti_robot
 from src import grounding as _grounding
+from src import disfluency as _disfluency
 from src import recordings as _recordings
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
@@ -312,6 +313,19 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
         except AttributeError:
             result.reply = grounded
 
+    # V7.2 — natural disfluency. Opt-in per tenant via `disfluency: true`.
+    # Runs AFTER anti_robot + grounding so the cleaning passes don't
+    # fight our fillers, and BEFORE humanize/tts so the filler reads
+    # as part of the same TTS pass.
+    if _disfluency.is_enabled(client):
+        embellished = _disfluency.add_disfluency(result.reply, client)
+        if embellished != result.reply:
+            log.info("disfluency injected call_sid=%s", call_sid)
+            try:
+                result = result.model_copy(update={"reply": embellished})
+            except AttributeError:
+                result.reply = embellished
+
     # Track LLM + TTS usage (TTS char count = length of reply, since Polly
     # bills by synthesized character)
     usage.log_turn(
@@ -554,17 +568,33 @@ def _stt_lang(lang: str) -> str:
 
 DTMF_LANG = {"1": "en", "2": "es", "3": "hi", "4": "gu"}
 
-def _greeting_for(client: dict, lang: str) -> str:
-    """Per-client greeting. Uses client['name']; Joanna is the persona name
-    (hardcoded — same AI answers for every client)."""
-    company = client["name"]
-    if lang == "es":
-        return f"Hola, habla Joanna de {company}— en que te puedo ayudar?"
-    if lang == "hi":
-        return f"Hey, main Joanna, {company} se— kya hua batao?"
-    if lang == "gu":
-        return f"Hey, hu Joanna, {company} thi— shu thayum kahejo?"
-    return f"Hey, this is Joanna from {company}— what's going on?"
+def _greeting_for(client: dict, lang: str,
+                  *, caller: dict = None,
+                  recall_block: str = None) -> str:
+    """V7.3 — time-of-day + recall-aware greeting. Delegates to
+    src.greeting.greeting_for so the templates + bucket logic live in
+    one place. The function keeps its existing 2-positional signature
+    for backwards compatibility (every test that calls
+    `_greeting_for(client, lang)` keeps working); new contextual args
+    are keyword-only.
+
+    Falls back to the v1 static greeting if the helper module fails to
+    import or raises — never blocks the call on a greeting bug.
+    """
+    try:
+        from src import greeting as _greeting
+        return _greeting.greeting_for(
+            client, lang, caller=caller, recall_block=recall_block)
+    except Exception as e:
+        log.warning("greeting.greeting_for failed (%s); using fallback", e)
+        company = (client or {}).get("name") or "the office"
+        if lang == "es":
+            return f"Hola, habla Joanna de {company}— en que te puedo ayudar?"
+        if lang == "hi":
+            return f"Hey, main Joanna, {company} se— kya hua batao?"
+        if lang == "gu":
+            return f"Hey, hu Joanna, {company} thi— shu thayum kahejo?"
+        return f"Hey, this is Joanna from {company}— what's going on?"
 
 
 def _respond(vr, message: str, lang: str, client: dict = None):
@@ -658,14 +688,26 @@ def voice_incoming(From: str = Form(default=""), To: str = Form(default=""),
     saved_lang = caller.get("language")
     vr = VoiceResponse()
 
-    # Returning caller with known language — skip menu, greet directly
+    # Returning caller with known language — skip menu, greet directly.
+    # V7.3 — the greeting helper now handles time-of-day variation,
+    # named-returning-caller, AND recall-aware ("calling back about
+    # yesterday?") all in one place. Best-effort recall lookup: if it
+    # fails for any reason, fall through to plain bucket greeting.
     if saved_lang and saved_lang in VOICE_MAP:
-        first_name = (caller.get("name") or "").split(" ")[0]
-        company = client["name"]
-        if caller.get("type") == "return" and first_name:
-            greeting = f"Hey {first_name}! It's {company}— what's going on?"
-        else:
-            greeting = _greeting_for(client, saved_lang)
+        recall_block = None
+        try:
+            from src import recall as _recall
+            recall_block = _recall.build_recall_block(
+                client_id=client.get("id", ""),
+                from_phone=From,
+                exclude_call_sid=CallSid,
+            )
+        except Exception as e:
+            log.debug("recall lookup failed for greeting: %s", e)
+        greeting = _greeting_for(
+            client, saved_lang,
+            caller=caller, recall_block=recall_block,
+        )
         _respond(vr, greeting, saved_lang, client=client)
         return _twiml(str(vr))
 

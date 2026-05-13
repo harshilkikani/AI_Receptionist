@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 
 import llm
-from src import anti_robot, grounding, humanize_speech
+from src import anti_robot, grounding, humanize_speech, disfluency
 
 
 # ── ordering invariants ─────────────────────────────────────────────
@@ -219,3 +219,73 @@ def test_pipeline_empty_reply_safe(monkeypatch):
     )
     # No exception, valid output dict
     assert "reply" in out
+
+
+# ── V7.2 disfluency placement guards ─────────────────────────────────
+
+def test_disfluency_runs_after_anti_robot_and_grounding(monkeypatch):
+    """V7.2 must fire AFTER anti_robot + grounding so the cleaning
+    passes don't fight the fillers. Verified by watching call order on
+    spies installed in _run_pipeline's dependencies."""
+    import main
+    call_order = []
+
+    real_scrub = anti_robot.scrub
+    real_verify = grounding.verify_reply
+    real_add = disfluency.add_disfluency
+
+    def spy_scrub(t):
+        call_order.append("anti_robot")
+        return real_scrub(t)
+
+    def spy_verify(t, c):
+        call_order.append("grounding")
+        return real_verify(t, c)
+
+    def spy_add(t, c, **kw):
+        call_order.append("disfluency")
+        return real_add(t, c, **kw)
+
+    monkeypatch.setattr(anti_robot, "scrub", spy_scrub)
+    monkeypatch.setattr(grounding, "verify_reply", spy_verify)
+    monkeypatch.setattr(disfluency, "add_disfluency", spy_add)
+    monkeypatch.setattr(llm, "chat_with_usage",
+                        lambda *a, **k: (llm.ChatResponse(
+                            reply="That's fine.",
+                            intent="General", priority="low"), (1, 1)))
+
+    main._run_pipeline(
+        {"id": "x", "phone": "+1", "history": [], "conversation": []},
+        "hi",
+        client={"id": "x", "name": "X",
+                "disfluency": True, "anti_robot_scrub": True,
+                "strict_grounding": True},
+        call_sid="CA_v72_order",
+    )
+    # Disfluency must come AFTER both anti_robot and grounding
+    assert "anti_robot" in call_order
+    assert "grounding" in call_order
+    assert "disfluency" in call_order
+    assert call_order.index("disfluency") > call_order.index("anti_robot")
+    assert call_order.index("disfluency") > call_order.index("grounding")
+
+
+def test_disfluency_off_means_no_call(monkeypatch):
+    """If disfluency is disabled on the tenant, add_disfluency must not
+    be invoked at all (avoid wasted work)."""
+    import main
+    called = []
+    monkeypatch.setattr(disfluency, "add_disfluency",
+                        lambda *a, **k: called.append("hit") or a[0])
+    monkeypatch.setattr(llm, "chat_with_usage",
+                        lambda *a, **k: (llm.ChatResponse(
+                            reply="That's fine.",
+                            intent="General", priority="low"), (1, 1)))
+
+    main._run_pipeline(
+        {"id": "x", "phone": "+1", "history": [], "conversation": []},
+        "hi",
+        client={"id": "x", "name": "X"},   # no disfluency flag
+        call_sid="CA_v72_offorder",
+    )
+    assert called == []
