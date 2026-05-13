@@ -24,7 +24,15 @@ import re
 import time
 import threading
 
-_state_lock = threading.Lock()
+# V6.1 — RLock not Lock. `check()` reaches `record_start()` when a
+# /voice/gather arrives before its matching /voice/incoming (Twilio
+# retry, restart between webhooks, manual replay). Both functions
+# acquire this lock. Plain `Lock` deadlocked the thread permanently,
+# which surfaced upstream as "Twilio application error" because the
+# webhook never responded. Reentrant lock makes the re-acquisition
+# a no-op, matching the intent that check() be safe regardless of
+# whether record_start has run yet.
+_state_lock = threading.RLock()
 _calls: dict = {}  # call_sid -> {start_ts, client_id, emergency, grace_used}
 
 # V5.1 — defensive bound. If something fails to call record_end (a bug,
