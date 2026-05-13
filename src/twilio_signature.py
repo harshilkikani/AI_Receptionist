@@ -41,6 +41,7 @@ log = logging.getLogger("twilio_signature")
 PROTECTED_PATHS: tuple = ("/voice/incoming", "/voice/setlang",
                           "/voice/gather", "/voice/status",
                           "/voice/recording",
+                          "/voice/respond",      # V8.9b — endpointing-filler followup
                           "/sms/incoming")
 
 

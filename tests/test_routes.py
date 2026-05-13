@@ -45,6 +45,7 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("POST", "/voice/incoming"),
     ("POST", "/voice/setlang"),
     ("POST", "/voice/gather"),
+    ("POST", "/voice/respond"),       # V8.9b — endpointing-filler followup
     ("POST", "/voice/status"),
     ("POST", "/sms/incoming"),
 

@@ -75,6 +75,32 @@ PREWARM_GOODBYES: tuple = (
 )
 
 
+# V8.9b — endpointing fillers. These play IMMEDIATELY after the caller
+# stops speaking (≤300ms perceived latency to first audio) while the
+# real LLM call runs in parallel in a background thread. By the time
+# the filler finishes (~800ms-1.2s of audio), the LLM result is ready
+# and the real reply starts. Caller's brain interprets the filler as
+# "the AI is thinking" instead of "the AI is dead air."
+#
+# Vocabulary chosen to:
+#   - Sound natural (real receptionists say these between turns)
+#   - Survive V4.3 anti_robot.scrub unchanged (already verified for
+#     V7.2 disfluency openers — same shape)
+#   - Be varied so a caller doesn't hear the same one each turn
+#   - Be SHORT enough that the gap-to-substance is small but LONG
+#     enough that the LLM has time to finish (~600-1200ms each)
+PREWARM_FILLERS: tuple = (
+    "Mhm,",
+    "Okay,",
+    "Yeah,",
+    "Right,",
+    "Lemme see —",
+    "One sec —",
+    "Okay so —",
+    "Sure thing,",
+)
+
+
 def _greetings_for(client: dict) -> list:
     """Mirror main._greeting_for across all 4 supported languages."""
     company = (client or {}).get("name") or "the office"
@@ -116,7 +142,8 @@ def prewarm_for_tenant(client: dict) -> dict:
                + [_force_end_for(client)]
                + list(PREWARM_DEGRADED_PHRASES)
                + list(PREWARM_ACKS)         # V8.4 — instant ack hits
-               + list(PREWARM_GOODBYES))    # V8.4 — terminal goodbyes
+               + list(PREWARM_GOODBYES)     # V8.4 — terminal goodbyes
+               + list(PREWARM_FILLERS))     # V8.9b — endpointing fillers
     for text in phrases:
         try:
             payload = _tts.render(text, client=client)
@@ -225,6 +252,40 @@ def evict_if_needed(max_age_days: int = DEFAULT_MAX_AGE_DAYS,
         "kept": len(survivors),
         "bytes_freed": bytes_freed,
     }
+
+
+def filler_payload_for(client: Optional[dict], *,
+                        rng=None):
+    """V8.9b — return a TtsPayload for a randomly-picked endpointing
+    filler. Only succeeds if the tenant is on a play-capable provider
+    AND the filler is already cached (we MUST NOT trigger a live
+    render on the critical path — that would defeat the whole point).
+    Returns None when no cached filler is available; callers fall
+    through to the synchronous path."""
+    import random
+    if not _is_elevenlabs_tenant(client):
+        return None
+    r = rng if rng is not None else random
+    # Try each filler in a shuffled order; return the first that has a
+    # cached file on disk. Lazy import avoids a cycle with src.tts.
+    from src import tts as _tts
+    candidates = list(PREWARM_FILLERS)
+    r.shuffle(candidates)
+    voice_id = _tts.voice_id_for(client) or ""
+    for text in candidates:
+        h = _tts._hash_key(text, voice_id, "elevenlabs")
+        cached = _AUDIO_DIR / f"{h}.mp3"
+        if cached.exists():
+            # Build the play URL via the same resolver used in render
+            base = _tts._public_base_url()
+            if not base:
+                return None
+            return _tts.TtsPayload(
+                kind="play",
+                url=f"{base}/audio/{h}.mp3",
+                duration_estimate_ms=int(len(text) * 60),
+            )
+    return None
 
 
 def cache_stats() -> dict:

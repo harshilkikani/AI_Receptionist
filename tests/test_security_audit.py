@@ -192,7 +192,8 @@ def test_every_voice_route_in_protected_list():
     PROTECTED_PATHS so signature verification applies."""
     from src import twilio_signature
     expected = {"/voice/incoming", "/voice/setlang", "/voice/gather",
-                "/voice/status", "/voice/recording"}
+                "/voice/status", "/voice/recording",
+                "/voice/respond"}    # V8.9b — endpointing-filler followup
     assert expected <= set(twilio_signature.PROTECTED_PATHS)
 
 

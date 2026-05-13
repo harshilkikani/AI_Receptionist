@@ -113,14 +113,58 @@ SEED = {
 }
 
 
+# V8.9b — memory.json access serialization. Two concurrent writers
+# from V8.9b's background-thread pipeline (the synchronous /voice/gather
+# path AND the worker calling memory.append_turn at the same instant)
+# raced and concatenated JSON, corrupting the file. _save now writes
+# to a temp file + atomic rename, AND a process-wide lock serializes
+# load+save so partial state never appears on disk.
+_io_lock = __import__("threading").Lock()
+
+
 def _load() -> dict:
+    with _io_lock:
+        return _load_unsafe()
+
+
+def _load_unsafe() -> dict:
+    """Internal: read without the lock. Use _load() from external code."""
     if not MEMORY_FILE.exists():
-        MEMORY_FILE.write_text(json.dumps(SEED, indent=2))
-    return json.loads(MEMORY_FILE.read_text())
+        _atomic_write(json.dumps(SEED, indent=2))
+        return dict(SEED)
+    try:
+        return json.loads(MEMORY_FILE.read_text())
+    except json.JSONDecodeError as e:
+        # V8.9b — corrupt memory.json (e.g. from a pre-atomic-write race)
+        # would otherwise wedge every voice call. Back up the corrupt
+        # file for forensics and rebuild from SEED so the demo recovers
+        # automatically on next read.
+        import logging, time
+        log = logging.getLogger("memory")
+        backup = MEMORY_FILE.with_suffix(
+            f".corrupt.{int(time.time())}.json")
+        try:
+            MEMORY_FILE.rename(backup)
+        except OSError:
+            pass
+        log.error("memory.json was corrupt at char %s — backed up to %s, "
+                  "rebuilding from SEED", e.pos, backup.name)
+        _atomic_write(json.dumps(SEED, indent=2))
+        return dict(SEED)
+
+
+def _atomic_write(text: str) -> None:
+    """V8.9b — write via temp file + os.replace so partial writes can
+    never appear on disk. Avoids the JSONDecodeError-on-read race."""
+    import os
+    tmp = MEMORY_FILE.with_suffix(MEMORY_FILE.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, MEMORY_FILE)
 
 
 def _save(data: dict) -> None:
-    MEMORY_FILE.write_text(json.dumps(data, indent=2))
+    with _io_lock:
+        _atomic_write(json.dumps(data, indent=2))
 
 
 def list_callers() -> list:
@@ -142,64 +186,73 @@ def normalize_phone(phone: str) -> str:
 
 def get_or_create_by_phone(phone: str) -> dict:
     """Look up a caller by phone number across all records; create a new
-    record keyed by normalized digits if none exists. Used by voice + SMS."""
-    data = _load()
+    record keyed by normalized digits if none exists. Used by voice + SMS.
+
+    V8.9b — load + check + save are now held under the IO lock so two
+    concurrent webhooks for the same phone don't both create a new
+    record + double-write.
+    """
     digits = normalize_phone(phone)
-
-    # Check existing callers for a phone match
-    for caller in data.values():
-        if normalize_phone(caller.get("phone", "")) == digits:
-            return caller
-
-    # New caller — create record keyed by digits
-    new_caller = {
-        "id": digits,
-        "name": "Unknown caller",
-        "phone": phone,
-        "type": "new",
-        "address": None,
-        "equipment": None,
-        "notes": None,
-        "preview": "(inbound phone contact)",
-        "history": [],
-        "conversation": [],
-        "lastIntent": None,
-        "lastPriority": None,
-    }
-    data[digits] = new_caller
-    _save(data)
-    return new_caller
+    with _io_lock:
+        data = _load_unsafe()
+        # Check existing callers for a phone match
+        for caller in data.values():
+            if normalize_phone(caller.get("phone", "")) == digits:
+                return caller
+        # New caller — create record keyed by digits
+        new_caller = {
+            "id": digits,
+            "name": "Unknown caller",
+            "phone": phone,
+            "type": "new",
+            "address": None,
+            "equipment": None,
+            "notes": None,
+            "preview": "(inbound phone contact)",
+            "history": [],
+            "conversation": [],
+            "lastIntent": None,
+            "lastPriority": None,
+        }
+        data[digits] = new_caller
+        _atomic_write(json.dumps(data, indent=2))
+        return new_caller
 
 
 def append_turn(caller_id: str, role: str, text: str,
                 intent: Optional[str] = None,
                 priority: Optional[str] = None) -> None:
-    data = _load()
-    caller = data.get(caller_id)
-    if not caller:
-        return
-    caller.setdefault("conversation", []).append({"role": role, "text": text})
-    if intent:
-        caller["lastIntent"] = intent
-    if priority:
-        caller["lastPriority"] = priority
-    _save(data)
+    """V8.9b — atomic read-modify-write. Two concurrent appends used to
+    race; the second clobbered the first."""
+    with _io_lock:
+        data = _load_unsafe()
+        caller = data.get(caller_id)
+        if not caller:
+            return
+        caller.setdefault("conversation", []).append({"role": role, "text": text})
+        if intent:
+            caller["lastIntent"] = intent
+        if priority:
+            caller["lastPriority"] = priority
+        _atomic_write(json.dumps(data, indent=2))
 
 
 def add_history_note(caller_id: str, note: str, date: str = "Today") -> None:
-    data = _load()
-    caller = data.get(caller_id)
-    if not caller:
-        return
-    caller.setdefault("history", []).insert(0, {"date": date, "note": note})
-    _save(data)
+    with _io_lock:
+        data = _load_unsafe()
+        caller = data.get(caller_id)
+        if not caller:
+            return
+        caller.setdefault("history", []).insert(0, {"date": date, "note": note})
+        _atomic_write(json.dumps(data, indent=2))
 
 
 def update_caller(caller_id: str, **fields) -> Optional[dict]:
-    data = _load()
-    caller = data.get(caller_id)
-    if not caller:
-        return None
-    caller.update(fields)
-    _save(data)
-    return caller
+    with _io_lock:
+        data = _load_unsafe()
+        caller = data.get(caller_id)
+        if not caller:
+            return None
+        caller.update(fields)
+        _atomic_write(json.dumps(data, indent=2))
+        return caller

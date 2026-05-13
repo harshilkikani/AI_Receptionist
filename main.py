@@ -10,7 +10,11 @@ only needed if you wire up a real phone number (Step 3).
 """
 
 import os
+import secrets
+import threading
+import time
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()  # MUST run before importing llm (SDK reads key at instantiation)
@@ -40,6 +44,7 @@ from src import humanize_speech as _humanize
 from src import anti_robot as _anti_robot
 from src import grounding as _grounding
 from src import disfluency as _disfluency
+from src import audio_cache as _audio_cache_module   # V8.9b filler lookup
 from src import recordings as _recordings
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
 from src.twilio_signature import TwilioSignatureMiddleware
@@ -615,6 +620,120 @@ def _greeting_for(client: dict, lang: str,
         return f"Hey, this is Joanna from {company}— what's going on?"
 
 
+# ── V8.9b — endpointing-filler infrastructure ──────────────────────────
+#
+# When a non-trivial turn arrives, we:
+#   1. spawn a background thread that runs _run_pipeline (LLM + filters)
+#   2. instantly return TwiML <Play filler.mp3><Redirect /voice/respond>
+#   3. /voice/respond pulls the result from the token store (polling
+#      briefly if it's not ready yet) and emits the real TwiML
+#
+# Failure modes are all degraded to the synchronous path or a friendly
+# "hang on" filler+retry — never a dropped call.
+
+_THINK_MAX = 1000                # bounded LRU (V5.1 pattern)
+_THINK_TTL_SECONDS = 30.0        # tokens older than this are junk
+_think_store: dict = {}          # token -> {ready, result, error, ts, ctx}
+_think_lock = threading.Lock()
+
+
+def _think_store_put(*, caller, user_message, client, call_sid,
+                     wrap_up_mode, From, lang) -> str:
+    """Insert a pending-think record. Returns the freshly-minted
+    token (URL-safe). Also opportunistically prunes expired + LRU-evicts
+    if the store is over cap."""
+    token = secrets.token_urlsafe(16)
+    now = time.time()
+    record = {
+        "ready": False,
+        "result": None,
+        "error": None,
+        "ts": now,
+        "ctx": {
+            "caller": caller, "user_message": user_message,
+            "client": client, "call_sid": call_sid,
+            "wrap_up_mode": wrap_up_mode, "From": From, "lang": lang,
+        },
+    }
+    with _think_lock:
+        _think_store[token] = record
+        # Prune expired
+        cutoff = now - _THINK_TTL_SECONDS
+        stale = [t for t, v in _think_store.items() if v["ts"] < cutoff]
+        for t in stale:
+            _think_store.pop(t, None)
+        # Bounded eviction — drop oldest if over cap
+        if len(_think_store) > _THINK_MAX:
+            oldest = sorted(_think_store.items(), key=lambda kv: kv[1]["ts"])
+            for t, _ in oldest[: len(_think_store) - _THINK_MAX]:
+                _think_store.pop(t, None)
+    return token
+
+
+def _think_store_get(token: str):
+    with _think_lock:
+        return _think_store.get(token)
+
+
+def _think_store_pop(token: str):
+    with _think_lock:
+        return _think_store.pop(token, None)
+
+
+def _think_worker(token: str) -> None:
+    """Runs _run_pipeline in a background thread, stores result in the
+    token store. Catches all exceptions so a thread crash never leaves
+    a stale unready record (a callsite will see error=… and degrade)."""
+    record = _think_store_get(token)
+    if record is None:
+        return
+    ctx = record["ctx"]
+    try:
+        result = _run_pipeline(
+            ctx["caller"], ctx["user_message"],
+            client=ctx["client"], call_sid=ctx["call_sid"],
+            wrap_up_mode=ctx["wrap_up_mode"],
+        )
+        with _think_lock:
+            r = _think_store.get(token)
+            if r is not None:
+                r["ready"] = True
+                r["result"] = result
+    except Exception as e:
+        log.error("V8.9b think_worker crashed token=%s: %s: %s",
+                  token[:8], type(e).__name__, e)
+        with _think_lock:
+            r = _think_store.get(token)
+            if r is not None:
+                r["ready"] = True
+                r["error"] = f"{type(e).__name__}: {e}"
+
+
+def _endpointing_enabled(client: Optional[dict]) -> bool:
+    """V8.9b feature flag. Off by default — opt-in per tenant via the
+    `endpointing_fillers: true` YAML field. Set to true for ace_hvac
+    only at first; widen once the live behavior is validated."""
+    if not client:
+        return False
+    return bool(client.get("endpointing_fillers", False))
+
+
+def _maybe_filler_for_async(client: Optional[dict]):
+    """Return a cached filler payload or None. Falls through to None
+    on any condition that would make the async path risky:
+      - non-ElevenLabs tenant (no cached audio infra)
+      - no cached filler on disk (would force a live render — defeats
+        the latency win and adds a network round-trip in the critical
+        path)
+      - PUBLIC_BASE_URL unset (Twilio can't fetch the audio anyway)
+    """
+    try:
+        return _audio_cache_module.filler_payload_for(client)
+    except Exception as e:
+        log.warning("V8.9b filler_payload_for failed: %s", e)
+        return None
+
+
 def _emit_audio(vr, message: str, lang: str, client: dict = None):
     """V8.1 — render `message` and append a top-level <Play>/<Say> to vr,
     WITHOUT wrapping it in a <Gather>. Used by terminal flows where the
@@ -891,14 +1010,62 @@ def voice_gather(From: str = Form(default=""),
         call_timer.record_end(CallSid)
         return _twiml(str(vr))
 
-    # ── The entire flow: speech → Claude → one response → one gather ──
+    # V8.9b — endpointing-filler path: if the tenant has it on AND a
+    # cached filler is available, fire off the LLM in a background
+    # thread and return filler+redirect TwiML instantly. Twilio plays
+    # the filler (caller hears "Mhm —" / "Lemme see —" in ~300ms) while
+    # /voice/respond will pick up the LLM result and emit the real
+    # reply. Falls through to the synchronous path on ANY failure
+    # condition (no filler cache hit, feature flag off, missing token
+    # infra, etc.) — graceful degradation.
+    filler_payload = _maybe_filler_for_async(client) if _endpointing_enabled(client) else None
+    if filler_payload is not None:
+        token = _think_store_put(
+            caller=caller, user_message=SpeechResult, client=client,
+            call_sid=CallSid, wrap_up_mode=timer["wrap_up_mode"],
+            From=From, lang=lang,
+        )
+        try:
+            threading.Thread(
+                target=_think_worker, args=(token,), daemon=True,
+                name=f"think-{token[:8]}",
+            ).start()
+        except RuntimeError as e:
+            log.warning("V8.9b thread start failed (%s); falling back to sync", e)
+            _think_store_pop(token)
+        else:
+            log.info("V8.9b filler dispatched call_sid=%s token=%s",
+                     CallSid, token[:8])
+            vr.play(filler_payload.url)
+            vr.redirect(f"/voice/respond?t={token}", method="POST")
+            return _twiml(str(vr))
+
+    # ── Synchronous path (current behavior, also fallback for V8.9b) ──
     result = _run_pipeline(caller, SpeechResult, client=client,
                            call_sid=CallSid, wrap_up_mode=timer["wrap_up_mode"])
+    _emit_pipeline_result(vr, result,
+                          caller=caller, client=client, lang=lang,
+                          From=From, CallSid=CallSid,
+                          user_message=SpeechResult)
+    return _twiml(str(vr))
 
+
+def _emit_pipeline_result(vr, result: dict, *,
+                          caller: dict, client: dict, lang: str,
+                          From: str, CallSid: str,
+                          user_message: str):
+    """V8.9b — post-pipeline emission, shared between the synchronous
+    /voice/gather path and the asynchronous /voice/respond path. Runs
+    sentiment escalation + emergency routing + final TwiML build.
+
+    Mutates `vr` (the VoiceResponse). Does NOT call _twiml on it; the
+    caller controls when to serialize.
+    """
     # V3.7 — sentiment tracking. If the caller has been frustrated/angry
     # for N consecutive turns, promote this to a priority=high call so
     # the rest of the handler routes them to escalation_phone.
-    sentiment_result = _sentiment.record(CallSid, result.get("sentiment") or "neutral")
+    sentiment_result = _sentiment.record(CallSid,
+                                          result.get("sentiment") or "neutral")
     if sentiment_result["should_escalate"] and result["priority"] != "high":
         log.warning(
             "sentiment_escalation overriding priority call_sid=%s consecutive=%d",
@@ -914,7 +1081,7 @@ def voice_gather(From: str = Form(default=""),
         _webhooks.fire_safe("emergency.triggered", client, {
             "call_sid": CallSid,
             "from_number": From,
-            "summary": SpeechResult[:200] if SpeechResult else "",
+            "summary": user_message[:200] if user_message else "",
             "address": caller.get("address") if caller else None,
             "sentiment_escalation": result.get("sentiment_escalation", False),
         })
@@ -925,7 +1092,7 @@ def voice_gather(From: str = Form(default=""),
             owner_notify.notify_emergency(
                 client,
                 caller_phone=From,
-                summary=SpeechResult,
+                summary=user_message,
                 address=(caller.get("address") or None),
                 call_sid=CallSid,
                 twilio_client=_twilio_client(),
@@ -947,10 +1114,88 @@ def voice_gather(From: str = Form(default=""),
             combined = (result["reply"]
                         + " Got a tech being paged— they'll call you back in ten.")
             _emit_audio(vr, combined, lang, client=client)
-        return _twiml(str(vr))
+        return
 
     # Normal reply — one Say inside one Gather. That's it.
     _respond(vr, result["reply"], lang, client=client)
+
+
+@app.post("/voice/respond")
+def voice_respond(t: str = "",
+                  From: str = Form(default=""),
+                  To: str = Form(default=""),
+                  CallSid: str = Form(default=""),
+                  Language: str = Form(default="")):
+    """V8.9b — endpointing-filler follow-up endpoint. Twilio fetches
+    this after playing the filler emitted by /voice/gather. We pull
+    the (hopefully ready) LLM result from the token store and emit the
+    real reply TwiML. Falls through to graceful degradation on every
+    failure mode so a dropped token never drops a call.
+
+    Polling: up to ~2.5s of 50ms checks. In practice the LLM is usually
+    done by the time the ~800-1200ms filler audio finishes, so the wait
+    is short. If we hit the timeout (LLM genuinely stalled), we emit a
+    short "hang on" filler + redirect to ourselves for one more retry.
+    """
+    if not TWILIO_AVAILABLE:
+        raise HTTPException(500, "twilio package not installed")
+    if not t:
+        # Bogus request — no token. Degrade.
+        log.warning("voice_respond called without token")
+        vr = VoiceResponse()
+        client = tenant.load_client_by_number(To)
+        _respond(vr, "Sorry, lost my place — what was that?", "en", client=client)
+        return _twiml(str(vr))
+
+    record = _think_store_get(t)
+    if record is None:
+        # Token expired or never existed (Twilio retry past TTL).
+        # Best-effort: pretend nothing happened and re-prompt.
+        log.warning("voice_respond token expired/unknown t=%s", t[:8])
+        vr = VoiceResponse()
+        client = tenant.load_client_by_number(To)
+        caller = memory.get_or_create_by_phone(From)
+        lang = (Language[:2] if Language else "") or caller.get("language") or DEFAULT_LANG
+        _respond(vr, "Sorry, lost my place there — what was that?", lang,
+                 client=client)
+        return _twiml(str(vr))
+
+    # Poll for readiness — most of the time the LLM finishes during the
+    # filler's playback, so this loop usually exits on the first check.
+    deadline = time.time() + 2.5
+    while not record["ready"] and time.time() < deadline:
+        time.sleep(0.05)
+        record = _think_store_get(t) or record
+
+    if not record["ready"]:
+        # LLM still running. Play a short "hang on" filler + retry.
+        # This is the degrade-to-second-filler path; almost never fires
+        # because Anthropic Haiku 4.5 finishes well inside 2.5s.
+        log.warning("voice_respond LLM still pending t=%s — emitting retry filler",
+                    t[:8])
+        client = tenant.load_client_by_number(To)
+        vr = VoiceResponse()
+        _emit_audio(vr, "Hang on one sec —", Language[:2] or "en", client=client)
+        vr.redirect(f"/voice/respond?t={t}", method="POST")
+        return _twiml(str(vr))
+
+    # Pop on success/error — we've consumed it
+    _think_store_pop(t)
+    ctx = record["ctx"]
+
+    if record["error"]:
+        # Background thread crashed. V6.2 friendly TwiML failure keeps
+        # the caller on the line with a coherent message.
+        log.error("voice_respond thread error t=%s err=%s", t[:8], record["error"])
+        return _voice_failure_twiml()
+
+    # Happy path — emit the real result via the shared helper.
+    vr = VoiceResponse()
+    _emit_pipeline_result(vr, record["result"],
+                          caller=ctx["caller"], client=ctx["client"],
+                          lang=ctx["lang"], From=ctx["From"],
+                          CallSid=ctx["call_sid"],
+                          user_message=ctx["user_message"])
     return _twiml(str(vr))
 
 

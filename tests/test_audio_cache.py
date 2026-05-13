@@ -44,12 +44,15 @@ def test_prewarm_skips_when_provider_unset():
 
 def _expected_prewarm_count() -> int:
     """Derive the expected count from the actual phrase lists so adding
-    new phrases (V8.4 added acks + goodbyes) doesn't break tests."""
-    # 4 greetings (en/es/hi/gu) + 1 force-end + degraded + acks + goodbyes
+    new phrases (V8.4 added acks + goodbyes; V8.9b added fillers) doesn't
+    break tests."""
+    # 4 greetings (en/es/hi/gu) + 1 force-end + degraded + acks
+    # + goodbyes + fillers (V8.9b)
     return (4 + 1
             + len(audio_cache.PREWARM_DEGRADED_PHRASES)
             + len(audio_cache.PREWARM_ACKS)
-            + len(audio_cache.PREWARM_GOODBYES))
+            + len(audio_cache.PREWARM_GOODBYES)
+            + len(audio_cache.PREWARM_FILLERS))
 
 
 def test_prewarm_calls_tts_render_for_elevenlabs():
