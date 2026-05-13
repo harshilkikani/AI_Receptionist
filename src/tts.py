@@ -208,11 +208,13 @@ class ElevenLabsProvider(TtsProvider):
         return self._payload_for(h, text)
 
     def _payload_for(self, h: str, text: str) -> TtsPayload:
-        base = (os.environ.get("PUBLIC_BASE_URL", "") or "").rstrip("/")
-        # If PUBLIC_BASE_URL is unset, return a relative URL — Twilio
-        # rejects relative URLs in <Play> so we'll fall back instead.
+        base = _public_base_url()
+        # If we still don't have a base URL after env + tunnel-hint
+        # fallback, the <Play> URL would be relative and Twilio rejects
+        # those. Fall back to Polly so the call still happens.
         if not base:
-            log.warning("PUBLIC_BASE_URL unset; cannot serve ElevenLabs audio")
+            log.warning("no public base URL (env + tunnel hint both empty); "
+                        "cannot serve ElevenLabs audio")
             _bump("fallback")
             return PollyProvider().render(text, "en")
         return TtsPayload(
@@ -220,6 +222,55 @@ class ElevenLabsProvider(TtsProvider):
             url=f"{base}/audio/{h}.mp3",
             duration_estimate_ms=int(len(text) * 60),
         )
+
+
+# V7.1 — public base URL resolution with tunnel-hint fallback.
+# reclaim_tunnel.py persists its current trycloudflare URL to
+# data/tunnel_url.txt every time it (re)starts. Previously _payload_for
+# only checked os.environ -- which meant after a tunnel restart, even
+# with PUBLIC_BASE_URL "set" via .env, the uvicorn process couldn't see
+# the new URL and ElevenLabs renders all fell back to Polly. Reading
+# the hint file lets us pick up the live tunnel URL without restarting
+# uvicorn.
+_TUNNEL_HINT_FILE = Path(__file__).parent.parent / "data" / "tunnel_url.txt"
+_BASE_URL_CACHE_TTL = 10.0   # short — the URL doesn't change mid-call
+_base_url_cache: dict = {"value": None, "ts": 0.0}
+_base_url_lock = threading.Lock()
+
+
+def _public_base_url() -> str:
+    """Return the public base URL Twilio uses to reach us.
+    Resolution order:
+       1. PUBLIC_BASE_URL env var (if set + non-empty)
+       2. data/tunnel_url.txt (written by scripts/reclaim_tunnel.py)
+       3. ""  (caller should fall back to Polly)
+    Result cached for 10s so we don't stat the hint file on every render."""
+    import time as _time
+    with _base_url_lock:
+        if _base_url_cache["value"] is not None:
+            if _time.time() - _base_url_cache["ts"] < _BASE_URL_CACHE_TTL:
+                return _base_url_cache["value"]
+
+    env_val = (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    chosen = env_val
+    if not chosen and _TUNNEL_HINT_FILE.exists():
+        try:
+            chosen = _TUNNEL_HINT_FILE.read_text(
+                encoding="utf-8").strip().rstrip("/")
+        except OSError:
+            chosen = ""
+
+    with _base_url_lock:
+        _base_url_cache["value"] = chosen
+        _base_url_cache["ts"] = _time.time()
+    return chosen
+
+
+def reset_base_url_cache() -> None:
+    """Tests + ops can flush the cached resolution."""
+    with _base_url_lock:
+        _base_url_cache["value"] = None
+        _base_url_cache["ts"] = 0.0
 
 
 _ELEVENLABS_HOST = "api.elevenlabs.io"

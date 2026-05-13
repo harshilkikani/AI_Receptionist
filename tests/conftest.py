@@ -53,6 +53,24 @@ def _isolate_env(monkeypatch, tmp_path):
     except Exception:
         pass
 
+    # V7.1 — neutralize the live-demo ElevenLabs config for unit tests.
+    # When the developer has flipped clients/ace_hvac.yaml to
+    # `tts_provider: elevenlabs` AND has ELEVENLABS_API_KEY set AND
+    # data/tunnel_url.txt is on disk, every test that hits a voice
+    # route would emit <Play> URLs instead of <Say>. Force ElevenLabs
+    # OFF by default; the V4.1/V5.6-V5.8 tests that specifically want
+    # it on set ELEVENLABS_API_KEY back in their own fixtures.
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    # Point the tunnel hint at a tmp path so the fallback resolves to
+    # empty during tests (forces Polly path).
+    try:
+        from src import tts
+        monkeypatch.setattr(tts, "_TUNNEL_HINT_FILE",
+                            tmp_path / "tunnel_hint_unused.txt")
+        tts.reset_base_url_cache()
+    except Exception:
+        pass
+
     yield
 
 

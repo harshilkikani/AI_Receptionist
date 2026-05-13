@@ -3,6 +3,18 @@
 id: ace_hvac
 name: "Ace HVAC & Plumbing"
 owner_name: "the owner"
+# V7.1 — flipped to ElevenLabs. The default voice (Rachel) is warm,
+# native English. Browse elevenlabs.io/app/voice-library to swap.
+# Falls back to Polly Joanna Neural if ELEVENLABS_API_KEY is missing,
+# the public base URL is empty, or the render fails for any reason.
+tts_provider: elevenlabs
+tts_voice_id: "EXAVITQu4vr4xnSDxMaL"   # Rachel
+tts_voice_settings:
+  stability: 0.55
+  similarity: 0.80
+# V7.2 — natural disfluency (opt-in). Fires after anti_robot + grounding.
+disfluency: true
+disfluency_intensity: 0.15
 owner_email: ""                       # where monthly invoices go (P2). empty = no SMTP send
 owner_cell: ""                        # where emergency SMS alerts go (P3). falls back to escalation_phone
 timezone: "America/New_York"          # used for owner's end-of-day digest (P4)

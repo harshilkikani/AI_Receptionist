@@ -93,10 +93,27 @@ def test_sig_mode_garbage(monkeypatch):
 
 # ── PUBLIC_BASE_URL ───────────────────────────────────────────────────
 
-def test_public_base_unset(monkeypatch):
+def test_public_base_unset(monkeypatch, tmp_path):
     monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    # V7.1 — the live preflight also falls back to data/tunnel_url.txt.
+    # Redirect that path to a tmp that doesn't exist so we test the
+    # "neither source has a URL" branch.
+    monkeypatch.setattr(preflight, "_ROOT", tmp_path)
     c = preflight.check_public_base_url()
     assert c.status == "fail"
+
+
+def test_public_base_falls_back_to_hint_file(monkeypatch, tmp_path):
+    """V7.1 — when env is unset but data/tunnel_url.txt exists, use it."""
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setattr(preflight, "_ROOT", tmp_path)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "tunnel_url.txt").write_text("https://from-hint.example")
+    c = preflight.check_public_base_url()
+    assert c.status == "ok"
+    assert "from-hint.example" in c.message
+    assert c.detail and "tunnel hint" in c.detail
 
 
 def test_public_base_https(monkeypatch):

@@ -154,14 +154,26 @@ def check_signature_mode() -> Check:
 
 
 def check_public_base_url() -> Check:
+    """V7.1 — also accept the tunnel hint file at data/tunnel_url.txt
+    written by scripts/reclaim_tunnel.py. Mirrors tts._public_base_url()
+    so this report matches what the live render path actually sees."""
     url = (os.environ.get("PUBLIC_BASE_URL") or "").strip()
+    source = "env"
+    if not url:
+        hint = _ROOT / "data" / "tunnel_url.txt"
+        if hint.exists():
+            try:
+                url = hint.read_text(encoding="utf-8").strip()
+                source = "tunnel hint file"
+            except OSError:
+                url = ""
     if not url:
         return _fail(
             "PUBLIC_BASE_URL",
             "unset -- Twilio signature verification + ElevenLabs <Play> "
             "URLs both need it",
-            detail="Set to your cloudflared tunnel URL "
-                   "(scripts/reclaim_tunnel.py prints it)",
+            detail="Set in .env OR run scripts/reclaim_tunnel.py "
+                   "(writes data/tunnel_url.txt)",
         )
     if not url.startswith(("http://", "https://")):
         return _fail("PUBLIC_BASE_URL",
@@ -169,8 +181,51 @@ def check_public_base_url() -> Check:
     if url.startswith("http://"):
         return _warn("PUBLIC_BASE_URL",
                      "http (not https) -- Twilio webhook is fine but "
-                     "cloudflared usually provides https")
-    return _ok("PUBLIC_BASE_URL", url)
+                     "cloudflared usually provides https",
+                     detail=f"source: {source}")
+    return _ok("PUBLIC_BASE_URL", url, detail=f"source: {source}")
+
+
+def check_elevenlabs_key(*, ping: bool = False) -> Check:
+    """V7.1 — verify ELEVENLABS_API_KEY shape (and optionally that
+    api.elevenlabs.io accepts it). Returns 'warn' when missing because
+    ElevenLabs is opt-in per tenant; you can run a Polly-only demo
+    indefinitely without this set."""
+    key = (os.environ.get("ELEVENLABS_API_KEY") or "").strip()
+    if not key:
+        return _warn(
+            "ELEVENLABS_API_KEY",
+            "missing -- ElevenLabs renders fall back to Polly",
+            detail="Set ELEVENLABS_API_KEY in .env to enable the "
+                   "V4.1 / V5.6-V5.8 pipeline",
+        )
+    if not key.startswith("sk_"):
+        return _warn("ELEVENLABS_API_KEY",
+                     f"set but unusual prefix {key[:4]!r} -- "
+                     "real keys start with sk_")
+    if not ping:
+        return _ok("ELEVENLABS_API_KEY",
+                   f"set (sk_...{key[-4:]}); not pinged",
+                   detail="Run with --ping to verify against the API")
+    try:
+        req = urllib.request.Request(
+            "https://api.elevenlabs.io/v1/user/subscription",
+            headers={"xi-api-key": key},
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            if r.status == 200:
+                return _ok("ELEVENLABS_API_KEY",
+                           "valid; api.elevenlabs.io accepted the key")
+            return _fail("ELEVENLABS_API_KEY",
+                         f"unexpected response {r.status}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return _fail("ELEVENLABS_API_KEY",
+                         f"API rejected the key ({e.code})")
+        return _fail("ELEVENLABS_API_KEY", f"HTTP error {e.code}")
+    except Exception as e:
+        return _warn("ELEVENLABS_API_KEY",
+                     f"couldn't reach ElevenLabs: {type(e).__name__}: {e}")
 
 
 def check_admin_creds() -> Check:
@@ -248,13 +303,21 @@ def check_twilio_webhook_url(*, ping: bool = False) -> Check:
     if not ping:
         return _ok("TWILIO_WEBHOOK_URL",
                    "skipped (use --ping to compare against Twilio API)")
-    base = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+    # V7.1 — same env-then-tunnel-hint fallback as check_public_base_url
+    base = (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if not base:
+        hint = _ROOT / "data" / "tunnel_url.txt"
+        if hint.exists():
+            try:
+                base = hint.read_text(encoding="utf-8").strip().rstrip("/")
+            except OSError:
+                pass
     sid = (os.environ.get("TWILIO_ACCOUNT_SID") or "").strip()
     tok = (os.environ.get("TWILIO_AUTH_TOKEN") or "").strip()
     if not base or not sid or not tok:
         return _warn(
             "TWILIO_WEBHOOK_URL",
-            "can't check -- needs PUBLIC_BASE_URL + Twilio creds")
+            "can't check -- needs PUBLIC_BASE_URL (or tunnel hint) + Twilio creds")
     try:
         from src import tenant
         routable = [c for c in tenant.list_all()
@@ -315,6 +378,7 @@ def run_all(*, ping: bool = False) -> dict:
         check_tenants(),
         check_usage_db_writable(),
         check_twilio_webhook_url(ping=ping),
+        check_elevenlabs_key(ping=ping),
     ]
     counts = {"ok": 0, "warn": 0, "fail": 0}
     for c in checks:
