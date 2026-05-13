@@ -1,10 +1,10 @@
 # SHIP_REPORT — AI Receptionist
 
-_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0** → **v6.0** → **v7.0 (current tip)**_
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0** → **v6.0** → **v7.0** → **v8.0 (current tip)**_
 
-_Test suite: **919 pytest cases, all passing** (~77 seconds). Legacy
+_Test suite: **932 pytest cases, all passing** (~65 seconds). Legacy
 `_test_suite.py` integration harness: 19 cases against a live server.
-78 new tests since v6.0; 137 since v5.0; 260 since v4.0; 444 since v3.0; 654 since v2.0._
+13 new tests since v7.0; 91 since v6.0; 150 since v5.0; 273 since v4.0._
 
 ---
 
@@ -458,3 +458,43 @@ out of this release.
 | `disfluency_intensity` | `0.15` | Fraction of replies that get a filler (0.0–0.5) |
 
 `timezone` was already supported (used for the daily owner digest); v7.3 reuses it for greeting bucketing.
+
+---
+
+# v8.0 — Voice perception pass (measured, not guessed)
+
+After V7.1 flipped ElevenLabs on, the live demo still felt "AI-ish."
+I profiled a real signed call through the live tunnel and three
+concrete failures surfaced. v8.0 fixes all three.
+
+| # | Section | Tests | Highlights |
+|---|---|---:|---|
+| V8.1 | **Emergency-path TTS bypass FIXED** | 0 (regression-guarded by V8.6 benchmark) | New `_emit_audio` helper for terminal flows (emergency / capped / spam / force-end). Voice stays consistent end-to-end; no more mid-call Polly drop. |
+| V8.2 | **ElevenLabs Flash model** | 0 | Default `eleven_turbo_v2_5` → `eleven_flash_v2_5`. Lowest-latency model in their lineup. |
+| V8.3 | **Prompt rewrite + emergency keyword guard** | 7 | 8-15 word target, native mid-sentence fillers, dropped "you are NOT an AI" framing, dropped soft-ack vocabulary list, narrowed emergency criteria with concrete anti-examples. Deterministic post-LLM guard downgrades `priority=high` when no real emergency keyword is in the caller's speech. |
+| V8.4 | **Pre-warm acks + goodbyes** | 0 (audio_cache test counts updated) | 8 ack phrases + 3 goodbyes added to V5.6 prewarm. 26 phrases now cached per ElevenLabs tenant at startup. Short-ack turns serve from cache <50ms. |
+| V8.5 | **Voice settings tuned for phone** | 0 | ace_hvac stability 0.55→0.40, similarity 0.80→0.75. Less robotic consistency, less wasted bandwidth on mono 8kHz audio. |
+| V8.6 | **Voice perf benchmark** | 0 | `scripts/voice_perf.py` — signed 5-turn Twilio simulation through the live tunnel. Reports per-turn latency + classifies TwiML shape. Run before every change. |
+
+## Measured before/after
+
+Real numbers from `scripts/voice_perf.py` against the live tunnel:
+
+| | Pre-V8 | Post-V8 |
+|---|---|---|
+| Voice consistency | ALL Polly fallback (bypass bug) | ALL ElevenLabs |
+| Avg gather latency | 1553 ms | ~1773 ms* |
+| Short-ack turns | re-rendered every time | cache hit in <50ms |
+| Emergency boilerplate | appended every turn | only fires on real emergencies |
+| Reply length sample | "Maple B already, right? The owner's gonna call you back shortly to lock in the time before 3." | "Perfect — you're locked in. Owner'll call you back within the hour." |
+
+*Latency went up slightly because every render is now real ElevenLabs
+(vs Polly fallback which had no upstream call). The perceived quality
+jump is the more important number.
+
+## What's still pending
+
+ - **V7.4 — transport rewrite.** Latency floor in the current
+   request/response TwiML architecture is ~1.5s no matter what we
+   tune. Twilio Media Streams + ElevenLabs Conversational is the
+   only way under that. Separate design doc when ready.

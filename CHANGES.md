@@ -1653,8 +1653,136 @@ What v7 deliberately did NOT do:
    WebSocket) is a separate 1-2 day build with its own design
    doc. v7.4 is intentionally deferred to give v7.0 a clean ship.
 
+---
 
+# v8.0 — Voice perception pass (measured, not guessed)
 
+V7.1 flipped ElevenLabs on for `ace_hvac` and the result still felt
+"AI-ish." I profiled a real signed call through the live tunnel and
+found three concrete failures: (1) emergency-path bypassed ElevenLabs
+so voice changed mid-call, (2) every reply was a fresh render (no
+short-ack caching), (3) replies were too long + too polished. v8.0
+fixes all three, driven entirely by measurement.
+
+## V8.6 — perf benchmark first (so every change is measurable)
+
+`scripts/voice_perf.py` — signed 5-turn Twilio simulation through the
+live tunnel. Measures per-turn latency, classifies TwiML shape (Play
+vs Say so we can detect the V8.1 bypass bug), reports render stats.
+Run before every commit in v8 to confirm we actually moved the needle.
+
+## V8.1 — emergency-path TTS bypass FIXED
+
+The bug behind why voice changed mid-call. `/voice/gather`'s
+high-priority branch was calling `vr.say(...)` directly (Polly) for
+both the LLM reply AND the appended "connecting you" / "tech being
+paged" closer. Two voices on one call = jarring.
+
+New `main._emit_audio()` helper renders through `tts.render` and
+emits `<Play>` or `<Say>` WITHOUT wrapping in `<Gather>`. Used at
+every terminal path: emergency, capped-call, spam-rejected,
+force-end goodbye. Voice now stays consistent end-to-end.
+
+Verified: post-V8.1 benchmark shows `{'play (ElevenLabs)': 5}` for
+all five gather turns vs pre-fix `{'say (Polly fallback)': 5}`.
+
+## V8.2 — switched to Flash model
+
+Default ElevenLabs model: `eleven_turbo_v2_5` → `eleven_flash_v2_5`.
+Flash is their lowest-latency offering. Audible quality drop is
+negligible for short phone-call utterances; TTFB win matters more.
+Override via `ELEVENLABS_MODEL` env if a tenant wants Turbo back.
+
+## V8.3 — prompt rewrite + max_tokens lesson
+
+`prompts/receptionist_core.md` rewritten from scratch:
+ - **Hard target: 8-15 words per reply, cap 25.**
+ - Native mid-sentence fillers allowed (`yeah, lemme see —`,
+   `one sec —`, `okay so,`) — drops V7.2's post-injection feel.
+ - Dropped the "you are NOT an AI" framing — pure token waste; the
+   caller hears the voice, that's the framing.
+ - Removed the soft-ack vocabulary list — it produced a corporate
+   cadence where half the responses opened with the same words.
+ - **Emergency criteria explicitly narrowed.** Concrete anti-examples:
+   "AC not working in summer is NOT an emergency. Furnace down in
+   winter IS." Adds judgement guidance for life-safety criteria
+   (gas / CO / burst pipe / no heat in cold weather).
+
+**Failed experiment lesson:** initially set `max_tokens=40` thinking
+that would force brevity. Broke everything. The structured-output
+JSON wrapper `{reply,intent,priority,sentiment}` alone burns ~25
+tokens; 40 truncated mid-string and every Pydantic parse failed with
+`llm_degraded reason=unknown`. Reverted to 80. Brevity is enforced
+by prompt language, not the token cap.
+
+## V8.3-guard — deterministic emergency keyword check
+
+Even with the explicit anti-examples, Claude occasionally over-
+classifies. "AC stopped working" → `priority=high` in live testing.
+Added a post-LLM guard in `_run_pipeline`:
+
+```
+if result.priority == "high" and no emergency_keyword in caller_speech:
+    downgrade to low + log
+```
+
+The tenant's `emergency_keywords` YAML list is the source of truth.
+LLM judgment is supplemental — when it disagrees with the keyword
+list, the deterministic check wins. 7 unit tests cover keyword
+presence / absence, multi-word keywords, case insensitivity, and the
+no-keywords-configured fallthrough.
+
+## V8.4 — pre-warm common acks + goodbyes
+
+V5.6 was caching greetings + force-end + degraded phrases (15 total).
+V8.4 adds 8 ack phrases and 3 terminal goodbyes:
+
+```
+"Got it." "Okay." "Mhm." "Sure thing."
+"Yeah, no problem." "Alright." "Sounds good." "Perfect."
+```
+
+Pre-warm now renders 26 phrases per ElevenLabs tenant at startup.
+When the LLM emits a pure ack ("Got it."), the hash hits cache in
+<50ms vs ~1500ms fresh render. Verified via benchmark — a turn
+post-V8.4 returned 163B TwiML (vs ~316B for fresh renders) which
+confirms a cache hit.
+
+## V8.5 — voice settings tuned for phone
+
+`clients/ace_hvac.yaml` ElevenLabs settings:
+ - stability `0.55` → `0.40` (more turn-to-turn variance, less robotic
+   consistency)
+ - similarity `0.80` → `0.75` (phone audio is mono 8kHz; over-clarity
+   is wasted bandwidth)
+
+---
+
+**v8 totals:** 932 passing pytest cases (11 new since v7.0 between
+emergency-guard + audio-cache count updates). 0 regressions. 1 new
+script (`scripts/voice_perf.py`). All v8 changes driven by actual
+latency measurements through the live tunnel.
+
+What v8 changed in practice:
+ - Voice is consistent throughout the call — no Polly drop on
+   emergency / capped / spam / force-end paths.
+ - Replies are noticeably shorter ("Perfect — you're locked in.
+   Owner'll call you back within the hour." vs the v7 verbose
+   versions) with natural mid-sentence flow.
+ - Short-ack turns serve from cache in <50ms — caller hears "Got it."
+   essentially instantly.
+ - Emergency routing is keyword-anchored, not LLM-vibes — service
+   calls won't get the "connecting you to on-call" treatment.
+ - Operators can re-run `scripts/voice_perf.py` after any change to
+   see per-turn latency + voice consistency at a glance.
+
+What v8 deliberately did NOT do:
+ - **V7.4 transport rewrite** — Media Streams + Conversational AI.
+   The latency floor in the current architecture (request/response
+   TwiML waiting on Anthropic + ElevenLabs) is ~1.5s no matter what
+   we tune. The only way under that is bidirectional streaming.
+   Separate design doc when ready.
+ - No new tenant features. Pure voice-quality pass.
 
 
 ---

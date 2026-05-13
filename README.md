@@ -2,16 +2,16 @@
 
 > A voice + SMS AI receptionist for service businesses. Answers missed calls in under a second, routes emergencies to the owner's cell with an SMS brief **before** the bridge, remembers callers across calls, bills per-minute automatically, and improves itself overnight from its own mistakes.
 
-- **919 passing tests**
+- **932 passing tests**
 - **Real production stack** — FastAPI, Twilio, Anthropic Claude Haiku 4.5, SQLite
 - **Multi-tenant** — one YAML per business, one Twilio number per tenant
 - **Zero-framework frontend** — pure HTML + CSS for every UI surface
 - **MIT licensed** — clone it, read it, change it
 
-![status](https://img.shields.io/badge/tests-919%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-932%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![version](https://img.shields.io/badge/version-v7.0-violet)
+![version](https://img.shields.io/badge/version-v8.0-violet)
 
 ---
 
@@ -67,6 +67,9 @@ Full three-command go-live: see [`SHIP_REPORT.md`](SHIP_REPORT.md).
 | ⏪ **Cross-call recall** (V4.7) | "Hey, calling back about yesterday?" — prior calls from same number injected into prompt. |
 | 🗣️ **Natural disfluency** (V7.2) | Opt-in fillers ("Hmm,", "Yeah, so", "Lemme see —") injected at low frequency after anti_robot + grounding. Breaks templated cadence without re-introducing corporate-speak. |
 | 🌅 **Contextual greeting** (V7.3) | Morning / afternoon / evening / late-night variation per tenant tz. Returning callers greeted by name. Recall-aware "calling back about yesterday?" opener when V4.7 has prior calls. |
+| 🎚️ **One voice end-to-end** (V8.1) | Emergency / capped-call / spam / force-end terminal paths all route through the TTS abstraction. No more mid-call voice change from ElevenLabs to Polly. |
+| ⚡ **Flash model + 8 cached acks** (V8.2/8.4) | Default `eleven_flash_v2_5` (lowest latency in the lineup). 26 common phrases pre-warmed per tenant at startup — short replies serve from cache <50ms. |
+| 🚨 **Keyword-anchored emergencies** (V8.3) | Deterministic post-LLM guard: if the LLM marks a turn high-priority but the caller's actual speech contains no configured emergency_keyword, downgrade. AC-in-summer no longer triggers the on-call transfer. |
 
 ## Architecture
 
@@ -124,7 +127,7 @@ evals/
   cache_benchmark.py      prompt-caching savings measurement
 scripts/
   reclaim_tunnel.py       auto-capture cloudflared URL + repoint Twilio
-tests/                    919 pytest cases
+tests/                    932 pytest cases
 _test_suite.py            19-case legacy integration suite (live server)
 docs/                     ARCHITECTURE, OPS_RUNBOOK, CLIENT_PORTAL, INVOICES,
                           EVALS, DEMO_SCRIPT, SHOWCASE_SCRIPT, NEW_CLIENT_CHECKLIST
@@ -133,7 +136,7 @@ docs/                     ARCHITECTURE, OPS_RUNBOOK, CLIENT_PORTAL, INVOICES,
 ## Running the tests
 
 ```bash
-pytest tests/             # 919 cases, ~77 seconds
+pytest tests/             # 932 cases, ~65 seconds
 python _test_suite.py     # legacy 19-case integration suite (needs a live server)
 ```
 
