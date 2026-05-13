@@ -357,11 +357,19 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
             except AttributeError:
                 result.priority = "low"
 
-    # V7.2 — natural disfluency. Opt-in per tenant via `disfluency: true`.
-    # Runs AFTER anti_robot + grounding so the cleaning passes don't
-    # fight our fillers, and BEFORE humanize/tts so the filler reads
-    # as part of the same TTS pass.
-    if _disfluency.is_enabled(client):
+    # V7.2 — natural disfluency injection. Opt-in per tenant via
+    # `disfluency: true`. Prepends a sentence-initial filler
+    # ("Hmm,", "Yeah, so") to ~15% of replies.
+    #
+    # V8.11.2 — skipped when V8.9b endpointing fillers are active for
+    # this tenant. V8.9b ALREADY plays a cached "Mhm —" / "Lemme see —"
+    # between turns. Running V7.2 on top means the caller hears
+    #   [endpointing filler "Mhm —"] [V7.2 injected "Hmm, that works"]
+    # — two consecutive fillers, which feels unnatural. V8.11 prompt
+    # also encourages natural fillers IN the LLM reply itself, so V7.2
+    # is doubly redundant for V8.9b tenants. Non-endpointing tenants
+    # still get V7.2 variation.
+    if _disfluency.is_enabled(client) and not _endpointing_enabled(client):
         embellished = _disfluency.add_disfluency(result.reply, client)
         if embellished != result.reply:
             log.info("disfluency injected call_sid=%s", call_sid)
