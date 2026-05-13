@@ -648,6 +648,14 @@ def _respond(vr, message: str, lang: str, client: dict = None):
     another non-Polly provider), the response uses <Play> with a cached
     audio URL. On any failure we transparently fall back to Polly so
     the call survives.
+    V8.9a — actionOnEmptyResult=true. Twilio's default behavior on an
+    empty gather is to "fall through" to the next verb in the TwiML;
+    if there isn't one (our case), the call ENDS. That's why some
+    callers reported "it just hung up on me" after a long pause or
+    inaudible turn. Setting actionOnEmptyResult=true forces Twilio to
+    re-fire our action URL with empty SpeechResult so we can re-prompt
+    instead of dropping the call. Also bumped timeout 5 → 8 seconds
+    for natural pacing.
     """
     g = vr.gather(
         input="speech dtmf",
@@ -657,6 +665,8 @@ def _respond(vr, message: str, lang: str, client: dict = None):
         speech_model="phone_call",
         enhanced=True,
         language=_stt_lang(lang),
+        timeout=8,
+        action_on_empty_result=True,
     )
     # V4.2 — natural speech preprocessing for any TTS provider.
     if _humanize.is_enabled(client):
@@ -813,11 +823,35 @@ def voice_gather(From: str = Form(default=""),
 
     vr = VoiceResponse()
 
-    # Empty speech → single re-prompt, no "still there" spam
+    # V8.9a — empty speech (Twilio's actionOnEmptyResult=true now fires
+    # our webhook even on silence). Track consecutive empties so a
+    # disconnected / inaudible caller doesn't loop forever — after
+    # EMPTY_RETRY_BUDGET strikes we politely close out instead of
+    # cutting them off mid-pause.
     if not SpeechResult.strip():
-        _respond(vr, "Sorry, didn't catch that— what was that?", lang,
-                 client=client)
+        retries = call_timer.bump_empty_retry(CallSid)
+        if retries > call_timer.EMPTY_RETRY_BUDGET:
+            log.info("empty-speech budget exceeded call_sid=%s retries=%d",
+                     CallSid, retries)
+            owner = client.get("owner_name", "the owner")
+            goodbye = (f"Sorry, having trouble hearing you. "
+                       f"{owner}'ll give you a call back shortly. Talk soon.")
+            _emit_audio(vr, goodbye, lang, client=client)
+            vr.hangup()
+            usage.end_call(CallSid, outcome="inaudible_timeout")
+            call_timer.record_end(CallSid)
+            return _twiml(str(vr))
+        # Within budget — vary the reprompt a touch so it doesn't loop
+        # the exact same phrase
+        reprompt = ("Sorry, didn't catch that— what was that?"
+                    if retries == 1 else
+                    "Still there? Go ahead.")
+        _respond(vr, reprompt, lang, client=client)
         return _twiml(str(vr))
+
+    # V8.9a — caller spoke something coherent; reset the empty counter
+    # so the NEXT silence cycle starts fresh.
+    call_timer.reset_empty_retry(CallSid)
 
     # ── Spam filter layer 2: phrase detection (first 15s) ──────────────
     timer_pre = call_timer.check(CallSid, client, caller_speech="")

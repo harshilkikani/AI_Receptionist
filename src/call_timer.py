@@ -90,8 +90,42 @@ def record_start(call_sid: str, client_id: str):
                 "client_id": client_id,
                 "emergency": False,
                 "grace_used": False,
+                "empty_retries": 0,    # V8.9a — consecutive empty SpeechResults
             }
             _evict_oldest_if_full()
+
+
+# V8.9a — empty-speech retry tracking.
+# Twilio's actionOnEmptyResult=true (V8.9a) fires our webhook even on
+# zero-speech gathers, so the caller doesn't get cut off on a pause.
+# But we still want to politely end after N consecutive empties — a
+# caller who's truly disconnected shouldn't burn a full 240s of timer.
+EMPTY_RETRY_BUDGET = 2
+
+
+def bump_empty_retry(call_sid: str) -> int:
+    """Increment the consecutive-empty-speech counter. Returns the new
+    count. Used by /voice/gather when SpeechResult is blank to decide
+    between re-prompt vs polite end."""
+    if not call_sid:
+        return 0
+    with _state_lock:
+        entry = _calls.get(call_sid)
+        if entry is None:
+            return 0
+        entry["empty_retries"] = int(entry.get("empty_retries", 0)) + 1
+        return entry["empty_retries"]
+
+
+def reset_empty_retry(call_sid: str) -> None:
+    """Caller spoke something coherent — clear the counter so the
+    NEXT silence cycle starts fresh."""
+    if not call_sid:
+        return
+    with _state_lock:
+        entry = _calls.get(call_sid)
+        if entry is not None:
+            entry["empty_retries"] = 0
 
 
 def record_end(call_sid: str):
