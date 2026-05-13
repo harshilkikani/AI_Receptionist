@@ -1527,8 +1527,131 @@ What v6 deliberately did NOT do:
  - No prompt-caching changes.
  - No new TTS provider, voice cloning, or transport rewrite.
 
+---
 
+# v7.0 — Voice naturalness pass (V7.2 + V7.3 + V7.5)
 
+After v6 shipped the live demo got loud feedback that the voice itself
+felt unchanged despite five releases of TTS / pipeline work. Honest
+answer: everything v4-v6 added was infrastructure — pluggable TTS,
+streaming pipeline, caching, cap, error recovery — but the live
+tenant was never switched off Polly Joanna Neural and the prompt
+itself wasn't getting any context beyond a static greeting.
+
+v7 fixes the latter while documenting the path to fix the former.
+V7.1 (flip ElevenLabs on the live tenant) and V7.4 (Twilio Media
+Streams + Conversational AI) are user-flippable + heavy-build — they
+sit outside this commit. v7.0 ships the polish that composes with
+whichever TTS backend ends up active.
+
+## V7.2 — Natural disfluency injection _(complete)_
+
+`src/disfluency.py` (new) re-introduces a controlled vocabulary of
+natural openers at low frequency:
+    Hmm,  /  Yeah, so  /  Right —  /  Lemme see —  /
+    Okay so  /  Alright,  /  Sure,  /  So,
+
+Opt-in per tenant via YAML:
+```
+disfluency: true                 # default false
+disfluency_intensity: 0.15       # 0.0-0.5, clamped
+```
+
+Pipeline placement (in `main._run_pipeline`):
+    LLM → anti_robot → grounding → **disfluency** → return
+                                        ↓
+                              _respond → humanize → tts
+
+Properties:
+ - **Idempotent**: if the reply already opens with one of our fillers
+   (or any natural lead-in like "Well,", "Actually,"), no double-
+   prepend on retry / pipeline rerun.
+ - **Anti-robot-safe**: every filler in our vocabulary was vetted
+   against `anti_robot._SUBSTITUTIONS` so the next pipeline pass
+   doesn't immediately strip what we just added. There's a
+   parameterized regression test for this.
+ - **Deterministic in tests**: `rng=random.Random(0)` for stable
+   assertions; production uses `random.random`.
+ - **First-word case-aware**: when an opener is prepended, the
+   original first letter lowercases unless it's a proper noun
+   ("I'm", "We're", "I'll", etc.).
+
+29 tests in `tests/test_disfluency.py`. Pipeline placement guard added
+to `tests/test_pipeline_order.py` (the V5.3 lockdown suite).
+
+## V7.3 — Time-of-day + recall-aware greeting _(complete)_
+
+`src/greeting.py` (new) replaces the single static greeting per
+language with context-aware variation. `main._greeting_for` delegates
+to it; backwards-compatible 2-arg call signature preserved.
+
+Three layers of priority (highest first):
+1. **Recall-aware** ("calling back about yesterday?") when V4.7
+   `recall.build_recall_block` returns non-empty for this caller.
+2. **Named returning caller** ("Hey John! Joanna from Ace, what's
+   up?") when memory has a first name AND caller.type is `return`.
+3. **Plain time-of-day bucket** — morning / afternoon / evening /
+   late_night, per the tenant's `timezone` field.
+
+Buckets (local tenant time):
+    05:00–10:59  → morning
+    11:00–16:59  → afternoon
+    17:00–20:59  → evening
+    21:00–04:59  → late_night
+
+Languages: en / es / hi / gu with multiple variants per bucket. The
+named-return + recall layers are English-only (memory's name field
+is currently English-only). Date-deterministic rotation: same day,
+same template — no "stutter" mid-shift.
+
+`main._greeting_for` also pulls in V4.7 recall in the returning-caller
+branch of `/voice/incoming` so the greeting actually sees prior-call
+context. Best-effort: if recall lookup raises, the helper falls
+through to the bucket greeting.
+
+49 tests in `tests/test_greeting.py` covering bucket boundaries, tz
+fallback, priority order, language coverage, deterministic rotation,
+and `main._greeting_for` delegation + helper-failure fallback.
+
+## V7.5 — A/B test rubric + scoring sheet _(complete)_
+
+`docs/V7_AB_TEST.md`: structured side-by-side test for three points —
+baseline (today), post-V7.1 (real ElevenLabs), post-V7.4 (Media
+Streams). Six-dimension rubric (latency, naturalness, flow, accuracy,
+recovery, hangup feel) with 1-5 scoring. Ship-to-paying-client bar:
+average ≥ 4.0 across two listeners.
+
+Includes the exact test script (three turns of dialogue) so the only
+variable is the AI, plus instructions for using the existing
+`/admin/recording/{sid}.mp3` proxy to A/B listen.
+
+---
+
+**v7 totals:** 919 passing pytest cases (78 new since v6.0). 2 new
+modules (`src/disfluency.py`, `src/greeting.py`). 1 new doc
+(`docs/V7_AB_TEST.md`). 3 code commits + 1 docs commit. Zero
+regressions.
+
+What v7 changed in practice:
+ - Replies open with natural fillers ~15% of the time when the tenant
+   opts in, breaking the templated cadence that came through even
+   after V4.3 stripped corporate-speak.
+ - Greeting reflects time of day, recognizes returning callers by
+   name, and acknowledges prior calls ("calling back about
+   yesterday?") — directly using V4.7 recall data that previously
+   only fed the system prompt, never the opener.
+ - Operators have a structured A/B rubric to decide when to ship to
+   a paying client.
+
+What v7 deliberately did NOT do:
+ - V7.1 — flipping ElevenLabs on the live tenant. Requires the
+   operator to add `ELEVENLABS_API_KEY` and set `tts_provider:
+   elevenlabs` in `clients/ace_hvac.yaml`. The infrastructure
+   (V4.1 / V5.6 / V5.7 / V5.8) is ready; the switch is theirs.
+ - V7.4 — Twilio Media Streams + ElevenLabs Conversational. The
+   transport rewrite (request/response TwiML → bidirectional
+   WebSocket) is a separate 1-2 day build with its own design
+   doc. v7.4 is intentionally deferred to give v7.0 a clean ship.
 
 
 

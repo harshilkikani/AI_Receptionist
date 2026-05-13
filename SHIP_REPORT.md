@@ -1,10 +1,10 @@
 # SHIP_REPORT — AI Receptionist
 
-_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0** → **v6.0 (current tip)**_
+_Branches: `margin-protection-refactor` → `ship-production` (v1.0) → **v2.0** → **v3.0** → **v4.0** → **v5.0** → **v6.0** → **v7.0 (current tip)**_
 
-_Test suite: **841 pytest cases, all passing** (~85 seconds). Legacy
+_Test suite: **919 pytest cases, all passing** (~77 seconds). Legacy
 `_test_suite.py` integration harness: 19 cases against a live server.
-59 new tests since v5.0; 182 since v4.0; 366 since v3.0; 576 since v2.0._
+78 new tests since v6.0; 137 since v5.0; 260 since v4.0; 444 since v3.0; 654 since v2.0._
 
 ---
 
@@ -402,9 +402,59 @@ python -m src.preflight --ping
 
 ## Gaps still deferred (carried over from v4 + still true)
 
- - True sub-300ms latency (transport rewrite for speech-to-speech)
+ - True sub-300ms latency (transport rewrite for speech-to-speech) — **scoped as V7.4**
  - Voice cloning of the owner (legal-sensitivity, IVC)
  - OAuth Google Calendar write-side
  - Real-time spam captcha beyond regex
  - Multi-agent specialist handoff
  - Voicemail detection (AMD) for outbound
+
+---
+
+# v7.0 — Voice naturalness pass (V7.2 + V7.3 + V7.5)
+
+After v6 shipped, the live demo got loud feedback that the voice felt
+unchanged. Honest answer: v4-v6 was infrastructure (pluggable TTS,
+streaming, caching, cap, recovery) — the actual ElevenLabs switch was
+never flipped for the live tenant, and the greeting had zero context.
+v7.0 ships the polish that composes with whichever TTS ends up active;
+V7.1 (flip ElevenLabs) and V7.4 (Media Streams transport) are scoped
+out of this release.
+
+| # | Section | Tests | Highlights |
+|---|---|---:|---|
+| V7.2 | **Natural disfluency injection** | 29 | New `src/disfluency.py`. Controlled vocabulary of openers (Hmm, / Yeah, so / Right — / Lemme see — / etc.) injected at low frequency (default 15%) after anti_robot + grounding, before humanize + tts. Opt-in per tenant. Idempotent. Every filler vetted against anti_robot's strip rules. |
+| V7.3 | **Time-of-day + recall-aware greeting** | 49 | New `src/greeting.py`. Morning/afternoon/evening/late-night variation per tenant tz. Named returning callers get "Hey John!" Recall-aware "calling back about yesterday?" when V4.7 supplies prior calls. Date-deterministic rotation (no mid-shift stutter). en/es/hi/gu coverage. |
+| V7.5 | **A/B test rubric** | 0 | `docs/V7_AB_TEST.md` — six-dimension 1-5 scoring sheet (latency, naturalness, flow, accuracy, recovery, hangup feel), exact test script for repeatable calls, ship-to-paying-client bar (avg ≥ 4.0 across two listeners). |
+
+## What v7 changed in practice
+
+ - Replies open with natural fillers ~15% of the time on opted-in
+   tenants. Breaks the templated cadence even after V4.3 strips
+   corporate-speak.
+ - Greeting reflects time of day, recognizes returning callers by
+   name, and acknowledges prior calls. V4.7 recall data now feeds
+   the greeting itself, not just the system prompt.
+ - Operators have a structured A/B rubric to decide when each piece
+   of voice work is ship-ready.
+
+## What v7 did NOT do
+
+ - **V7.1 — flip ElevenLabs on the live tenant.** Requires the
+   operator to add `ELEVENLABS_API_KEY` to `.env` and set
+   `tts_provider: elevenlabs` in `clients/ace_hvac.yaml`.
+   Infrastructure (V4.1 / V5.6 / V5.7 / V5.8) is ready; the switch
+   is theirs.
+ - **V7.4 — Twilio Media Streams + ElevenLabs Conversational.**
+   The transport rewrite from request/response TwiML to bidirectional
+   WebSocket is a separate 1-2 day build with its own design doc.
+   Deferred so v7.0 has a clean ship.
+
+## New optional YAML fields in v7
+
+| Field | Default | Purpose |
+|---|---|---|
+| `disfluency` | `false` | Enable V7.2 natural filler injection |
+| `disfluency_intensity` | `0.15` | Fraction of replies that get a filler (0.0–0.5) |
+
+`timezone` was already supported (used for the daily owner digest); v7.3 reuses it for greeting bucketing.
