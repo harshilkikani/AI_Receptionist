@@ -42,18 +42,28 @@ def test_prewarm_skips_when_provider_unset():
     assert out["rendered"] == 0
 
 
+def _expected_prewarm_count() -> int:
+    """Derive the expected count from the actual phrase lists so adding
+    new phrases (V8.4 added acks + goodbyes) doesn't break tests."""
+    # 4 greetings (en/es/hi/gu) + 1 force-end + degraded + acks + goodbyes
+    return (4 + 1
+            + len(audio_cache.PREWARM_DEGRADED_PHRASES)
+            + len(audio_cache.PREWARM_ACKS)
+            + len(audio_cache.PREWARM_GOODBYES))
+
+
 def test_prewarm_calls_tts_render_for_elevenlabs():
     """Mock _tts.render to return 'play' payloads — every phrase counts as rendered."""
     from src import tts as _tts
     client = {"id": "ace", "name": "Ace HVAC", "tts_provider": "elevenlabs",
               "owner_name": "Bob"}
     fake_payload = _tts.TtsPayload(kind="play", url="http://example/x.mp3")
+    expected = _expected_prewarm_count()
     with patch.object(_tts, "render", return_value=fake_payload) as m:
         out = audio_cache.prewarm_for_tenant(client)
-    # 4 greetings (en/es/hi/gu) + 1 force-end + 10 degraded = 15
-    assert out["rendered"] == 15
+    assert out["rendered"] == expected
     assert out["errors"] == 0
-    assert m.call_count == 15
+    assert m.call_count == expected
     # First greeting must include company name
     first_text = m.call_args_list[0].args[0]
     assert "Ace HVAC" in first_text
@@ -69,7 +79,7 @@ def test_prewarm_counts_polly_fallback_as_skipped():
     with patch.object(_tts, "render", return_value=fake):
         out = audio_cache.prewarm_for_tenant(client)
     assert out["rendered"] == 0
-    assert out["skipped"] == 15
+    assert out["skipped"] == _expected_prewarm_count()
 
 
 def test_prewarm_counts_render_exceptions_as_errors():
@@ -78,7 +88,7 @@ def test_prewarm_counts_render_exceptions_as_errors():
               "owner_name": "Bob"}
     with patch.object(_tts, "render", side_effect=RuntimeError("boom")):
         out = audio_cache.prewarm_for_tenant(client)
-    assert out["errors"] == 15
+    assert out["errors"] == _expected_prewarm_count()
     assert out["rendered"] == 0
 
 
@@ -106,7 +116,7 @@ def test_prewarm_all_skips_underscore_and_demo_tenants(monkeypatch):
     # only `real_one` should have been pre-warmed
     assert out["tenants_prewarmed"] == 1
     assert "real_one" in out["detail"]
-    assert m.call_count == 15
+    assert m.call_count == _expected_prewarm_count()
 
 
 def test_prewarm_all_counts_polly_tenants_as_skipped(monkeypatch):

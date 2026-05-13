@@ -407,6 +407,13 @@ def chat_with_usage(caller: Optional[dict], user_message: str,
                                           recall_block=recall_block)
     messages = _build_messages(conversation or [], user_message)
     try:
+        # V8.3 — max_tokens stays at 80, NOT 40 as initially tried.
+        # beta.messages.parse counts the FULL JSON envelope; the
+        # {reply,intent,priority,sentiment} wrapper alone burns ~25
+        # tokens, leaving only ~15 for the reply itself at max_tokens=40
+        # — which truncated mid-string on most turns and caused the
+        # Pydantic parse to fail with "unknown" degradation. Brevity is
+        # enforced by the prompt's 8-15 word target, not the token cap.
         response = _anthropic.beta.messages.parse(
             model=MODEL,
             max_tokens=80,

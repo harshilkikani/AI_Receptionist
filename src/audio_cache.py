@@ -49,6 +49,32 @@ PREWARM_DEGRADED_PHRASES: tuple = (
 )
 
 
+# V8.4 — short acks. Most "Got it." style turns currently re-render
+# a near-identical mp3 every time, wasting both latency and credits.
+# Pre-warming these means the LLM's pure-ack turns serve from cache
+# in <50ms (vs ~1500ms fresh render). The list is intentionally short;
+# each entry needs to be a complete plausible turn the LLM might emit.
+PREWARM_ACKS: tuple = (
+    "Got it.",
+    "Okay.",
+    "Mhm.",
+    "Sure thing.",
+    "Yeah, no problem.",
+    "Alright.",
+    "Sounds good.",
+    "Perfect.",
+)
+
+
+# V8.4 — terminal goodbyes that the V8.1 emit-audio paths emit
+# verbatim. Pre-warming guarantees the call-end audio plays instantly.
+PREWARM_GOODBYES: tuple = (
+    "Thanks, we're not interested. Goodbye.",
+    "Thanks, we're not taking calls from this number. Goodbye.",
+    "No worries— have a good one.",
+)
+
+
 def _greetings_for(client: dict) -> list:
     """Mirror main._greeting_for across all 4 supported languages."""
     company = (client or {}).get("name") or "the office"
@@ -88,7 +114,9 @@ def prewarm_for_tenant(client: dict) -> dict:
         return out
     phrases = (_greetings_for(client)
                + [_force_end_for(client)]
-               + list(PREWARM_DEGRADED_PHRASES))
+               + list(PREWARM_DEGRADED_PHRASES)
+               + list(PREWARM_ACKS)         # V8.4 — instant ack hits
+               + list(PREWARM_GOODBYES))    # V8.4 — terminal goodbyes
     for text in phrases:
         try:
             payload = _tts.render(text, client=client)

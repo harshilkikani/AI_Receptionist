@@ -313,6 +313,24 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
         except AttributeError:
             result.reply = grounded
 
+    # V8.3 — emergency keyword guard. The new prompt tells Claude "only
+    # emergency when caller literally mentions one of: {{keywords}}".
+    # Claude still over-classifies sometimes ("AC stopped in summer" got
+    # marked Emergency despite the explicit anti-example). Override the
+    # priority to "low" when the LLM said high but none of the tenant's
+    # configured emergency_keywords appear in the caller's speech.
+    if result.priority == "high":
+        keywords = [k.lower() for k in (client.get("emergency_keywords") or [])]
+        lower_speech = (user_message or "").lower()
+        if keywords and not any(k in lower_speech for k in keywords):
+            log.info("emergency_keyword_guard: downgrading priority "
+                     "(LLM marked high but no keyword in speech) "
+                     "call_sid=%s", call_sid)
+            try:
+                result = result.model_copy(update={"priority": "low"})
+            except AttributeError:
+                result.priority = "low"
+
     # V7.2 — natural disfluency. Opt-in per tenant via `disfluency: true`.
     # Runs AFTER anti_robot + grounding so the cleaning passes don't
     # fight our fillers, and BEFORE humanize/tts so the filler reads
@@ -597,6 +615,29 @@ def _greeting_for(client: dict, lang: str,
         return f"Hey, this is Joanna from {company}— what's going on?"
 
 
+def _emit_audio(vr, message: str, lang: str, client: dict = None):
+    """V8.1 — render `message` and append a top-level <Play>/<Say> to vr,
+    WITHOUT wrapping it in a <Gather>. Used by terminal flows where the
+    next step is <Dial> or <Hangup> (emergency transfer, force-end,
+    capped-call goodbye), so we still get the upgraded ElevenLabs voice
+    instead of dropping to Polly mid-call.
+
+    Always falls back to Polly on render failure (same contract as
+    _respond's else branch).
+    """
+    if _humanize.is_enabled(client):
+        message = _humanize.humanize_for_speech(message)
+    payload = _tts.render(message, client=client, lang=lang)
+    if payload.kind == "play" and payload.url:
+        vr.play(payload.url)
+    else:
+        style = _voice_style.style_for(client, mode="main")
+        ssml_text = (_voice_style.apply_ssml(payload.text, style=style)
+                     if style else payload.text)
+        polly_voice = payload.polly_voice or _voice_for(lang, client, mode="main")
+        vr.say(ssml_text, voice=polly_voice)
+
+
 def _respond(vr, message: str, lang: str, client: dict = None):
     """The ONE pattern used everywhere: Say (or Play) inside Gather.
     Caller can interrupt. If they stay silent, Twilio re-fires
@@ -664,8 +705,10 @@ def voice_incoming(From: str = Form(default=""), To: str = Form(default=""),
         log.info("usage_cap_hit call_sid=%s client=%s current=%d cap=%d",
                  CallSid, client["id"], cap_status["current"], cap_status["cap"])
         vr_cap = VoiceResponse()
-        vr_cap.say(_usage_cap.capped_message(client),
-                   voice=_voice_for("en", client, mode="transactional"))
+        # V8.1 — emit through TTS abstraction so the voice stays
+        # consistent even when we're declining the call. Caller hears
+        # the same Joanna they would on a normal call.
+        _emit_audio(vr_cap, _usage_cap.capped_message(client), "en", client=client)
         vr_cap.hangup()
         usage.end_call(CallSid, outcome="capped")
         call_timer.record_end(CallSid)
@@ -677,8 +720,8 @@ def voice_incoming(From: str = Form(default=""), To: str = Form(default=""),
         log.info("spam_number rejected call_sid=%s from=%s reason=%s",
                  CallSid, From, number_check["reason"])
         vr = VoiceResponse()
-        vr.say("Thanks, we're not taking calls from this number. Goodbye.",
-               voice=_voice_for("en", client, mode="transactional"))
+        _emit_audio(vr, "Thanks, we're not taking calls from this number. Goodbye.",
+                    "en", client=client)
         vr.hangup()
         usage.end_call(CallSid, outcome="spam_number")
         call_timer.record_end(CallSid)
@@ -789,8 +832,8 @@ def voice_gather(From: str = Form(default=""),
         log.info("spam_phrase rejected call_sid=%s phrase=%s",
                  CallSid, phrase_check.get("phrase"))
         vr2 = VoiceResponse()
-        vr2.say("Thanks, we're not interested. Goodbye.",
-                voice=_voice_for(lang, client, mode="transactional"))
+        _emit_audio(vr2, "Thanks, we're not interested. Goodbye.",
+                    lang, client=client)
         vr2.hangup()
         usage.end_call(CallSid, outcome="spam_phrase")
         call_timer.record_end(CallSid)
@@ -808,7 +851,7 @@ def voice_gather(From: str = Form(default=""),
     if timer["action"] == "force_end":
         owner = client.get("owner_name", "the owner")
         goodbye = f"Okay— {owner} will call you back within the hour. Talk soon."
-        vr.say(goodbye, voice=_voice_for(lang, client, mode="transactional"))
+        _emit_audio(vr, goodbye, lang, client=client)
         vr.hangup()
         usage.end_call(CallSid, outcome="duration_capped")
         call_timer.record_end(CallSid)
@@ -856,16 +899,20 @@ def voice_gather(From: str = Form(default=""),
             )
         except Exception as e:  # never fail the call for an owner-alert bug
             log.error("owner_notify raised unexpectedly: %s", e)
-        vr.say(result["reply"], voice=_voice_for(lang))
+        # V8.1 — emergency replies now go through the same TTS
+        # abstraction as normal replies, so callers don't hear the
+        # voice change mid-call when something gets classified as
+        # emergency. Build a single combined utterance + render once.
         on_call = client.get("escalation_phone") or os.environ.get("ON_CALL_NUMBER")
         if on_call:
-            vr.say("Hang tight— connecting you now.",
-                   voice=_voice_for(lang, client, mode="transactional"))
+            combined = (result["reply"] + " Hang tight— connecting you now.")
+            _emit_audio(vr, combined, lang, client=client)
             vr.dial(on_call)
             usage.end_call(CallSid, outcome="emergency_transfer", emergency=True)
         else:
-            vr.say("Got a tech being paged— they'll call you back in ten.",
-                   voice=_voice_for(lang, client, mode="transactional"))
+            combined = (result["reply"]
+                        + " Got a tech being paged— they'll call you back in ten.")
+            _emit_audio(vr, combined, lang, client=client)
         return _twiml(str(vr))
 
     # Normal reply — one Say inside one Gather. That's it.

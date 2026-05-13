@@ -158,15 +158,23 @@ class ElevenLabsProvider(TtsProvider):
     to data/audio/<hash>.mp3, and emits a TwiML <Play> URL.
 
     Required env: ELEVENLABS_API_KEY.
-    Optional env: ELEVENLABS_MODEL (default eleven_turbo_v2_5).
+    Optional env: ELEVENLABS_MODEL (default eleven_flash_v2_5 — V8.2).
 
     V5.8 — when the tenant has exceeded `plan.elevenlabs_monthly_cap_chars`
     for the current month, this provider silently falls back to Polly
     (cache hits remain free — caps only block NEW renders).
+
+    V8.2 — switched default model from eleven_turbo_v2_5 to
+    eleven_flash_v2_5. Flash is ElevenLabs' lowest-latency model
+    (~75ms TTFB vs Turbo's ~250-400ms) at materially better cost.
+    Quality drop is negligible for short phone-call utterances and
+    the latency win matters more on a phone (caller hears dead air
+    until first byte). Override via ELEVENLABS_MODEL env or per-tenant
+    in the future.
     """
     name = "elevenlabs"
 
-    DEFAULT_MODEL = "eleven_turbo_v2_5"
+    DEFAULT_MODEL = "eleven_flash_v2_5"
     DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"   # Rachel — generic example
 
     def render(self, text, lang="en", voice_id=None, settings=None,
