@@ -103,10 +103,17 @@ def _polly_voice_for_lang(lang: str) -> str:
     }.get(lang, "Polly.Joanna-Neural")
 
 
-def _hash_key(text: str, voice_id: str, provider: str) -> str:
-    return hashlib.sha256(
-        f"{provider}|{voice_id}|{text}".encode("utf-8")
-    ).hexdigest()[:24]
+def _hash_key(text: str, voice_id: str, provider: str,
+              model: Optional[str] = None) -> str:
+    """V8.10a — `model` is included in the key when supplied so a
+    re-render with a different ElevenLabs model produces a different
+    cache file. Backwards-compatible: omit model to preserve V5.6/V8.4
+    hashes for pre-V8.10a callers.
+    """
+    parts = [provider, voice_id, text]
+    if model:
+        parts.append(f"m={model}")
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
 # ── Provider interface ────────────────────────────────────────────────
@@ -118,7 +125,8 @@ class TtsProvider:
                voice_id: Optional[str] = None,
                settings: Optional[dict] = None,
                client_id: Optional[str] = None,
-               cap_chars: Optional[int] = None) -> TtsPayload:
+               cap_chars: Optional[int] = None,
+               model: Optional[str] = None) -> TtsPayload:
         raise NotImplementedError
 
 
@@ -128,7 +136,7 @@ class PollyProvider(TtsProvider):
     name = "polly"
 
     def render(self, text, lang="en", voice_id=None, settings=None,
-               client_id=None, cap_chars=None):
+               client_id=None, cap_chars=None, model=None):
         _bump("polly")
         return TtsPayload(
             kind="polly",
@@ -178,7 +186,7 @@ class ElevenLabsProvider(TtsProvider):
     DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"   # Rachel — generic example
 
     def render(self, text, lang="en", voice_id=None, settings=None,
-               client_id=None, cap_chars=None):
+               client_id=None, cap_chars=None, model=None):
         api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
         if not (text or "").strip() or not api_key:
             # Fall back silently. Caller should already have a Polly
@@ -188,7 +196,14 @@ class ElevenLabsProvider(TtsProvider):
 
         vid = voice_id or os.environ.get("ELEVENLABS_VOICE_ID",
                                           self.DEFAULT_VOICE_ID)
-        h = _hash_key(text, vid, "elevenlabs")
+        # V8.10a — model is part of the cache key so prewarmed
+        # Multilingual files don't shadow Flash live renders (and vice
+        # versa). Resolve to a concrete value before hashing so the
+        # cache file stays stable for repeat calls.
+        effective_model = (model
+                            or os.environ.get("ELEVENLABS_MODEL")
+                            or self.DEFAULT_MODEL)
+        h = _hash_key(text, vid, "elevenlabs", model=effective_model)
         path = _AUDIO_DIR / f"{h}.mp3"
 
         if path.exists():
@@ -206,7 +221,8 @@ class ElevenLabsProvider(TtsProvider):
 
         _bump("cache_miss")
         ok, error = _fetch_elevenlabs(text, vid, settings or {}, path,
-                                      client_id=client_id)
+                                      client_id=client_id,
+                                      model=effective_model)
         if not ok:
             _bump("fallback")
             log.warning("elevenlabs render failed (%s); falling back to Polly", error)
@@ -343,7 +359,8 @@ def _request_post(path: str, headers: dict, body: bytes,
 
 def _fetch_elevenlabs(text: str, voice_id: str, settings: dict,
                       out_path: Path,
-                      *, client_id: Optional[str] = None) -> tuple:
+                      *, client_id: Optional[str] = None,
+                      model: Optional[str] = None) -> tuple:
     """V5.7 — POST to the streaming endpoint, write the response body to
     disk. Reuses the pooled HTTPS connection. Returns (ok, error_string).
 
@@ -351,25 +368,44 @@ def _fetch_elevenlabs(text: str, voice_id: str, settings: dict,
     `(client_id, 'elevenlabs', current month)` in usage.db so admin and
     cap-check code can read the running total.
 
+    V8.10a — optional `model` overrides ELEVENLABS_MODEL env. Lets the
+    prewarm path use a slower / more prosody-rich model
+    (eleven_multilingual_v2) while the live runtime path keeps Flash.
+
     `urllib.request.urlopen` (the v4.1 implementation) opened a fresh
     TCP+TLS connection for every render. That's ~150-300ms of overhead
     per call. The pooled http.client connection cuts that to one
     handshake per process lifetime under steady-state traffic.
     """
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-    model = os.environ.get("ELEVENLABS_MODEL",
-                            ElevenLabsProvider.DEFAULT_MODEL)
+    effective_model = (model
+                        or os.environ.get("ELEVENLABS_MODEL")
+                        or ElevenLabsProvider.DEFAULT_MODEL)
     output_format = (os.environ.get("ELEVENLABS_OUTPUT_FORMAT")
                      or _DEFAULT_OUTPUT_FORMAT)
     path = (f"/v1/text-to-speech/{voice_id}/stream"
             f"?output_format={output_format}")
+    # V8.10a — request payload now includes optional style +
+    # speaker_boost when present in settings. These yield a more
+    # deliberate / prosody-rich render. Both are no-op for Flash but
+    # honored by Multilingual + Turbo.
+    voice_settings = {
+        "stability": float(settings.get("stability", 0.5)),
+        "similarity_boost": float(settings.get("similarity", 0.75)),
+    }
+    if "style" in settings:
+        try:
+            voice_settings["style"] = float(settings["style"])
+        except (TypeError, ValueError):
+            pass
+    if "use_speaker_boost" in settings or "speaker_boost" in settings:
+        voice_settings["use_speaker_boost"] = bool(
+            settings.get("use_speaker_boost",
+                         settings.get("speaker_boost")))
     body = json.dumps({
         "text": text,
-        "model_id": model,
-        "voice_settings": {
-            "stability": float(settings.get("stability", 0.5)),
-            "similarity_boost": float(settings.get("similarity", 0.75)),
-        },
+        "model_id": effective_model,
+        "voice_settings": voice_settings,
     }).encode("utf-8")
     headers = {
         "xi-api-key": api_key,
@@ -449,10 +485,39 @@ def cap_chars_for(client: Optional[dict]) -> Optional[int]:
         return None
 
 
+def model_for(client: Optional[dict], *, prewarm: bool = False) -> Optional[str]:
+    """V8.10a — asymmetric model selection.
+
+    Prewarm path (cached audio rendered once at startup): use
+    `tts_prewarm_model` from the tenant YAML, default
+    eleven_multilingual_v2 for prosody-rich playback.
+
+    Runtime path (live mid-call renders): use `tts_runtime_model`,
+    default eleven_flash_v2_5 for minimum first-byte latency.
+
+    Returns None when the client isn't configured for ElevenLabs at
+    all — that path uses Polly which doesn't take a model.
+    """
+    if not client:
+        return None
+    if (client.get("tts_provider") or "").lower() != "elevenlabs":
+        return None
+    if prewarm:
+        return (client.get("tts_prewarm_model")
+                or "eleven_multilingual_v2")
+    return (client.get("tts_runtime_model")
+            or ElevenLabsProvider.DEFAULT_MODEL)
+
+
 def render(text: str, *, client: Optional[dict] = None,
-           lang: str = "en") -> TtsPayload:
+           lang: str = "en", prewarm: bool = False) -> TtsPayload:
     """Convenience wrapper: pick provider, render. Always returns a
-    valid payload — never raises."""
+    valid payload — never raises.
+
+    V8.10a — `prewarm=True` routes through the slower / more
+    prosody-rich tts_prewarm_model. Default False = runtime path uses
+    tts_runtime_model (Flash by default) for lowest latency.
+    """
     if not (text or "").strip():
         return TtsPayload(kind="polly", text="", polly_voice=_polly_voice_for_lang(lang))
     provider = resolve_provider(client)
@@ -463,6 +528,7 @@ def render(text: str, *, client: Optional[dict] = None,
             settings=voice_settings_for(client),
             client_id=(client or {}).get("id"),
             cap_chars=cap_chars_for(client),
+            model=model_for(client, prewarm=prewarm),
         )
     except Exception as e:
         log.error("tts render failed (%s); falling back to Polly: %s",

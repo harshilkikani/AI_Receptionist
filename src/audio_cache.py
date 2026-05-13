@@ -102,14 +102,51 @@ PREWARM_FILLERS: tuple = (
 
 
 def _greetings_for(client: dict) -> list:
-    """Mirror main._greeting_for across all 4 supported languages."""
+    """V8.10a — render EVERY V7.3 greeting variant
+    (language × time-of-day bucket × template index) so the live
+    contextual greeting in main._greeting_for always hits cache.
+
+    Before V8.10a: only 4 legacy strings ("Hey, this is Joanna from
+    {company}— what's going on?" and its translations) — but greeting.
+    greeting_for emits time-of-day variants that often DON'T match
+    those, so the live greeting was rendered fresh on most calls.
+
+    Falls back to the legacy 4-string set if importing greeting fails
+    (e.g. zoneinfo unavailable in a stripped Python build).
+    """
     company = (client or {}).get("name") or "the office"
-    return [
-        f"Hey, this is Joanna from {company}— what's going on?",
-        f"Hola, habla Joanna de {company}— en que te puedo ayudar?",
-        f"Hey, main Joanna, {company} se— kya hua batao?",
-        f"Hey, hu Joanna, {company} thi— shu thayum kahejo?",
-    ]
+    try:
+        from src.greeting import _TEMPLATES_BY_LANG
+    except Exception:
+        return [
+            f"Hey, this is Joanna from {company}— what's going on?",
+            f"Hola, habla Joanna de {company}— en que te puedo ayudar?",
+            f"Hey, main Joanna, {company} se— kya hua batao?",
+            f"Hey, hu Joanna, {company} thi— shu thayum kahejo?",
+        ]
+    out = []
+    seen = set()
+    for lang_templates in _TEMPLATES_BY_LANG.values():
+        for bucket_templates in lang_templates.values():
+            for tpl in bucket_templates:
+                rendered = tpl.format(company=company)
+                if rendered not in seen:
+                    seen.add(rendered)
+                    out.append(rendered)
+    # V8.10a — also prewarm the recall-aware greeting variants.
+    # These have no caller-specific fields (just {company}) so we can
+    # render them once per tenant. _NAMED_RETURN_EN is NOT prewarmed
+    # because it requires the caller's first name.
+    try:
+        from src.greeting import _RECALL_EN
+        for tpl in _RECALL_EN:
+            rendered = tpl.format(company=company, first="")
+            if rendered not in seen:
+                seen.add(rendered)
+                out.append(rendered)
+    except Exception:
+        pass
+    return out
 
 
 def _force_end_for(client: dict) -> str:
@@ -146,7 +183,11 @@ def prewarm_for_tenant(client: dict) -> dict:
                + list(PREWARM_FILLERS))     # V8.9b — endpointing fillers
     for text in phrases:
         try:
-            payload = _tts.render(text, client=client)
+            # V8.10a — prewarm=True routes through the slower /
+            # prosody-rich tts_prewarm_model (multilingual_v2 by default).
+            # Cached audio renders ONCE; the latency cost is paid at
+            # startup, but every subsequent play is a <50ms cache hit.
+            payload = _tts.render(text, client=client, prewarm=True)
             if payload.kind == "play" and payload.url:
                 out["rendered"] += 1
             else:
@@ -272,8 +313,12 @@ def filler_payload_for(client: Optional[dict], *,
     candidates = list(PREWARM_FILLERS)
     r.shuffle(candidates)
     voice_id = _tts.voice_id_for(client) or ""
+    # V8.10a — fillers are rendered with the PREWARM model, so the
+    # cache lookup must hash with the same model or it'll miss.
+    prewarm_model = _tts.model_for(client, prewarm=True)
     for text in candidates:
-        h = _tts._hash_key(text, voice_id, "elevenlabs")
+        h = _tts._hash_key(text, voice_id, "elevenlabs",
+                            model=prewarm_model)
         cached = _AUDIO_DIR / f"{h}.mp3"
         if cached.exists():
             # Build the play URL via the same resolver used in render

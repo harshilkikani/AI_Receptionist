@@ -103,7 +103,11 @@ def test_elevenlabs_falls_back_without_public_base_url(monkeypatch, tmp_path):
 
 
 def test_elevenlabs_cache_hit_returns_play(monkeypatch):
-    h = tts._hash_key("cached", "vid", "elevenlabs")
+    """V8.10a — the hash key now includes the model. Cache file must
+    be created under the SAME model the lookup will use."""
+    # Default model when no override is given is DEFAULT_MODEL (Flash)
+    h = tts._hash_key("cached", "vid", "elevenlabs",
+                       model=tts.ElevenLabsProvider.DEFAULT_MODEL)
     cache_dir = tts._AUDIO_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
     (cache_dir / f"{h}.mp3").write_bytes(b"fake audio bytes")

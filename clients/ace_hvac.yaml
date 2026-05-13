@@ -9,14 +9,25 @@ owner_name: "the owner"
 # the public base URL is empty, or the render fails for any reason.
 tts_provider: elevenlabs
 tts_voice_id: "EXAVITQu4vr4xnSDxMaL"   # Rachel
-# V8.5 — tuned for phone calls. Lower stability = more conversational
-# variance turn-to-turn (vs robotic consistency). Slightly lower
-# similarity = a touch more expressive (phone audio is mono 8kHz so
-# high similarity is wasted bandwidth). Tweak per-tenant if a client
-# wants a more buttoned-up sound.
+# V8.10a — asymmetric model selection.
+#   prewarm_model: paid ONCE at startup per phrase, served forever
+#     from cache. Use the highest-prosody model — caller's first
+#     impression (greeting + ack + filler + goodbye) is the biggest
+#     perception lever.
+#   runtime_model: live mid-call LLM renders. Latency-sensitive;
+#     Flash keeps the first-byte budget under ~150ms.
+tts_prewarm_model: "eleven_multilingual_v2"
+tts_runtime_model: "eleven_flash_v2_5"
+# V8.5 + V8.10a — voice settings tuned for natural phone-call cadence.
+#   stability low → more turn-to-turn variance (less robotic uniform)
+#   similarity slightly lower → expressive without compression artifacts
+#   style 0.30 → deliberate prosody, breathing room between phrases
+#   use_speaker_boost → emphasizes natural voice characteristics
 tts_voice_settings:
   stability: 0.40
   similarity: 0.75
+  style: 0.30
+  use_speaker_boost: true
 # V7.2 — natural disfluency (opt-in). Fires after anti_robot + grounding.
 disfluency: true
 disfluency_intensity: 0.15

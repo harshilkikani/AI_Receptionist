@@ -134,7 +134,7 @@ def test_provider_under_cap_renders_normally(monkeypatch, isolated_audio):
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
     usage.bump_tts_chars("ace", "elevenlabs", 10)
 
-    def fake_fetch(text, vid, settings, path, *, client_id=None):
+    def fake_fetch(text, vid, settings, path, *, client_id=None, model=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"audio")
         return True, None
@@ -170,7 +170,10 @@ def test_provider_cache_hit_ignores_cap(monkeypatch, isolated_audio):
     usage.bump_tts_chars("ace", "elevenlabs", 999_999)
 
     text = "cached phrase"
-    h = tts._hash_key(text, "v", "elevenlabs")
+    # V8.10a — hash key includes model; use the default Flash model
+    # (what render() would resolve to with no override).
+    h = tts._hash_key(text, "v", "elevenlabs",
+                      model=tts.ElevenLabsProvider.DEFAULT_MODEL)
     tts._AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     (tts._AUDIO_DIR / f"{h}.mp3").write_bytes(b"audio")
 
@@ -186,7 +189,7 @@ def test_provider_cap_unset_never_blocks(monkeypatch, isolated_audio):
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
     usage.bump_tts_chars("ace", "elevenlabs", 5_000_000)
 
-    def fake_fetch(text, vid, settings, path, *, client_id=None):
+    def fake_fetch(text, vid, settings, path, *, client_id=None, model=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"audio")
         return True, None
@@ -235,7 +238,7 @@ def test_render_top_level_threads_client_id_and_cap(monkeypatch, isolated_audio)
     class TapProvider(tts.TtsProvider):
         name = "tap"
         def render(self, text, lang="en", voice_id=None, settings=None,
-                   client_id=None, cap_chars=None):
+                   client_id=None, cap_chars=None, model=None):
             captured["client_id"] = client_id
             captured["cap_chars"] = cap_chars
             return tts.TtsPayload(kind="polly", text=text)

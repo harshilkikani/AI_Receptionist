@@ -43,12 +43,13 @@ def test_prewarm_skips_when_provider_unset():
 
 
 def _expected_prewarm_count() -> int:
-    """Derive the expected count from the actual phrase lists so adding
-    new phrases (V8.4 added acks + goodbyes; V8.9b added fillers) doesn't
-    break tests."""
-    # 4 greetings (en/es/hi/gu) + 1 force-end + degraded + acks
-    # + goodbyes + fillers (V8.9b)
-    return (4 + 1
+    """Derive the expected count from the actual phrase lists. V8.10a
+    expanded greetings to include every V7.3 (lang, bucket, variant)
+    tuple, so we get the count from `_greetings_for` instead of
+    hardcoding 4."""
+    sample_client = {"name": "Test", "owner_name": "Bob"}
+    return (len(audio_cache._greetings_for(sample_client))
+            + 1   # force-end
             + len(audio_cache.PREWARM_DEGRADED_PHRASES)
             + len(audio_cache.PREWARM_ACKS)
             + len(audio_cache.PREWARM_GOODBYES)

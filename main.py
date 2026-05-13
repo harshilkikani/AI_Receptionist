@@ -88,22 +88,43 @@ async def _lifespan(app: FastAPI):
     except Exception as e:
         log.error("startup: demo purge failed: %s", e)
 
-    # V5.6 — bound the audio cache + pre-warm common phrases for every
-    # ElevenLabs tenant so the first caller doesn't fall back to Polly.
-    # Both are best-effort; an audio-cache hiccup never blocks startup.
+    # V5.6 — bound the audio cache.
+    # V8.10a — prewarm now runs in a BACKGROUND THREAD because the
+    # prewarm model (multilingual_v2) is ~3-4x slower than Flash and
+    # ~30 phrases per tenant would block uvicorn startup for ~60s.
+    # The server starts serving requests immediately; cache fills
+    # behind the scenes. Cache misses during the fill window degrade
+    # to the live runtime model (Flash) — still fast, just less
+    # prosody-rich until the cache catches up.
     try:
         from src import audio_cache as _audio_cache
         ev = _audio_cache.evict_if_needed()
         if ev.get("evicted_age") or ev.get("evicted_size"):
             log.info("startup: audio cache evicted age=%d size=%d freed=%d bytes",
                      ev["evicted_age"], ev["evicted_size"], ev["bytes_freed"])
-        pw = _audio_cache.prewarm_all()
-        if pw.get("tenants_prewarmed"):
-            log.info("startup: audio cache prewarmed tenants=%d rendered=%d skipped=%d errors=%d",
-                     pw["tenants_prewarmed"], pw["rendered"],
-                     pw["skipped"], pw["errors"])
     except Exception as e:
-        log.error("startup: audio cache step failed: %s", e)
+        log.error("startup: audio cache evict step failed: %s", e)
+
+    def _prewarm_in_background():
+        try:
+            from src import audio_cache as _ac
+            pw = _ac.prewarm_all()
+            if pw.get("tenants_prewarmed"):
+                log.info("background prewarm complete tenants=%d rendered=%d "
+                         "skipped=%d errors=%d",
+                         pw["tenants_prewarmed"], pw["rendered"],
+                         pw["skipped"], pw["errors"])
+        except Exception as e:
+            log.error("background prewarm crashed: %s", e)
+
+    import threading as _threading
+    try:
+        _threading.Thread(target=_prewarm_in_background,
+                          daemon=True,
+                          name="audio-cache-prewarm").start()
+        log.info("startup: audio cache prewarm dispatched in background")
+    except Exception as e:
+        log.error("startup: failed to dispatch prewarm thread: %s", e)
 
     # V6.4 — every background loop start wrapped. A scheduler/alerts
     # crash at boot used to take the whole app down before any voice

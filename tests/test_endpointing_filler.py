@@ -245,24 +245,28 @@ def test_filler_payload_skips_when_no_cached_file(monkeypatch, tmp_path):
 
 
 def test_filler_payload_returns_play_when_cached(monkeypatch, tmp_path):
-    """When a filler IS cached + PUBLIC_BASE_URL is resolvable, return a
-    Play payload."""
+    """When a filler IS cached + PUBLIC_BASE_URL is resolvable, return
+    a Play payload. V8.10a — file must be created with the
+    prewarm-model hash so the V8.10a-aware lookup finds it."""
     from src import audio_cache, tts
     monkeypatch.setattr(audio_cache, "_AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setattr(tts, "_AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
     tts.reset_base_url_cache()
-    # Pre-create the cache file for one of the filler phrases
     voice_id = "Rachel"
     first_filler = audio_cache.PREWARM_FILLERS[0]
-    h = tts._hash_key(first_filler, voice_id, "elevenlabs")
+    client = {"tts_provider": "elevenlabs", "tts_voice_id": "Rachel"}
+    # Use the same prewarm model the lookup will use (None client tts_prewarm_model
+    # → default eleven_multilingual_v2)
+    prewarm_model = tts.model_for(client, prewarm=True)
+    h = tts._hash_key(first_filler, voice_id, "elevenlabs",
+                      model=prewarm_model)
     (tmp_path / "audio").mkdir(parents=True, exist_ok=True)
     (tmp_path / "audio" / f"{h}.mp3").write_bytes(b"fake mp3")
     import random as _r
     rng = _r.Random()
     rng.shuffle = lambda lst: None  # preserve order so we hit our cached file
-    out = audio_cache.filler_payload_for(
-        {"tts_provider": "elevenlabs", "tts_voice_id": "Rachel"}, rng=rng)
+    out = audio_cache.filler_payload_for(client, rng=rng)
     assert out is not None
     assert out.kind == "play"
     assert "example.com" in out.url
