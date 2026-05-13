@@ -99,14 +99,30 @@ async def _lifespan(app: FastAPI):
     except Exception as e:
         log.error("startup: audio cache step failed: %s", e)
 
-    # Startup — kick off alert digest loop if enforcement is on
-    alerts.start_background_loop()
-    # P4 — per-client owner end-of-day digest (10 PM local)
-    _scheduler.start()
+    # V6.4 — every background loop start wrapped. A scheduler/alerts
+    # crash at boot used to take the whole app down before any voice
+    # webhook could answer; now we log + continue. Phone path is what
+    # matters; background digests can be repaired separately.
+    try:
+        alerts.start_background_loop()
+    except Exception as e:
+        log.error("startup: alerts loop failed to start: %s", e)
+    try:
+        _scheduler.start()
+    except Exception as e:
+        log.error("startup: scheduler failed to start: %s", e)
+
     yield
-    # Shutdown
-    alerts.stop_background_loop()
-    _scheduler.stop()
+
+    # Shutdown — same defense in depth on the way out
+    try:
+        alerts.stop_background_loop()
+    except Exception as e:
+        log.error("shutdown: alerts loop stop failed: %s", e)
+    try:
+        _scheduler.stop()
+    except Exception as e:
+        log.error("shutdown: scheduler stop failed: %s", e)
 
 
 app = FastAPI(title="AI Receptionist", lifespan=_lifespan)
@@ -150,8 +166,49 @@ from src import calendar_feed as _calendar_feed  # noqa: E402
 app.include_router(_calendar_feed.router)
 
 
+# ── V6.2 — voice-path-aware error handling ─────────────────────────────
+# Twilio displays "We are sorry, an application error has occurred" on
+# any non-2xx response or any non-TwiML body. The exception handlers
+# below used to return JSON 503 — Twilio's worst-case caller experience.
+# Now we detect /voice/* paths and return a polite TwiML <Say> + <Hangup>
+# instead. The caller hears something coherent and we still log the
+# underlying error for ops.
+
+_FRIENDLY_FAILURE_MESSAGE = (
+    "Sorry, I'm having a brief issue on my end. "
+    "Please give us a quick call back in a moment."
+)
+
+
+def _voice_failure_twiml(message: str = None) -> Response:
+    """Build TwiML for an unrecoverable failure on a /voice/* webhook.
+    Always 200 OK — Twilio retries on 5xx and shows 'application error'
+    to the caller. We'd rather they hear a real sentence and hang up."""
+    try:
+        from twilio.twiml.voice_response import VoiceResponse as _VR
+        vr = _VR()
+        vr.say(message or _FRIENDLY_FAILURE_MESSAGE,
+               voice="Polly.Joanna-Neural")
+        vr.hangup()
+        body = str(vr)
+    except Exception:
+        # Twilio SDK not importable — hand-craft minimal valid TwiML.
+        body = ('<?xml version="1.0" encoding="UTF-8"?>'
+                '<Response><Say voice="Polly.Joanna-Neural">'
+                f'{message or _FRIENDLY_FAILURE_MESSAGE}'
+                '</Say><Hangup/></Response>')
+    return Response(content=body, media_type="application/xml")
+
+
+def _is_voice_path(request: Request) -> bool:
+    return request.url.path.startswith("/voice/")
+
+
 @app.exception_handler(anthropic.AuthenticationError)
 async def _auth_err(request: Request, exc: anthropic.AuthenticationError):
+    log.error("anthropic auth error on %s: %s", request.url.path, exc)
+    if _is_voice_path(request):
+        return _voice_failure_twiml()
     return JSONResponse(
         status_code=503,
         content={"error": "anthropic_auth",
@@ -164,6 +221,9 @@ async def _auth_err(request: Request, exc: anthropic.AuthenticationError):
 async def _missing_key_err(request: Request, exc: TypeError):
     """SDK raises TypeError when no api_key/auth_token can be resolved."""
     if "api_key" in str(exc) or "auth_token" in str(exc):
+        log.error("missing API key on %s: %s", request.url.path, exc)
+        if _is_voice_path(request):
+            return _voice_failure_twiml()
         return JSONResponse(
             status_code=503,
             content={"error": "anthropic_auth",
@@ -175,11 +235,27 @@ async def _missing_key_err(request: Request, exc: TypeError):
 
 @app.exception_handler(anthropic.APIError)
 async def _api_err(request: Request, exc: anthropic.APIError):
+    log.error("anthropic api error on %s: %s", request.url.path, exc)
+    if _is_voice_path(request):
+        return _voice_failure_twiml()
     return JSONResponse(
         status_code=503,
         content={"error": "anthropic_api",
                  "detail": f"Anthropic API error: {exc}"},
     )
+
+
+@app.exception_handler(Exception)
+async def _last_resort(request: Request, exc: Exception):
+    """V6.2 last line of defense: any unhandled exception on a /voice/*
+    path becomes friendly TwiML. Non-voice paths fall through to
+    FastAPI's default 500 (preserves debugging info for admin routes)."""
+    if not _is_voice_path(request):
+        # Re-raise so FastAPI's normal 500 handling kicks in
+        raise exc
+    log.error("unhandled exception on %s: %s: %s",
+              request.url.path, type(exc).__name__, exc)
+    return _voice_failure_twiml()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -529,7 +605,7 @@ def _respond(vr, message: str, lang: str, client: dict = None):
 # ── Voice endpoints ───────────────────────────────────────────────────
 
 @app.post("/voice/incoming")
-def voice_incoming(From: str = Form(...), To: str = Form(default=""),
+def voice_incoming(From: str = Form(default=""), To: str = Form(default=""),
                    CallSid: str = Form(default="")):
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
@@ -610,7 +686,7 @@ def voice_incoming(From: str = Form(...), To: str = Form(default=""),
 
 
 @app.post("/voice/setlang")
-def voice_setlang(From: str = Form(...), Digits: str = Form(default="1"),
+def voice_setlang(From: str = Form(default=""), Digits: str = Form(default="1"),
                   To: str = Form(default="")):
     if not TWILIO_AVAILABLE:
         raise HTTPException(500, "twilio package not installed")
@@ -626,7 +702,7 @@ def voice_setlang(From: str = Form(...), Digits: str = Form(default="1"),
 
 
 @app.post("/voice/gather")
-def voice_gather(From: str = Form(...),
+def voice_gather(From: str = Form(default=""),
                  SpeechResult: str = Form(default=""),
                  Digits: str = Form(default=""),
                  Language: str = Form(default=""),
@@ -756,11 +832,17 @@ def voice_gather(From: str = Form(...),
 
 
 @app.post("/voice/status")
-def voice_status(From: str = Form(...), CallStatus: str = Form(...),
+def voice_status(From: str = Form(default=""),
+                 CallStatus: str = Form(default=""),
                  To: str = Form(default=""), CallSid: str = Form(default=""),
                  CallDuration: str = Form(default="0")):
     """Twilio StatusCallback. Records call end in the usage tracker, and for
-    missed calls fires a recovery SMS."""
+    missed calls fires a recovery SMS.
+
+    V6.2 — every field defaults to '' so Twilio quirks (missing
+    CallStatus on a stale event, retry without From) return 200 with
+    action:none rather than 422. The handler short-circuits below when
+    CallStatus is empty or unrecognized."""
     # End the call record for any terminal status
     if CallStatus in ("completed", "no-answer", "busy", "failed", "canceled"):
         outcome_map = {
