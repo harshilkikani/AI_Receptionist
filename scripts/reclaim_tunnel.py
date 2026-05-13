@@ -44,6 +44,16 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+# V6.6 -- load .env BEFORE constructing the Twilio client. The script
+# was emitting `twilio_client_unavailable` and silently skipping the
+# webhook update because os.environ doesn't include .env values unless
+# something has called load_dotenv() first.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(_ROOT / ".env")
+except Exception:
+    pass
+
 from src import tenant  # noqa: E402
 
 log = logging.getLogger("reclaim_tunnel")
