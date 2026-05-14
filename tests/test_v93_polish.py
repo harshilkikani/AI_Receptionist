@@ -85,13 +85,15 @@ def test_call_detail_has_back_link_to_conversation(app_client):
 
 def test_call_detail_header_shows_partner_and_when(app_client):
     """V9.3 — single hero strip with partner + when + duration +
-    status pill instead of a 5-row table."""
+    status pill instead of a 5-row table.
+    V9.4 — the V9.3 .call-detail-head pattern was unified with the
+    thread-hero block on conversation_detail. Same markup either way."""
     _seed_call("CA_v93_head", "+15557772222")
     tok = client_portal.issue_token("ace_hvac")
     r = app_client.get(f"/client/ace_hvac/call/CA_v93_head?t={tok}")
     body = r.text
-    # New head-strip class
-    assert 'class="call-detail-head"' in body
+    # Hero is now the unified .thread-hero block
+    assert 'class="thread-hero"' in body
     # Phone displayed
     assert "+15557772222" in body
     # Status pill rendered

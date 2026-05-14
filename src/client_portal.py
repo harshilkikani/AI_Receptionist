@@ -37,8 +37,8 @@ from fastapi.responses import HTMLResponse
 
 from src import tenant, usage
 from src.design import (
-    call_card, card, data_table, page, pill, stat_card, stats,
-    status_pill, icon,
+    call_card, card, data_table, page, pill, section_caption,
+    stat_card, stats, status_pill, icon,
 )
 
 router = APIRouter(prefix="/client", tags=["client_portal"])
@@ -155,23 +155,25 @@ def summary(client_id: str, t: str = "", request: Request = None):
                     f"{html.escape(_phone_slug(p['phone']))}{tq}"
                 ),
             ))
-        activity_html = card(
-            "".join(cards),
-            title="Last 24 hours",
-            flush=True,
+        activity_html = (
+            section_caption("Recent activity")
+            + card("".join(cards), flush=True)
         )
     else:
-        activity_html = card(
-            f'<div class="empty empty-warm">'
-            f'<div class="empty-icon">{icon("phone", size=20)}</div>'
-            f'<div class="empty-title">All quiet right now</div>'
-            f'<div class="empty-sub">Your line is on. Calls and texts '
-            f'will show up here as soon as they come in.</div>'
-            f'</div>',
-            title="Last 24 hours",
+        activity_html = (
+            section_caption("Recent activity")
+            + card(
+                f'<div class="empty empty-warm">'
+                f'<div class="empty-icon">{icon("phone", size=20)}</div>'
+                f'<div class="empty-title">All quiet right now</div>'
+                f'<div class="empty-sub">Your line is on. Calls and texts '
+                f'will show up here as soon as they come in.</div>'
+                f'</div>',
+                flush=True,
+            )
         )
 
-    # ── Follow-ups section (was a separate tab in V9.0; folded in) ────
+    # ── Follow-ups section (soft variant — context, not data) ────────
     followups = _followup_candidates(client_id, limit=5)
     if followups:
         items = []
@@ -192,33 +194,37 @@ def summary(client_id: str, t: str = "", request: Request = None):
                     if raw_phone else ""
                 ),
             ))
-        followups_html = card("".join(items),
-                               title="Worth a follow-up", flush=True)
+        followups_html = (
+            section_caption("Worth a follow-up")
+            + card("".join(items), variant="soft", flush=True)
+        )
     else:
         followups_html = ""
 
-    # ── Calm stats footer (this month) ────────────────────────────────
-    top_stats = stats([
-        stat_card("Calls answered this month", s["calls_handled"]),
-        stat_card("Emergencies routed safely", s["emergencies"]),
-        stat_card("Bookings captured", bookings),
-    ])
+    # ── Bare stat strip — no card chrome ──────────────────────────────
+    top_stats = (
+        section_caption("This month")
+        + stats([
+            stat_card("Calls answered", s["calls_handled"]),
+            stat_card("Emergencies routed safely", s["emergencies"]),
+            stat_card("Bookings captured", bookings),
+        ])
+    )
 
-    # ── Hero strip — reassurance + invoice link ──────────────────────
+    # ── Bare typographic hero — no card chrome around the headline ───
     headline = _today_headline(today_calls, today_msgs, today_emerg)
-    hero_body = (
-        f'<div class="row" style="align-items:center;justify-content:space-between;gap:16px;">'
-        f'<div><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em;">'
-        f'{html.escape(headline)}</div>'
-        f'<div class="muted" style="font-size:13px;margin-top:4px;">'
-        f'Your receptionist is online and answering. This page updates as '
-        f'calls come in.</div></div>'
+    hero = (
+        f'<div class="today-hero">'
+        f'<div class="today-hero-text">'
+        f'<h2 class="today-headline">{html.escape(headline)}</h2>'
+        f'<p class="today-sub">Your receptionist is online and answering. '
+        f'This page updates as calls come in.</p>'
+        f'</div>'
         f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
-        f'class="btn" style="white-space:nowrap;">'
-        f'{icon("calendar", size=14)} This month\'s invoice'
+        f'class="btn">'
+        f'{icon("calendar", size=14)} {html.escape(month_label_short(month))} invoice'
         f'</a></div>'
     )
-    hero = card(hero_body)
 
     body = hero + activity_html + followups_html + top_stats
     return HTMLResponse(page(
@@ -248,9 +254,12 @@ def conversations_list(client_id: str, t: str = "", limit: int = 50):
 
     if not partners:
         body = card(
-            '<div class="empty">No conversations yet. Calls and texts will '
-            'show up here as soon as they come in.</div>',
-            title="Conversations",
+            f'<div class="empty empty-warm">'
+            f'<div class="empty-icon">{icon("phone", size=20)}</div>'
+            f'<div class="empty-title">No conversations yet</div>'
+            f'<div class="empty-sub">Calls and texts will show up here '
+            f'as soon as they come in.</div></div>',
+            flush=True,
         )
     else:
         cards = []
@@ -278,9 +287,16 @@ def conversations_list(client_id: str, t: str = "", limit: int = 50):
                     f"{html.escape(_phone_slug(p['phone']))}{tq}"
                 ),
             ))
-        body = card("".join(cards), title="Conversations",
-                    subtitle=f"{len(partners)} partner{'s' if len(partners) != 1 else ''}",
-                    flush=True)
+        # V9.4 — the page header already says "Conversations". No
+        # redundant card title; the list IS the page. Bare typographic
+        # caption above gives partner count without competing visually.
+        count_label = (
+            f"{len(partners)} {'person' if len(partners) == 1 else 'people'}"
+        )
+        body = (
+            f'<div class="list-count">{html.escape(count_label)}</div>'
+            + card("".join(cards), flush=True)
+        )
 
     return HTMLResponse(page(
         title=client["name"],
@@ -309,6 +325,7 @@ def conversation_detail(client_id: str, phone_slug: str, t: str = ""):
     if not norm:
         raise HTTPException(404, "conversation not found")
     phone = "+" + norm
+    tq = f"?t={html.escape(t)}"
 
     turns = transcripts.list_by_phone(client_id, phone, limit=500)
     # Group turns by call_sid for distinguishable conversation blocks.
@@ -327,27 +344,39 @@ def conversation_detail(client_id: str, phone_slug: str, t: str = ""):
         if blk["channel"] == "voice":
             blk["meta"] = transcripts.get_call_meta(blk["call_sid"])
 
-    # Header: who is this + how reachable
-    head_body = (
-        f'<div class="row" style="align-items:center;justify-content:space-between;">'
-        f'<div><h2 style="margin:0;font-size:20px;">'
-        f'{html.escape(_partner_label(phone))}</h2>'
-        f'<div class="muted" style="font-size:13px;margin-top:2px;">'
-        f'{html.escape(phone)}</div></div>'
-        f'<a class="btn" href="tel:{html.escape(phone)}">'
-        f'{icon("phone", size=14)} Call back</a></div>'
+    # V9.4 — bare typographic hero. The partner name IS the page anchor;
+    # phone is secondary; "Call back" is a clear inline action.
+    back_to_list = (
+        f'<a href="/client/{html.escape(client_id)}/conversations{tq}" '
+        f'class="back-link muted">← All conversations</a>'
     )
-    header = card(head_body)
+    head = (
+        f'<div class="thread-hero">'
+        f'{back_to_list}'
+        f'<div class="thread-hero-row">'
+        f'<div>'
+        f'<h2 class="thread-hero-name">{html.escape(_partner_label(phone))}</h2>'
+        f'<div class="thread-hero-phone muted">{html.escape(phone)}</div>'
+        f'</div>'
+        f'<a class="btn" href="tel:{html.escape(phone)}">'
+        f'{icon("phone", size=14)} Call back</a>'
+        f'</div></div>'
+    )
 
     if not blocks:
-        body = header + card(
-            '<div class="empty">No history with this number yet.</div>')
+        body = head + card(
+            f'<div class="empty empty-warm">'
+            f'<div class="empty-icon">{icon("voicemail", size=20)}</div>'
+            f'<div class="empty-title">No history with this number yet</div>'
+            f'<div class="empty-sub">When this caller next contacts you, '
+            f'their full thread will appear here.</div></div>',
+            flush=True,
+        )
     else:
         thread_html = []
         for blk in blocks:
             thread_html.append(_render_thread_block(blk, client_id, t))
-        body = header + card("".join(thread_html), title="Conversation",
-                              flush=True)
+        body = head + card("".join(thread_html), flush=True)
 
     return HTMLResponse(page(
         title=client["name"],
@@ -382,43 +411,44 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
     status_html = (status_pill("emergency") if meta.get("emergency")
                    else status_pill(raw_outcome or "answered"))
 
-    # ── Header strip — partner name, status, back-to-thread link ────
+    # ── V9.4 — bare typographic hero, same pattern as thread detail ────
     tq = f"?t={html.escape(t)}"
     back_href = (
         f"/client/{html.escape(client_id)}/conversations/"
         f"{html.escape(_phone_slug(raw_phone))}{tq}"
-    ) if raw_phone else ""
-    head_body = (
-        f'<div class="call-detail-head">'
-        f'<div class="head-main">'
-        f'<h2 style="margin:0;font-size:20px;letter-spacing:-0.01em;">'
+    ) if raw_phone else (
+        f"/client/{html.escape(client_id)}/conversations{tq}"
+    )
+    header = (
+        f'<div class="thread-hero">'
+        f'<a href="{back_href}" class="back-link muted">'
+        f'← Back to conversation</a>'
+        f'<div class="thread-hero-row">'
+        f'<div>'
+        f'<h2 class="thread-hero-name">'
         f'{html.escape(_partner_label(raw_phone) or "Caller")}</h2>'
-        f'<div class="muted" style="font-size:13px;margin-top:2px;">'
+        f'<div class="thread-hero-phone muted">'
         f'{html.escape(raw_phone)}{" · " if raw_phone else ""}'
         f'{html.escape(when_label)} · {html.escape(duration)}</div>'
         f'</div>'
-        f'<div class="head-aside">{status_html}</div>'
-        f'</div>'
+        f'<div>{status_html}</div>'
+        f'</div></div>'
     )
-    # Back link rendered above the header (small breadcrumb).
-    if back_href:
-        head_body = (
-            f'<a href="{back_href}" class="back-link muted">'
-            f'← Back to conversation</a>{head_body}'
-        )
-    header = card(head_body)
 
-    # ── Summary (if present) ───────────────────────────────────────
+    # ── Summary (soft variant — context, not data) ────────────────────
     summary_card = ""
     summary_text = (meta.get("summary") if hasattr(meta, "get") else None)
     if summary_text:
-        summary_card = card(
-            f'<p style="margin:0;font-size:14px;line-height:1.55;color:var(--fg);">'
-            f'{html.escape(summary_text)}</p>',
-            title="Call summary",
+        summary_card = (
+            section_caption("Call summary")
+            + card(
+                f'<p style="margin:0;font-size:15px;line-height:1.55;">'
+                f'{html.escape(summary_text)}</p>',
+                variant="soft",
+            )
         )
 
-    # ── Recording indicator (admin-only proxy; portal users see status) ─
+    # ── Recording indicator (soft variant — visibility, not action) ──
     rec_card = ""
     try:
         from src import recordings as _rec
@@ -427,12 +457,14 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
             rec_dur = _fmt_duration(int(rec.get("recording_duration_s") or 0))
             rec_card = card(
                 f'<div class="row" style="align-items:center;gap:12px;">'
-                f'{icon("voicemail", size=18)}'
-                f'<div><div style="font-weight:600;font-size:14px;">'
+                f'<div style="color:var(--accent);flex-shrink:0;">'
+                f'{icon("voicemail", size=18)}</div>'
+                f'<div><div style="font-weight:600;font-size:15px;">'
                 f'Audio recording captured</div>'
-                f'<div class="muted" style="font-size:12px;margin-top:2px;">'
+                f'<div class="muted" style="font-size:13px;margin-top:2px;">'
                 f'{html.escape(rec_dur)} — available to your account contact</div>'
-                f'</div></div>'
+                f'</div></div>',
+                variant="soft",
             )
     except Exception:
         rec_card = ""
@@ -442,7 +474,7 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
         bubble_html = _render_bubble_sequence(turns)
         conv = card(
             f'<div class="bubbles">{bubble_html}</div>',
-            title="Conversation", flush=True,
+            flush=True,
         )
     else:
         conv = card(
@@ -451,7 +483,7 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
             '<div class="empty-title">No transcript captured</div>'
             '<div class="empty-sub">This call ended before any conversation '
             'was recorded.</div></div>',
-            title="Conversation",
+            flush=True,
         )
 
     body = header + summary_card + rec_card + conv
@@ -602,23 +634,36 @@ def settings(client_id: str, t: str = ""):
          html.escape((client.get("default_language") or "en").upper())],
     ]
     services = (client.get("services") or "").strip()
-    services_html = (
-        card(f'<p style="margin:0">{html.escape(services)}</p>',
-             title="What the receptionist knows about your business")
-        if services else ""
+
+    # V9.4 — section captions over flush cards, soft variant for the
+    # context block. No redundant card titles competing with the page
+    # header.
+    settings_card = (
+        section_caption("Account")
+        + card(data_table(headers=["", ""], rows=rows), flush=True)
     )
+    services_block = ""
+    if services:
+        services_block = (
+            section_caption("What the receptionist knows")
+            + card(
+                f'<p style="margin:0;line-height:1.55">{html.escape(services)}</p>',
+                variant="soft",
+            )
+        )
     contact_note = card(
-        '<p style="margin:0;color:var(--muted)">'
-        'To change any of these, reply to your welcome email or call your '
-        'account contact. Changes typically apply within a few minutes.'
-        '</p>',
+        f'<div class="row" style="align-items:flex-start;gap:12px;">'
+        f'<div style="color:var(--accent);flex-shrink:0;margin-top:2px;">'
+        f'{icon("settings", size=18)}</div>'
+        f'<div><div style="font-weight:600;font-size:15px;">'
+        f'Need a change?</div>'
+        f'<p class="muted" style="margin:4px 0 0;font-size:14px;line-height:1.5">'
+        f'Reply to the welcome email we sent, or call your account '
+        f'contact. Changes typically apply within a few minutes.</p>'
+        f'</div></div>',
+        variant="soft",
     )
-    body = (
-        card(data_table(headers=["", ""], rows=rows),
-             title="Account settings")
-        + services_html
-        + contact_note
-    )
+    body = settings_card + services_block + contact_note
     return HTMLResponse(page(
         title=client["name"],
         subtitle="Settings",
@@ -641,6 +686,15 @@ def _fmt_duration(seconds: int) -> str:
         return f"{seconds}s"
     m, s = divmod(seconds, 60)
     return f"{m}m {s:02d}s"
+
+
+def month_label_short(month: str) -> str:
+    """'2026-05' → 'May'. Used for the inline invoice button label."""
+    try:
+        dt = datetime.strptime(month, "%Y-%m")
+        return dt.strftime("%b")
+    except Exception:
+        return "Current"
 
 
 # ── V9.2 — Today emotional helpers ────────────────────────────────────

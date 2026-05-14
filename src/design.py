@@ -137,6 +137,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv11";
 }
+/* V9.4 — explicit type scale for content headings. Page-level H1
+   lives in `header.page` below; these handle in-body section headers. */
+h2, .h2 { font-size: 22px; font-weight: 600;
+           letter-spacing: -0.015em; line-height: 1.25;
+           color: var(--fg); margin: 0; }
+h3, .h3 { font-size: 17px; font-weight: 600;
+           letter-spacing: -0.005em; line-height: 1.3;
+           color: var(--fg); margin: 0; }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -161,32 +169,43 @@ pre {
 .sidebar {
   background: var(--card-bg);
   border-right: 1px solid var(--border);
-  padding: var(--s-5) var(--s-4);
+  padding: 28px 16px 16px;
 }
+/* V9.4 — sidebar brand reads as a confident workspace marker, not a
+   small chip. Bigger type, slightly more space. */
 .sidebar .brand {
-  display: flex; align-items: center; gap: var(--s-2);
-  font-weight: 700; font-size: 15px; margin-bottom: var(--s-5);
-  letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 16px; margin-bottom: 24px;
+  letter-spacing: -0.01em; color: var(--fg);
+  padding: 0 8px;
 }
 .sidebar .brand .dot {
   width: 10px; height: 10px; border-radius: 999px;
   background: var(--accent); display: inline-block;
+  flex-shrink: 0;
 }
-.sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+.sidebar nav { display: flex; flex-direction: column; gap: 1px; }
 .sidebar nav a {
-  display: flex; align-items: center;
-  padding: 10px 12px; border-radius: var(--radius-sm);
-  color: var(--n-600); font-weight: 500;
+  display: flex; align-items: center; position: relative;
+  padding: 9px 12px; border-radius: 6px;
+  color: var(--muted); font-weight: 500; font-size: 14px;
   transition: background 120ms, color 120ms;
 }
-.sidebar nav a:hover { background: var(--n-100); color: var(--fg); text-decoration: none; }
+.sidebar nav a:hover { background: var(--n-100); color: var(--fg);
+                        text-decoration: none; }
+/* V9.4 — Linear-style active state: subtle background + a tight
+   accent bar on the left edge. Stronger weight on the label. */
 .sidebar nav a[aria-current="page"] {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
 }
+.sidebar nav a[aria-current="page"]::before {
+  content: ""; position: absolute; left: -16px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
 @media (prefers-color-scheme: dark) {
-  .sidebar nav a { color: var(--n-300); }
   .sidebar nav a:hover { background: #17223d; }
 }
 
@@ -234,44 +253,122 @@ pre {
 }
 
 .main {
-  padding: var(--s-5) var(--s-6);
-  max-width: 1240px;
+  padding: 8px 36px 48px;
+  max-width: 1100px;
   width: 100%;
 }
+@media (max-width: 820px) {
+  .main { padding: 8px 24px 48px; }
+}
 @media (max-width: 640px) {
-  .main { padding: var(--s-4); }
+  .main { padding: 4px 16px 48px; }
 }
 
+/* V9.4 — page header is now typography-led. No more border-bottom; the
+   space between header and body does the visual separation. H1 takes
+   real estate so it actually feels like a page anchor. */
 header.page {
   display: flex; align-items: flex-end; justify-content: space-between;
-  gap: var(--s-4); margin-bottom: var(--s-5);
-  padding-bottom: var(--s-4);
-  border-bottom: 1px solid var(--border);
+  gap: var(--s-5); margin: 24px 0 32px;
 }
 header.page h1 {
-  margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+  margin: 0; font-size: 32px; font-weight: 700;
+  letter-spacing: -0.025em; line-height: 1.15;
+  color: var(--fg);
 }
-header.page .subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+header.page .subtitle { color: var(--muted); font-size: 13.5px;
+                         margin-top: 6px; font-weight: 500;
+                         letter-spacing: 0.01em; text-transform: uppercase; }
+header.page .head-aside { display: flex; align-items: center;
+                           gap: 10px; flex-shrink: 0; }
+@media (max-width: 640px) {
+  header.page { margin: 16px 0 24px; flex-wrap: wrap; }
+  header.page h1 { font-size: 26px; }
+}
 
-/* ── Card ──────────────────────────────────────────────────────────── */
+/* ── Card variants (V9.4) ─────────────────────────────────────────── */
+/* Three variants used compositionally:
+   - .card.solid  (default) — white surface, soft border, soft shadow
+                    for grouped data and primary content blocks.
+   - .card.soft   — tinted bg with no border, for context/asides and
+                    follow-up sections that should de-emphasize.
+   - .card.flush  — zero padding; lets contained components own their
+                    own padding (data tables, call lists, threads).
+   The card() helper composes these via the `variant` kwarg. */
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   box-shadow: var(--shadow-sm);
   padding: 24px;
   margin-bottom: 20px;
 }
+.card.soft {
+  background: var(--n-50);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  .card.soft { background: #0c1628; border-color: #1a2541; }
+}
 .card.flush { padding: 0; }
 .card h2 {
   margin: 0 0 16px;
-  font-size: 16px; font-weight: 600; letter-spacing: -0.005em;
+  font-size: 17px; font-weight: 600; letter-spacing: -0.005em;
+  color: var(--fg);
 }
-.card.flush h2 { padding: 18px 22px 0; margin-bottom: 0; }
+.card.flush h2 { padding: 20px 24px 0; margin-bottom: 0; }
 .card.flush > .data, .card.flush > table.data { margin-top: 12px; }
-.card.flush .empty { padding: 32px 24px; }
+.card.flush .empty { padding: 40px 24px; }
 .card h2.sub { font-size: 12px; text-transform: uppercase; color: var(--muted);
                letter-spacing: .05em; font-weight: 600; margin-bottom: var(--s-3); }
+/* V9.4 — section caption that lives ABOVE a card, not inside it.
+   Used for the "Recent activity" / "Worth a follow-up" labels above
+   flush cards on Today. Reads as a magazine section, not as a card
+   header. */
+.section-caption { font-size: 12px; font-weight: 600;
+                    color: var(--muted); text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                    margin: 28px 4px 12px; }
+.section-caption:first-child { margin-top: 8px; }
+
+/* V9.4 — Today hero: bare typographic intro, no card chrome. */
+.today-hero { display: flex; align-items: flex-end;
+               justify-content: space-between; gap: 24px;
+               margin: 0 0 8px; flex-wrap: wrap; }
+.today-hero-text { min-width: 0; max-width: 720px; }
+.today-headline { font-size: 28px; font-weight: 700;
+                   letter-spacing: -0.02em; line-height: 1.2;
+                   color: var(--fg); margin: 0; }
+.today-sub { color: var(--muted); font-size: 15px;
+              margin: 8px 0 0; max-width: 560px;
+              line-height: 1.5; }
+@media (max-width: 640px) {
+  .today-hero { gap: 14px; }
+  .today-headline { font-size: 24px; }
+  .today-sub { font-size: 14px; }
+}
+
+/* V9.4 — conversation thread hero: bare typographic, no card. */
+.thread-hero { margin: 0 0 12px; }
+.thread-hero .back-link { display: inline-block; margin-bottom: 12px;
+                           font-size: 12px; color: var(--muted);
+                           font-weight: 500; }
+.thread-hero-row { display: flex; align-items: center;
+                    justify-content: space-between; gap: 16px;
+                    flex-wrap: wrap; }
+.thread-hero-name { font-size: 28px; font-weight: 700;
+                     letter-spacing: -0.02em; line-height: 1.15;
+                     color: var(--fg); margin: 0; }
+.thread-hero-phone { font-size: 14px; margin-top: 4px;
+                      font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .thread-hero-name { font-size: 24px; }
+}
+
+/* V9.4 — list-count micro-label above a flush list. Bare typographic. */
+.list-count { font-size: 13px; color: var(--muted);
+               margin: 0 4px 12px; font-weight: 500; }
 
 /* ── Tables ────────────────────────────────────────────────────────── */
 table.data {
@@ -455,12 +552,10 @@ table.data td.muted { color: var(--muted); }
   .call .right { font-size: 11px; }
 }
 
-/* ── V9.3 — call detail header strip ──────────────────────────────── */
-.call-detail-head { display: flex; align-items: center; gap: var(--s-4);
-                     justify-content: space-between; flex-wrap: wrap; }
-.call-detail-head .head-main { min-width: 0; flex: 1; }
-.call-detail-head .head-aside { flex-shrink: 0; }
-.back-link { display: inline-block; margin-bottom: 10px;
+/* V9.4 — back-link helper (used by thread-hero on conversation_detail
+   and call_detail). The V9.3 .call-detail-head pattern was retired
+   in favor of the unified .thread-hero block. */
+.back-link { display: inline-block; margin-bottom: 12px;
               font-size: 12px; color: var(--muted); font-weight: 500; }
 .back-link:hover { color: var(--accent); text-decoration: none; }
 
@@ -686,14 +781,35 @@ def page(*, title: str, body: str,
 # ── Components ─────────────────────────────────────────────────────────
 
 def card(body: str, *, title: Optional[str] = None,
-         subtitle: Optional[str] = None, flush: bool = False) -> str:
-    cls = "card flush" if flush else "card"
+         subtitle: Optional[str] = None, flush: bool = False,
+         variant: str = "solid") -> str:
+    """V9.4 — three variants:
+        solid (default) — white card-bg, soft border + shadow.
+        soft            — tinted bg, no border, no shadow. For asides
+                          and context blocks that should de-emphasize.
+        flush           — kept as a separate flag for backwards-compat;
+                          orthogonal to variant (you can have solid+flush
+                          or soft+flush).
+    """
+    variant = variant if variant in ("solid", "soft") else "solid"
+    classes = ["card"]
+    if variant == "soft":
+        classes.append("soft")
+    if flush:
+        classes.append("flush")
     head = ""
     if title:
         head = f'<h2>{html.escape(title)}</h2>'
     if subtitle:
         head += f'<div class="muted" style="margin-bottom:var(--s-3)">{html.escape(subtitle)}</div>'
-    return f'<section class="{cls}">{head}{body}</section>'
+    return f'<section class="{" ".join(classes)}">{head}{body}</section>'
+
+
+def section_caption(text: str) -> str:
+    """V9.4 — a magazine-style section caption that sits ABOVE a flush
+    card (e.g., "Recent activity"). Doesn't add a card chrome — just a
+    confident typographic anchor."""
+    return f'<div class="section-caption">{html.escape(text)}</div>'
 
 
 def data_table(headers: list, rows: list, *, empty_text: str = "No data yet.") -> str:
