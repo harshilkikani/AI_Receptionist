@@ -518,18 +518,36 @@ table.data td.muted { color: var(--muted); }
              background: hsl(var(--av-h, 220), 70%, 95%);
              color: hsl(var(--av-h, 220), 45%, 38%);
              display: flex; align-items: center; justify-content: center;
-             font-weight: 600; font-size: 15px; flex-shrink: 0; }
+             font-weight: 600; font-size: 15px; flex-shrink: 0;
+             position: relative; overflow: hidden; }
 @media (prefers-color-scheme: dark) {
   .call .av { background: hsl(var(--av-h, 220), 25%, 22%);
                color: hsl(var(--av-h, 220), 60%, 78%); }
 }
-.call .body { min-width: 0; }
+/* V9.6.1 — photo avatar layer. The initial sits behind as a fallback
+   visible only when the <img> fails to load (onerror sets display:none). */
+.call .av-img { position: absolute; inset: 0;
+                 width: 100%; height: 100%;
+                 object-fit: cover; border-radius: 999px;
+                 background: hsl(var(--av-h, 220), 70%, 95%); }
+@media (prefers-color-scheme: dark) {
+  .call .av-img { background: hsl(var(--av-h, 220), 25%, 22%); }
+}
+.call .av-initial { position: relative; z-index: 0; }
+.call .body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .call .body .who { font-weight: 600; font-size: 15px; color: var(--fg);
                     overflow: hidden; text-overflow: ellipsis;
-                    white-space: nowrap; }
-.call .body .from { color: var(--muted); font-size: 13px;
-                     font-weight: 400; margin-left: 8px; }
-.call .body .sum { margin-top: 4px; font-size: 14px; color: var(--n-700);
+                    white-space: nowrap; line-height: 1.3; }
+/* V9.6.1 — phone stacks under name as a block so the column aligns
+   across cards. Previously inline with margin-left, so a long name
+   pushed the phone around. */
+.call .body .from { display: block;
+                     color: var(--muted); font-size: 13px;
+                     font-weight: 400; margin: 0;
+                     font-variant-numeric: tabular-nums;
+                     overflow: hidden; text-overflow: ellipsis;
+                     white-space: nowrap; }
+.call .body .sum { margin-top: 6px; font-size: 14px; color: var(--n-700);
                     line-height: 1.45;
                     overflow: hidden; text-overflow: ellipsis;
                     display: -webkit-box; -webkit-line-clamp: 2;
@@ -540,15 +558,15 @@ table.data td.muted { color: var(--muted); }
 .call .right { text-align: right; font-size: 12px; color: var(--muted);
                 display: flex; flex-direction: column; gap: 6px;
                 align-items: flex-end; flex-shrink: 0; }
-.call .right .when { font-size: 12px; color: var(--muted); }
+.call .right .when { font-size: 12px; color: var(--muted);
+                      font-variant-numeric: tabular-nums; }
 /* Mobile: bigger tap targets, right column shrinks but stays visible. */
 @media (max-width: 640px) {
   .call { padding: 16px var(--s-4); gap: var(--s-3);
            grid-template-columns: 40px 1fr auto; }
   .call .av { width: 40px; height: 40px; font-size: 14px; }
   .call .body .who { font-size: 15px; }
-  .call .body .from { display: block; margin-left: 0; margin-top: 2px;
-                       font-size: 12px; }
+  .call .body .from { font-size: 12px; }
   .call .right { font-size: 11px; }
 }
 
@@ -756,16 +774,22 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
 .chat-chip:hover { background: var(--n-200); text-decoration: none; }
 .chat-chip.active { background: var(--accent-soft); color: var(--accent);
                      border-color: var(--accent); font-weight: 600; }
-.chat-chip .av { width: 18px; height: 18px; border-radius: 999px;
+.chat-chip .av { width: 20px; height: 20px; border-radius: 999px;
                   display: inline-flex; align-items: center; justify-content: center;
                   font-size: 10px; font-weight: 700;
                   background: hsl(var(--av-h, 220), 70%, 90%);
-                  color: hsl(var(--av-h, 220), 45%, 38%); }
+                  color: hsl(var(--av-h, 220), 45%, 38%);
+                  position: relative; overflow: hidden; flex-shrink: 0; }
+.chat-chip .av-img { position: absolute; inset: 0;
+                      width: 100%; height: 100%; object-fit: cover;
+                      background: hsl(var(--av-h, 220), 70%, 90%); }
+.chat-chip .av-initial { position: relative; z-index: 0; }
 @media (prefers-color-scheme: dark) {
   .chat-chip { background: #182338; color: #b2c2db; }
   .chat-chip:hover { background: #1f2e4d; }
   .chat-chip .av { background: hsl(var(--av-h, 220), 25%, 22%);
                     color: hsl(var(--av-h, 220), 60%, 78%); }
+  .chat-chip .av-img { background: hsl(var(--av-h, 220), 25%, 22%); }
 }
 
 .phone-conv { flex: 1; padding: 18px 16px;
@@ -1261,18 +1285,50 @@ def _avatar_hue(seed: str) -> int:
     return int(digest[:4], 16) % 360
 
 
+# V9.6.1 — illustrated portrait avatar URL.
+# DiceBear's `notionists` style — clean, modern, professional. Public CDN,
+# no licensing concerns (CC0 source set), stable per seed. We pass the
+# partner's normalized phone digits so the same partner always gets the
+# same portrait. The image is requested via `<img>` so failures fall
+# back transparently to the initial-letter disc (see `.av-img onerror`
+# in call_card).
+DICEBEAR_BASE = "https://api.dicebear.com/9.x/notionists/svg"
+
+
+def partner_photo_url(seed: str) -> str:
+    """Returns a stable illustrated-portrait URL for the partner.
+    Empty seed returns empty string (caller will use the initial disc)."""
+    if not seed:
+        return ""
+    try:
+        from urllib.parse import quote
+        # Normalize the seed for stable URLs: digits only when possible.
+        try:
+            from memory import normalize_phone
+            s = normalize_phone(seed) or seed
+        except Exception:
+            s = seed
+        return f"{DICEBEAR_BASE}?seed={quote(s)}"
+    except Exception:
+        return ""
+
+
 def call_card(*, caller: str, from_number: str = "",
               when: str = "", summary: str = "",
               status: str = "answered", duration: Optional[str] = None,
-              href: Optional[str] = None) -> str:
+              href: Optional[str] = None,
+              photo_url: Optional[str] = None) -> str:
     """Single-call row, communications-as-primary-object pattern.
     Used on portal Today / Calls / admin recent-calls.
-    `href` makes the whole card a link; omit for static rendering."""
+    `href` makes the whole card a link; omit for static rendering.
+    `photo_url` renders an <img> avatar; on load error JS falls back
+    to the initial-letter disc (handled by .av-img onerror)."""
     initial = html.escape((caller or "?")[:1].upper())
     who = html.escape(caller or "Unknown caller")
-    hue = _avatar_hue(from_number or caller)
-    fromn = (
-        f'<span class="from">{html.escape(from_number)}</span>'
+    seed = from_number or caller
+    hue = _avatar_hue(seed)
+    fromn_html = (
+        f'<div class="from">{html.escape(from_number)}</div>'
         if from_number else ""
     )
     when_html = (
@@ -1287,10 +1343,25 @@ def call_card(*, caller: str, from_number: str = "",
         f'<div class="sum">{html.escape(summary)}</div>'
         if summary else ""
     )
+    # V9.6.1 — avatar prefers a photo when one is provided; falls back
+    # to the V9.3 initial+color disc on image-load error (the onerror
+    # attribute hides the broken <img> so the initial behind it shows).
+    if photo_url:
+        avatar = (
+            f'<div class="av" style="--av-h:{hue}">'
+            f'<span class="av-initial">{initial}</span>'
+            f'<img class="av-img" src="{html.escape(photo_url)}" alt="" '
+            f'loading="lazy" '
+            f'onerror="this.style.display=\'none\'"></div>'
+        )
+    else:
+        avatar = f'<div class="av" style="--av-h:{hue}">{initial}</div>'
+
     inner = (
-        f'<div class="av" style="--av-h:{hue}">{initial}</div>'
+        f'{avatar}'
         f'<div class="body">'
-        f'<div class="who">{who} {fromn}</div>'
+        f'<div class="who">{who}</div>'
+        f'{fromn_html}'
         f'{sum_html}'
         f'</div>'
         f'<div class="right">{status_pill(status)}{when_html}{dur_html}</div>'

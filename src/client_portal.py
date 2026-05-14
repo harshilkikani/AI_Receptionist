@@ -37,8 +37,8 @@ from fastapi.responses import HTMLResponse
 
 from src import tenant, usage
 from src.design import (
-    call_card, card, data_table, page, pill, section_caption,
-    stat_card, stats, status_pill, icon,
+    call_card, card, data_table, page, partner_photo_url, pill,
+    section_caption, stat_card, stats, status_pill, icon,
 )
 
 router = APIRouter(prefix="/client", tags=["client_portal"])
@@ -148,6 +148,7 @@ def _today_body(client_id: str, t: str = "", *,
                 caller=_partner_label(p["phone"]),
                 from_number=p["phone"],
                 when=when,
+                photo_url=partner_photo_url(p["phone"]),
                 summary=(p.get("last_summary") or
                           ("Text message exchange"
                            if p["last_channel"] == "sms"
@@ -191,6 +192,7 @@ def _today_body(client_id: str, t: str = "", *,
                 caller=_partner_label(raw_phone),
                 from_number=raw_phone,
                 when=when,
+                photo_url=partner_photo_url(raw_phone),
                 summary=(r.get("summary")
                           if "summary" in (r.keys() if hasattr(r, "keys") else [])
                           else None) or "Short call — caller may want a follow-up",
@@ -300,6 +302,7 @@ def conversations_list(client_id: str, t: str = "", limit: int = 50):
                 caller=_partner_label(p["phone"]),
                 from_number=p["phone"],
                 when=when,
+                photo_url=partner_photo_url(p["phone"]),
                 summary=summary,
                 status="answered",
                 href=(

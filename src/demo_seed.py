@@ -163,6 +163,114 @@ _SCENARIOS = [
 ]
 
 
+def refresh_timestamps() -> dict:
+    """V9.6.1 — re-base every seeded DEMO_v_* call (and matching SMS
+    transcript / sms rows) so they read as if they happened "minutes_ago"
+    from now. Without this, the demo's "13 hours ago" / "2 days ago"
+    labels age with the server uptime — which makes the activity feed
+    feel stale during a live demo a day after the seed ran.
+
+    Idempotent. Safe to call on every /demo/today request — six small
+    UPDATEs against indexed columns. Returns the number of rows
+    refreshed for observability."""
+    from src import usage, transcripts
+    now_ts = int(time.time())
+    voice_n = 0
+    sms_n = 0
+    transcript_n = 0
+    with usage._db_lock:
+        conn = usage._connect()
+        usage._init_schema(conn)
+        for sc in _SCENARIOS:
+            phone = sc["phone"]
+            # ── Voice scenarios: shift start_ts/end_ts so the call
+            # registers at the configured minutes_ago offset. ──
+            v = sc.get("voice")
+            if v:
+                sid = "DEMO_v_" + phone.replace("+", "")
+                start = now_ts - v["minutes_ago"] * 60
+                end = start + v["duration_s"]
+                try:
+                    res = conn.execute(
+                        """UPDATE calls SET start_ts = ?, end_ts = ?,
+                                            month = ?
+                            WHERE call_sid = ? AND client_id = ?""",
+                        (start, end, usage._now_month(),
+                         sid, TENANT_ID),
+                    )
+                    if res.rowcount:
+                        voice_n += res.rowcount
+                except Exception as e:
+                    log.warning("refresh_timestamps voice %s: %s", sid, e)
+                # Transcript turns for that call should slide too.
+                try:
+                    res = conn.execute(
+                        """UPDATE transcripts SET ts = ?
+                            WHERE call_sid = ? AND client_id = ?
+                              AND role = 'user'""",
+                        (start, sid, TENANT_ID),
+                    )
+                    if res.rowcount:
+                        transcript_n += res.rowcount
+                    res = conn.execute(
+                        """UPDATE transcripts SET ts = ?
+                            WHERE call_sid = ? AND client_id = ?
+                              AND role = 'assistant'""",
+                        (start + max(1, v["duration_s"] // 2),
+                         sid, TENANT_ID),
+                    )
+                    if res.rowcount:
+                        transcript_n += res.rowcount
+                except Exception as e:
+                    log.warning("refresh_timestamps trans-v %s: %s", sid, e)
+
+            # ── SMS scenarios: re-anchor each turn's ts. ──
+            s = sc.get("sms")
+            if s:
+                from memory import normalize_phone
+                norm = normalize_phone(phone)
+                sid = f"SMS_{norm}"
+                if "minutes_ago" in s:
+                    base = now_ts - s["minutes_ago"] * 60
+                else:
+                    v = sc.get("voice") or {}
+                    v_start = now_ts - (v.get("minutes_ago") or 60) * 60
+                    base = (v_start + (v.get("duration_s") or 60)
+                            + s.get("minutes_after_voice", 1) * 60)
+                # Re-anchor the transcript turns AND the sms rows.
+                try:
+                    rows = conn.execute(
+                        """SELECT id, role FROM transcripts
+                            WHERE call_sid = ? AND client_id = ?
+                         ORDER BY ts ASC, id ASC""",
+                        (sid, TENANT_ID),
+                    ).fetchall()
+                    for i, r in enumerate(rows):
+                        new_ts = base + i * 60
+                        conn.execute(
+                            "UPDATE transcripts SET ts = ? WHERE id = ?",
+                            (new_ts, r["id"]),
+                        )
+                        transcript_n += 1
+                    rows = conn.execute(
+                        """SELECT id FROM sms
+                            WHERE call_sid = ? AND client_id = ?
+                         ORDER BY ts ASC, id ASC""",
+                        (sid, TENANT_ID),
+                    ).fetchall()
+                    for i, r in enumerate(rows):
+                        new_ts = base + i * 60
+                        conn.execute(
+                            "UPDATE sms SET ts = ?, month = ? WHERE id = ?",
+                            (new_ts, usage._now_month(), r["id"]),
+                        )
+                        sms_n += 1
+                except Exception as e:
+                    log.warning("refresh_timestamps sms %s: %s", sid, e)
+        conn.close()
+    return {"voice": voice_n, "sms": sms_n, "transcripts": transcript_n}
+
+
 def _already_seeded(client_id: str) -> bool:
     from src import usage
     with usage._db_lock:

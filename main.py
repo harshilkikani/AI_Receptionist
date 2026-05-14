@@ -449,6 +449,13 @@ def index():
     from fastapi.responses import HTMLResponse
 
     # ── Operator pane: real portal Today body for septic_pro ──────
+    # V9.6.1 — refresh the seeded timestamps each render so "Recent
+    # activity" never shows stale "13 hours ago" labels on the demo.
+    try:
+        from src import demo_seed as _demo_seed
+        _demo_seed.refresh_timestamps()
+    except Exception as e:
+        log.debug("demo refresh_timestamps non-fatal: %s", e)
     try:
         operator_inner = _today_body(
             "septic_pro", t="", include_invoice_link=False)
@@ -571,8 +578,17 @@ def index():
         $chips.innerHTML = list.map(c=>{
           const initial = (c.name||"?").charAt(0).toUpperCase();
           const hue = hashHue(c.phone||c.id);
+          /* V9.6.1 — same DiceBear notionists seed pattern as the
+             portal-side call_card so the same caller has the same
+             illustrated portrait across both panes. */
+          const seed = (c.phone||c.id||"").replace(/\\D/g,"") || (c.id||"x");
+          const photo = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}`;
           return `<a class="chat-chip" data-id="${escapeHTML(c.id)}" href="#" style="--av-h:${hue}">
-            <span class="av">${escapeHTML(initial)}</span>
+            <span class="av">
+              <span class="av-initial">${escapeHTML(initial)}</span>
+              <img class="av-img" src="${photo}" alt="" loading="lazy"
+                   onerror="this.style.display='none'">
+            </span>
             <span>${escapeHTML(c.name)}</span>
           </a>`;
         }).join("");
@@ -693,9 +709,19 @@ def demo_today_fragment():
     (no `<html>` chrome) so the JS can drop it into `#portal-body`.
 
     No auth: matches /. The fragment is the same body the real portal
-    renders, just for septic_pro and without the invoice button."""
+    renders, just for septic_pro and without the invoice button.
+
+    V9.6.1 — slides the seeded scenarios to "now − minutes_ago" on every
+    fetch so the activity feed never reads stale "13 hours ago" labels.
+    Cheap: six small UPDATEs against indexed rows. Real chat exchanges
+    (call_sid LIKE 'SMS_<digits>') aren't touched."""
     from src.client_portal import _today_body
+    from src import demo_seed as _demo_seed
     from fastapi.responses import HTMLResponse
+    try:
+        _demo_seed.refresh_timestamps()
+    except Exception as e:
+        log.debug("demo refresh_timestamps non-fatal: %s", e)
     try:
         body = _today_body("septic_pro", t="", include_invoice_link=False)
     except Exception as e:
