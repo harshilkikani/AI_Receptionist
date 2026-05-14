@@ -55,6 +55,30 @@ _STRIP_PHRASES = [
     ),
     # "Of course! / Of course."  at start only (don't strip mid-sentence)
     re.compile(r"^\s*of\s+course[!.,]?\s*", flags=re.IGNORECASE),
+    # V10.0 — extra openers the conversation_audit flagged as patterned
+    # AI tells. All start-of-reply only; if the rest of the sentence
+    # carries the answer (which it always does), we strip the opener
+    # entirely. Less is more.
+    # "Gotcha!" / "Gotcha, ..."
+    re.compile(r"^\s*gotcha[!.,]?\s*", flags=re.IGNORECASE),
+    # "Got it!" — keep "Got it." with period (valid short ack) but kill
+    # the exclamation form and the trailing-comma "Got it, ..." form
+    # since they're openers, not full replies.
+    re.compile(r"^\s*got\s+it!\s*", flags=re.IGNORECASE),
+    re.compile(r"^\s*got\s+it,\s+", flags=re.IGNORECASE),
+    # "Perfect, ..." / "Perfect! ..." — synthetic warmth opener
+    re.compile(r"^\s*perfect[!,.]\s+", flags=re.IGNORECASE),
+    # "Sounds great!" / "Sounds good," — synthetic warmth opener
+    re.compile(r"^\s*sounds\s+(great|good)[!,.]\s+", flags=re.IGNORECASE),
+    # "No problem!" / "No worries!" as standalone opener (the
+    # exclamation marks the synthetic energy — periods are fine)
+    re.compile(r"^\s*no\s+(problem|worries)!\s*", flags=re.IGNORECASE),
+    # "Yeah absolutely" combo (anti_robot already kills "Absolutely"
+    # standalone but combined with "Yeah" it slips through)
+    re.compile(r"^\s*yeah,?\s+absolutely[!,.]?\s+", flags=re.IGNORECASE),
+    # "Awesome!" / "Amazing!" / "Fantastic!" / "Excellent!" — AI cheer
+    re.compile(r"^\s*(awesome|amazing|fantastic|excellent)[!,.]\s+",
+               flags=re.IGNORECASE),
 ]
 
 

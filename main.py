@@ -43,7 +43,9 @@ from src import tts as _tts
 from src import humanize_speech as _humanize
 from src import anti_robot as _anti_robot
 from src import grounding as _grounding
-from src import disfluency as _disfluency
+# V10.0 — V7.2 disfluency injection retired from the pipeline.
+# Module kept on disk for one version in case of rollback.
+# from src import disfluency as _disfluency  # noqa: deprecated
 from src import audio_cache as _audio_cache_module   # V8.9b filler lookup
 from src import recordings as _recordings
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
@@ -369,26 +371,14 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
             except AttributeError:
                 result.priority = "low"
 
-    # V7.2 — natural disfluency injection. Opt-in per tenant via
-    # `disfluency: true`. Prepends a sentence-initial filler
-    # ("Hmm,", "Yeah, so") to ~15% of replies.
-    #
-    # V8.11.2 — skipped when V8.9b endpointing fillers are active for
-    # this tenant. V8.9b ALREADY plays a cached "Mhm —" / "Lemme see —"
-    # between turns. Running V7.2 on top means the caller hears
-    #   [endpointing filler "Mhm —"] [V7.2 injected "Hmm, that works"]
-    # — two consecutive fillers, which feels unnatural. V8.11 prompt
-    # also encourages natural fillers IN the LLM reply itself, so V7.2
-    # is doubly redundant for V8.9b tenants. Non-endpointing tenants
-    # still get V7.2 variation.
-    if _disfluency.is_enabled(client) and not _endpointing_enabled(client):
-        embellished = _disfluency.add_disfluency(result.reply, client)
-        if embellished != result.reply:
-            log.info("disfluency injected call_sid=%s", call_sid)
-            try:
-                result = result.model_copy(update={"reply": embellished})
-            except AttributeError:
-                result.reply = embellished
+    # V10.0 — V7.2 disfluency injection RETIRED. The conversation audit
+    # showed 46% of assistant turns opened with a filler and diversity
+    # was 0.2 — the LLM was already using the openers (per prompt), the
+    # V8.9b cached fillers were already playing pre-reply, and V7.2 was
+    # the third layer stacking on top. Removing it lets the LLM's
+    # natural output land unmodified. The disfluency module is kept on
+    # disk under src/disfluency.py (deprecated) for one version in case
+    # of rollback; nothing calls it.
 
     # Track LLM + TTS usage (TTS char count = length of reply, since Polly
     # bills by synthesized character)
@@ -1140,7 +1130,8 @@ def _endpointing_enabled(client: Optional[dict]) -> bool:
     return bool(client.get("endpointing_fillers", False))
 
 
-def _maybe_filler_for_async(client: Optional[dict]):
+def _maybe_filler_for_async(client: Optional[dict],
+                              call_sid: str = ""):
     """Return a cached filler payload or None. Falls through to None
     on any condition that would make the async path risky:
       - non-ElevenLabs tenant (no cached audio infra)
@@ -1148,9 +1139,13 @@ def _maybe_filler_for_async(client: Optional[dict]):
         the latency win and adds a network round-trip in the critical
         path)
       - PUBLIC_BASE_URL unset (Twilio can't fetch the audio anyway)
+
+    V10.0 — passes call_sid through so the cached filler picker can
+    avoid repeating fillers within a single call.
     """
     try:
-        return _audio_cache_module.filler_payload_for(client)
+        return _audio_cache_module.filler_payload_for(
+            client, call_sid=call_sid)
     except Exception as e:
         log.warning("V8.9b filler_payload_for failed: %s", e)
         return None
@@ -1440,7 +1435,8 @@ def voice_gather(From: str = Form(default=""),
     # reply. Falls through to the synchronous path on ANY failure
     # condition (no filler cache hit, feature flag off, missing token
     # infra, etc.) — graceful degradation.
-    filler_payload = _maybe_filler_for_async(client) if _endpointing_enabled(client) else None
+    filler_payload = (_maybe_filler_for_async(client, call_sid=CallSid)
+                       if _endpointing_enabled(client) else None)
     if filler_payload is not None:
         token = _think_store_put(
             caller=caller, user_message=SpeechResult, client=client,

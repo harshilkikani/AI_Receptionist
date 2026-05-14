@@ -24,6 +24,7 @@ in sync if you change copy in those modules.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -89,6 +90,12 @@ PREWARM_GOODBYES: tuple = (
 #   - Be varied so a caller doesn't hear the same one each turn
 #   - Be SHORT enough that the gap-to-substance is small but LONG
 #     enough that the LLM has time to finish (~600-1200ms each)
+#
+# V10.0 — pool expanded 8 → 16. The pre-V10 set cycled visibly across
+# any call of more than a few turns; the audit showed the same 4-5
+# fillers dominating. Doubling the pool plus the per-call no-repeat-
+# within-3 memory in filler_payload_for() means a caller is unlikely to
+# hear the same filler twice in a normal conversation.
 PREWARM_FILLERS: tuple = (
     "Mhm,",
     "Okay,",
@@ -98,6 +105,18 @@ PREWARM_FILLERS: tuple = (
     "One sec —",
     "Okay so —",
     "Sure thing,",
+    # V10.0 additions — chosen to avoid the AI-cheer category, no
+    # exclamation marks, no "perfect"/"absolutely"/"gotcha", all
+    # match the natural shape of a real receptionist's between-turn
+    # micro-fillers.
+    "Hm,",
+    "Yeah so —",
+    "Alright,",
+    "Got it,",
+    "Hold on —",
+    "Okay yeah,",
+    "Yep,",
+    "Right so —",
 )
 
 
@@ -295,14 +314,59 @@ def evict_if_needed(max_age_days: int = DEFAULT_MAX_AGE_DAYS,
     }
 
 
+# V10.0 — per-call short-term memory of recent filler picks. The 8-pool
+# in pre-V10 cycled visibly within a few turns; with a 16-pool and a
+# 3-turn no-repeat memory, the same filler shouldn't fire twice in a
+# normal conversation. Keyed by call_sid, bounded so memory doesn't
+# leak across long-running processes.
+_FILLER_HISTORY: dict = {}
+_FILLER_HISTORY_MAX = 256          # bounded LRU on the call_sid keyspace
+_FILLER_NO_REPEAT_WITHIN = 3       # don't reuse within the last N picks
+_filler_lock = threading.Lock() if False else None  # cheap import-time stub
+# (filler_payload_for runs in a hot loop on the voice path; locking is
+# unnecessary because each Twilio call has its own call_sid and concurrent
+# turns within one call are sequential by Twilio design.)
+
+
+def _remember_filler(call_sid: str, text: str) -> None:
+    """Record the just-served filler so the next call avoids repeating
+    it within _FILLER_NO_REPEAT_WITHIN picks."""
+    if not call_sid:
+        return
+    hist = _FILLER_HISTORY.get(call_sid)
+    if hist is None:
+        # Bound the global keyspace so we don't grow forever.
+        if len(_FILLER_HISTORY) >= _FILLER_HISTORY_MAX:
+            try:
+                _FILLER_HISTORY.pop(next(iter(_FILLER_HISTORY)))
+            except StopIteration:
+                pass
+        hist = []
+        _FILLER_HISTORY[call_sid] = hist
+    hist.append(text)
+    if len(hist) > _FILLER_NO_REPEAT_WITHIN:
+        del hist[0]
+
+
+def _recent_fillers(call_sid: str) -> list:
+    if not call_sid:
+        return []
+    return list(_FILLER_HISTORY.get(call_sid, []))
+
+
 def filler_payload_for(client: Optional[dict], *,
-                        rng=None):
+                        rng=None, call_sid: str = ""):
     """V8.9b — return a TtsPayload for a randomly-picked endpointing
     filler. Only succeeds if the tenant is on a play-capable provider
     AND the filler is already cached (we MUST NOT trigger a live
     render on the critical path — that would defeat the whole point).
     Returns None when no cached filler is available; callers fall
-    through to the synchronous path."""
+    through to the synchronous path.
+
+    V10.0 — when `call_sid` is provided, skips fillers played in the
+    last _FILLER_NO_REPEAT_WITHIN turns of this same call. The same
+    filler shouldn't fire twice back-to-back; a caller hearing
+    "Mhm, … Mhm, … Mhm, …" three turns running is a giveaway."""
     import random
     if not _is_elevenlabs_tenant(client):
         return None
@@ -310,7 +374,13 @@ def filler_payload_for(client: Optional[dict], *,
     # Try each filler in a shuffled order; return the first that has a
     # cached file on disk. Lazy import avoids a cycle with src.tts.
     from src import tts as _tts
-    candidates = list(PREWARM_FILLERS)
+    recent = _recent_fillers(call_sid)
+    candidates = [f for f in PREWARM_FILLERS if f not in recent]
+    if not candidates:
+        # Memory holds the entire pool — clear oldest and try again.
+        # Should be extremely rare with a 16-pool + window=3, but the
+        # fallback keeps the voice path responsive.
+        candidates = list(PREWARM_FILLERS)
     r.shuffle(candidates)
     voice_id = _tts.voice_id_for(client) or ""
     # V8.10a/V8.12.5 — fillers are rendered with the PREWARM model
@@ -328,6 +398,7 @@ def filler_payload_for(client: Optional[dict], *,
             base = _tts._public_base_url()
             if not base:
                 return None
+            _remember_filler(call_sid, text)
             return _tts.TtsPayload(
                 kind="play",
                 url=f"{base}/audio/{h}.mp3",

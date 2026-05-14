@@ -222,8 +222,11 @@ def test_endpointing_explicit_true():
 def test_maybe_filler_returns_none_when_audio_cache_blows_up(monkeypatch):
     import main
     from src import audio_cache
+    # V10.0 — signature includes call_sid kwarg; the test stub must
+    # accept it too.
     monkeypatch.setattr(audio_cache, "filler_payload_for",
-                        lambda c: (_ for _ in ()).throw(RuntimeError("disk gone")))
+                        lambda c, **kw: (_ for _ in ()).throw(
+                            RuntimeError("disk gone")))
     # Must NOT raise — must return None for graceful fallback
     out = main._maybe_filler_for_async({"endpointing_fillers": True,
                                           "tts_provider": "elevenlabs"})
@@ -434,9 +437,10 @@ def test_gather_async_path_returns_filler_redirect(signed_client, monkeypatch, t
     }
     monkeypatch.setattr(tenant, "load_client_by_number",
                         lambda num: fake_client)
-    # Force deterministic filler pick — first in list
+    # Force deterministic filler pick — first in list.
+    # V10.0 — accept call_sid kwarg too.
     monkeypatch.setattr(audio_cache, "filler_payload_for",
-                        lambda c, rng=None: tts.TtsPayload(
+                        lambda c, rng=None, call_sid="": tts.TtsPayload(
                             kind="play",
                             url=f"http://testserver/audio/{h}.mp3"))
 
@@ -484,9 +488,10 @@ def test_gather_falls_through_when_no_cached_filler(signed_client, monkeypatch, 
     }
     monkeypatch.setattr(tenant, "load_client_by_number",
                         lambda num: fake_client)
-    # No cached files exist → helper returns None → sync path
+    # No cached files exist → helper returns None → sync path.
+    # V10.0 — accept call_sid kwarg too.
     monkeypatch.setattr(audio_cache, "filler_payload_for",
-                        lambda c, rng=None: None)
+                        lambda c, rng=None, call_sid="": None)
 
     c, sign = signed_client
     params = {"From": _CALLER, "To": _TENANT_NUMBER,

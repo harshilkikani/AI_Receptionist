@@ -221,18 +221,17 @@ def test_pipeline_empty_reply_safe(monkeypatch):
     assert "reply" in out
 
 
-# ── V7.2 disfluency placement guards ─────────────────────────────────
+# ── V10.0 — V7.2 disfluency RETIRED. Pipeline no longer calls it. ───
 
-def test_disfluency_runs_after_anti_robot_and_grounding(monkeypatch):
-    """V7.2 must fire AFTER anti_robot + grounding so the cleaning
-    passes don't fight the fillers. Verified by watching call order on
-    spies installed in _run_pipeline's dependencies."""
+def test_anti_robot_runs_before_grounding(monkeypatch):
+    """V10.0 — disfluency is gone. The remaining order guarantee is
+    that anti_robot runs before grounding (so price-grounding sees
+    the cleaned text). Verified by call-order spies."""
     import main
     call_order = []
 
     real_scrub = anti_robot.scrub
     real_verify = grounding.verify_reply
-    real_add = disfluency.add_disfluency
 
     def spy_scrub(t):
         call_order.append("anti_robot")
@@ -242,13 +241,8 @@ def test_disfluency_runs_after_anti_robot_and_grounding(monkeypatch):
         call_order.append("grounding")
         return real_verify(t, c)
 
-    def spy_add(t, c, **kw):
-        call_order.append("disfluency")
-        return real_add(t, c, **kw)
-
     monkeypatch.setattr(anti_robot, "scrub", spy_scrub)
     monkeypatch.setattr(grounding, "verify_reply", spy_verify)
-    monkeypatch.setattr(disfluency, "add_disfluency", spy_add)
     monkeypatch.setattr(llm, "chat_with_usage",
                         lambda *a, **k: (llm.ChatResponse(
                             reply="That's fine.",
@@ -258,21 +252,18 @@ def test_disfluency_runs_after_anti_robot_and_grounding(monkeypatch):
         {"id": "x", "phone": "+1", "history": [], "conversation": []},
         "hi",
         client={"id": "x", "name": "X",
-                "disfluency": True, "anti_robot_scrub": True,
+                "anti_robot_scrub": True,
                 "strict_grounding": True},
-        call_sid="CA_v72_order",
+        call_sid="CA_v10_order",
     )
-    # Disfluency must come AFTER both anti_robot and grounding
     assert "anti_robot" in call_order
     assert "grounding" in call_order
-    assert "disfluency" in call_order
-    assert call_order.index("disfluency") > call_order.index("anti_robot")
-    assert call_order.index("disfluency") > call_order.index("grounding")
+    assert call_order.index("grounding") > call_order.index("anti_robot")
 
 
-def test_disfluency_off_means_no_call(monkeypatch):
-    """If disfluency is disabled on the tenant, add_disfluency must not
-    be invoked at all (avoid wasted work)."""
+def test_disfluency_never_called_post_v10(monkeypatch):
+    """V10.0 retired V7.2. The pipeline must NEVER call add_disfluency
+    regardless of tenant flags."""
     import main
     called = []
     monkeypatch.setattr(disfluency, "add_disfluency",
@@ -282,10 +273,12 @@ def test_disfluency_off_means_no_call(monkeypatch):
                             reply="That's fine.",
                             intent="General", priority="low"), (1, 1)))
 
+    # Even with disfluency:True on the tenant, post-V10 the pipeline
+    # doesn't import or call disfluency.
     main._run_pipeline(
         {"id": "x", "phone": "+1", "history": [], "conversation": []},
         "hi",
-        client={"id": "x", "name": "X"},   # no disfluency flag
-        call_sid="CA_v72_offorder",
+        client={"id": "x", "name": "X", "disfluency": True},
+        call_sid="CA_v10_off",
     )
     assert called == []

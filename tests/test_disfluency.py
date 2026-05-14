@@ -185,10 +185,11 @@ def test_distribution_roughly_matches_intensity():
 
 # ── pipeline integration via main._run_pipeline ─────────────────────────
 
-def test_pipeline_calls_disfluency_when_enabled(monkeypatch):
-    """_run_pipeline must invoke disfluency.add_disfluency when the
-    tenant has it on. (Mocked LLM + mocked add_disfluency.)"""
-    import importlib, main
+def test_pipeline_does_not_call_disfluency_after_v10_retirement(monkeypatch):
+    """V10.0 — V7.2 disfluency was retired. The pipeline must no longer
+    invoke add_disfluency regardless of tenant flags. The module is
+    kept on disk for one-version rollback."""
+    import main
     import llm
     from llm import ChatResponse
 
@@ -200,22 +201,21 @@ def test_pipeline_calls_disfluency_when_enabled(monkeypatch):
     )
 
     called = []
-    real_add = disfluency.add_disfluency
-
-    def spy(text, client, **kw):
-        called.append((text, (client or {}).get("id")))
-        return real_add(text, client, **kw)
-    monkeypatch.setattr(disfluency, "add_disfluency", spy)
+    monkeypatch.setattr(
+        disfluency, "add_disfluency",
+        lambda text, client, **kw: called.append("hit") or text)
 
     caller = {"id": "c1", "phone": "+15551234567",
               "type": "new", "history": [], "conversation": []}
     result = main._run_pipeline(
         caller, "hi",
         client={"id": "demo", "name": "Demo", "disfluency": True},
-        call_sid="CA_v72_1",
+        call_sid="CA_v10_no_call",
     )
-    assert called, "disfluency.add_disfluency was never called"
-    assert result["reply"]   # didn't break the pipeline
+    assert called == [], (
+        "V10.0 retired V7.2 — disfluency.add_disfluency must not run "
+        "in the pipeline anymore")
+    assert result["reply"]
 
 
 def test_pipeline_skips_disfluency_when_disabled(monkeypatch):

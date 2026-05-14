@@ -1,13 +1,13 @@
 """V8.11.2 — disfluency injection conditional on endpointing fillers.
 
-When V8.9b endpointing is on, V7.2 disfluency would cause two
-consecutive fillers per turn ("Mhm —" endpointing + "Hmm, ..." V7.2).
-V8.11.2 disables V7.2 for those tenants. Non-endpointing tenants
-still get V7.2 variation.
+V10.0 — V7.2 disfluency injection was RETIRED across the board. The
+conversation_audit showed it stacked on top of the prompt's natural-
+filler permission and V8.9b's cached endpointing fillers, producing the
+templated "Hmm, … / Yeah, so … / Lemme see —" patterning the brief
+specifically called out. This file is kept as a regression guard so a
+future revert can't silently reactivate disfluency on the pipeline.
 """
 from __future__ import annotations
-
-from unittest.mock import patch
 
 import pytest
 
@@ -29,59 +29,33 @@ def _mock_llm(monkeypatch, reply="Yeah, that works."):
         ), (10, 5)))
 
 
-def test_disfluency_runs_when_endpointing_off(monkeypatch):
-    """Baseline: tenant with `disfluency: true` and no endpointing →
-    V7.2 still injects."""
+def test_disfluency_module_not_called_from_pipeline(monkeypatch):
+    """V10.0 contract: regardless of tenant flags, _run_pipeline must
+    not invoke disfluency.add_disfluency. The module is kept on disk
+    for one-version rollback, but the pipeline doesn't import it."""
     _mock_llm(monkeypatch, reply="That works for me.")
-    called = []
-    from src import disfluency
-    real_add = disfluency.add_disfluency
-    monkeypatch.setattr(
-        disfluency, "add_disfluency",
-        lambda text, client, **kw: called.append("hit") or real_add(text, client, **kw))
-
-    out = main._run_pipeline(
-        _caller(), "hi",
-        client={"id": "x", "name": "Demo",
-                "disfluency": True,
-                "disfluency_intensity": 0.5,
-                # NO endpointing_fillers
-                "plan": {}},
-        call_sid="CA_v811_1",
-    )
-    assert called == ["hit"], "V7.2 should run when endpointing is off"
-    assert out["reply"]  # didn't break the pipeline
-
-
-def test_disfluency_skipped_when_endpointing_on(monkeypatch):
-    """V8.11.2 — tenant with BOTH `disfluency: true` AND
-    `endpointing_fillers: true` → V7.2 must NOT run. Endpointing
-    filler from V8.9b handles the conversational variance."""
-    _mock_llm(monkeypatch, reply="Yeah, that works for me.")
     called = []
     from src import disfluency
     monkeypatch.setattr(
         disfluency, "add_disfluency",
         lambda text, client, **kw: called.append("hit") or text)
 
-    out = main._run_pipeline(
+    main._run_pipeline(
         _caller(), "hi",
         client={"id": "x", "name": "Demo",
                 "disfluency": True,
                 "disfluency_intensity": 0.5,
-                "endpointing_fillers": True,   # V8.9b on
                 "plan": {}},
-        call_sid="CA_v811_2",
+        call_sid="CA_v10_no_disfluency",
     )
     assert called == [], (
-        "V7.2 must NOT run when V8.9b endpointing is on (caller would "
-        "hear two consecutive fillers otherwise)")
-    assert out["reply"]
+        "V10.0 retired V7.2 — disfluency.add_disfluency must not run "
+        "from the pipeline anymore")
 
 
-def test_disfluency_skipped_when_endpointing_on_even_if_intensity_high(monkeypatch):
-    """Belt-and-suspenders: even with intensity at the max, V8.9b
-    overrides V7.2."""
+def test_disfluency_module_not_called_even_with_endpointing(monkeypatch):
+    """Same guard, both flags set. Pre-V10 V8.11.2 turned V7.2 off when
+    endpointing was on; post-V10 it's off always."""
     _mock_llm(monkeypatch)
     called = []
     from src import disfluency
@@ -96,58 +70,27 @@ def test_disfluency_skipped_when_endpointing_on_even_if_intensity_high(monkeypat
                 "disfluency_intensity": 0.99,
                 "endpointing_fillers": True,
                 "plan": {}},
-        call_sid="CA_v811_3",
+        call_sid="CA_v10_belt_suspenders",
     )
     assert called == []
 
 
-def test_disfluency_skipped_when_disabled_regardless_of_endpointing(monkeypatch):
-    """Sanity: tenant with disfluency=false never invokes V7.2,
-    independent of endpointing setting. (Pre-existing V7.2 behavior.)"""
-    _mock_llm(monkeypatch)
-    called = []
-    from src import disfluency
-    monkeypatch.setattr(
-        disfluency, "add_disfluency",
-        lambda text, client, **kw: called.append("hit") or text)
-
-    main._run_pipeline(
-        _caller(), "hi",
-        client={"id": "x", "name": "Demo",
-                "disfluency": False,
-                "endpointing_fillers": True,
-                "plan": {}},
-        call_sid="CA_v811_4",
-    )
-    assert called == []
-
-
-def test_disfluency_skipped_when_neither_flag_set(monkeypatch):
-    _mock_llm(monkeypatch)
-    called = []
-    from src import disfluency
-    monkeypatch.setattr(
-        disfluency, "add_disfluency",
-        lambda text, client, **kw: called.append("hit") or text)
-
-    main._run_pipeline(
-        _caller(), "hi",
-        client={"id": "x", "name": "Demo", "plan": {}},
-        call_sid="CA_v811_5",
-    )
-    assert called == []
+def test_pipeline_does_not_import_disfluency_at_module_level():
+    """V10.0 cleanup: main no longer carries a `_disfluency` import.
+    The module sits on disk for rollback; nothing in the live path
+    references it."""
+    import main as _main
+    assert not hasattr(_main, "_disfluency"), (
+        "V10.0 removed the disfluency import; if you're seeing this,"
+        " the retirement was reverted — re-run conversation_audit"
+        " before re-enabling.")
 
 
 def test_live_tenant_ace_hvac_has_endpointing_on():
-    """Regression guard: the live tenant config has both endpointing
-    and disfluency enabled (legacy). V8.11.2 means the endpointing
-    flag wins and V7.2 is silently skipped for ace_hvac. Verify the
-    yaml shape so a future config edit doesn't accidentally re-enable
-    the double-filler artifact."""
+    """Regression guard: the live tenant still has endpointing on.
+    V8.9b's cached fillers ARE still load-bearing (perceived latency
+    relies on them). V10.0 retired V7.2 only — endpointing stays."""
     from src import tenant
     client = tenant.load_client_by_id("ace_hvac")
     assert client is not None
     assert client.get("endpointing_fillers") is True
-    # disfluency may be True or False; doesn't matter — endpointing
-    # takes precedence. This test exists so anyone removing the
-    # endpointing flag has to consciously think about the consequence.
