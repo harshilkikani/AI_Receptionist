@@ -69,8 +69,8 @@ _CSS = r"""
   --danger-500:  #b91c1c;
   --danger-100:  #fee2e2;
 
-  /* Surface tokens */
-  --bg:      #ffffff;
+  /* Surface tokens — V9.2 warmed near-white so cards can elevate. */
+  --bg:      #fbfcfd;
   --card-bg: #ffffff;
   --fg:      var(--n-900);
   --muted:   var(--n-500);
@@ -96,8 +96,10 @@ _CSS = r"""
   --radius-md: 10px;
   --radius-lg: 16px;
 
-  --shadow-sm: 0 1px 2px rgba(15,23,42,.04);
-  --shadow-md: 0 2px 8px rgba(15,23,42,.05), 0 1px 2px rgba(15,23,42,.04);
+  /* V9.2 — slightly stronger shadows so cards lift off the warmed bg. */
+  --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.02);
+  --shadow-md: 0 4px 12px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+  --shadow-lg: 0 12px 32px rgba(15,23,42,.08), 0 2px 6px rgba(15,23,42,.04);
 }
 
 /* V9.0 — accent variants kept as no-op attributes so existing surface
@@ -129,10 +131,11 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -207,10 +210,20 @@ pre {
   }
   .sidebar nav a {
     flex: 1; justify-content: center; min-width: 0;
-    padding: 10px 6px; border-radius: 6px; font-size: 12px;
-    text-align: center;
+    padding: 12px 6px; border-radius: 6px; font-size: 12px;
+    font-weight: 500; text-align: center; position: relative;
   }
-  .main { padding-bottom: 80px; }
+  /* V9.2 — active-tab indicator pip on the bottom dock. */
+  .sidebar nav a[aria-current="page"] {
+    background: transparent; color: var(--accent);
+  }
+  .sidebar nav a[aria-current="page"]::before {
+    content: ""; position: absolute; top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 28px; height: 3px; border-radius: 0 0 3px 3px;
+    background: var(--accent);
+  }
+  .main { padding-bottom: 88px; }
 }
 /* 641-820px: tablet-ish — sidebar on top, stacked */
 @media (min-width: 641px) and (max-width: 820px) {
@@ -246,14 +259,17 @@ header.page .subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  padding: var(--s-5);
-  margin-bottom: var(--s-5);
+  padding: 24px;
+  margin-bottom: 20px;
 }
 .card.flush { padding: 0; }
 .card h2 {
-  margin: 0 0 var(--s-4);
-  font-size: 15px; font-weight: 600; letter-spacing: -0.005em;
+  margin: 0 0 16px;
+  font-size: 16px; font-weight: 600; letter-spacing: -0.005em;
 }
+.card.flush h2 { padding: 18px 22px 0; margin-bottom: 0; }
+.card.flush > .data, .card.flush > table.data { margin-top: 12px; }
+.card.flush .empty { padding: 32px 24px; }
 .card h2.sub { font-size: 12px; text-transform: uppercase; color: var(--muted);
                letter-spacing: .05em; font-weight: 600; margin-bottom: var(--s-3); }
 
@@ -287,11 +303,12 @@ table.data td.muted { color: var(--muted); }
 .stat { background: var(--card-bg); border: 1px solid var(--border);
         border-radius: var(--radius-md); padding: var(--s-4) var(--s-5);
         box-shadow: var(--shadow-sm); }
-.stat .label { font-size: 11px; text-transform: uppercase; color: var(--muted);
-               letter-spacing: .05em; font-weight: 600; }
-.stat .value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
-               margin-top: 4px; }
-.stat .delta { margin-top: 4px; font-size: 12px; font-weight: 500; }
+/* V9.2 — sentence-case label (not ALL CAPS); slightly bigger numeral. */
+.stat .label { font-size: 13px; color: var(--n-600);
+                font-weight: 500; letter-spacing: 0; }
+.stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
+               margin-top: 6px; line-height: 1.1; }
+.stat .delta { margin-top: 6px; font-size: 12px; font-weight: 500; }
 .stat .delta.up   { color: var(--success-500); }
 .stat .delta.down { color: var(--danger-500); }
 .stat .delta.flat { color: var(--muted); }
@@ -346,6 +363,22 @@ table.data td.muted { color: var(--muted); }
 /* ── Empty state ───────────────────────────────────────────────────── */
 .empty { text-align: center; padding: var(--s-6) var(--s-4); color: var(--muted); }
 
+/* V9.2 — warmed empty state for the portal's communications surfaces.
+   Tiny inline icon + small headline + soft sub-copy. Calm, not cold. */
+.empty-warm { padding: 40px 24px; }
+.empty-warm .empty-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  margin: 0 auto var(--s-3);
+}
+.empty-warm .empty-title { color: var(--fg);
+                            font-size: 16px; font-weight: 600;
+                            margin-bottom: 4px; }
+.empty-warm .empty-sub { color: var(--muted); font-size: 14px;
+                          line-height: 1.45; max-width: 360px;
+                          margin: 0 auto; }
+
 /* ── Icon (inline SVG slot) ────────────────────────────────────────── */
 .icon { display: inline-flex; vertical-align: -2px;
          stroke: currentColor; fill: none; }
@@ -353,67 +386,112 @@ table.data td.muted { color: var(--muted); }
 
 /* ── Call card (communications-as-primary-object) ──────────────────── */
 .call { display: grid;
-         grid-template-columns: 40px 1fr auto;
+         grid-template-columns: 44px 1fr auto;
          gap: var(--s-4); align-items: start;
-         padding: var(--s-4) var(--s-5);
-         border-bottom: 1px solid var(--border); }
+         padding: 18px var(--s-5);
+         border-bottom: 1px solid var(--border);
+         transition: background 120ms ease, box-shadow 120ms ease;
+         position: relative; }
 .call:last-child { border-bottom: none; }
-.call:hover { background: var(--n-50); }
-@media (prefers-color-scheme: dark) {
-  .call:hover { background: #0c1a33; }
+/* V9.2 — stronger hover: subtle wash + accent edge so the row feels
+   tactile, not table-ish. */
+.call:hover { background: var(--accent-soft); }
+.call:hover::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--accent);
 }
-.call .av { width: 40px; height: 40px; border-radius: 999px;
+@media (prefers-color-scheme: dark) {
+  .call:hover { background: #16213d; }
+}
+.call .av { width: 44px; height: 44px; border-radius: 999px;
              background: var(--accent-soft); color: var(--accent);
              display: flex; align-items: center; justify-content: center;
-             font-weight: 600; font-size: 14px; flex-shrink: 0; }
+             font-weight: 600; font-size: 15px; flex-shrink: 0; }
 .call .body { min-width: 0; }
-.call .body .who { font-weight: 600;
+.call .body .who { font-weight: 600; font-size: 15px;
                     overflow: hidden; text-overflow: ellipsis;
                     white-space: nowrap; }
-.call .body .from { color: var(--muted); font-size: 12px;
-                     font-weight: 400; margin-left: 6px; }
-.call .body .sum { margin-top: 4px; font-size: 13px; color: var(--n-700);
+.call .body .from { color: var(--n-500); font-size: 13px;
+                     font-weight: 400; margin-left: 8px; }
+.call .body .sum { margin-top: 4px; font-size: 14px; color: var(--n-700);
+                    line-height: 1.45;
                     overflow: hidden; text-overflow: ellipsis;
                     display: -webkit-box; -webkit-line-clamp: 2;
                     -webkit-box-orient: vertical; }
 @media (prefers-color-scheme: dark) {
-  .call .body .sum { color: #b7c4dc; }
+  .call .body .sum { color: #c5d0e3; }
 }
-.call .right { text-align: right; font-size: 12px; color: var(--muted);
-                display: flex; flex-direction: column; gap: 4px;
+.call .right { text-align: right; font-size: 12px; color: var(--n-500);
+                display: flex; flex-direction: column; gap: 6px;
                 align-items: flex-end; flex-shrink: 0; }
+.call .right .when { font-size: 12px; color: var(--n-500); }
 /* Mobile: bigger tap targets, right column shrinks but stays visible. */
 @media (max-width: 640px) {
-  .call { padding: var(--s-4); gap: var(--s-3); }
-  .call .body .from { display: block; margin-left: 0; margin-top: 2px; }
+  .call { padding: 16px var(--s-4); gap: var(--s-3);
+           grid-template-columns: 40px 1fr auto; }
+  .call .av { width: 40px; height: 40px; font-size: 14px; }
+  .call .body .who { font-size: 15px; }
+  .call .body .from { display: block; margin-left: 0; margin-top: 2px;
+                       font-size: 12px; }
   .call .right { font-size: 11px; }
 }
 
-/* ── V9.1 — communication thread bubbles ──────────────────────────── */
-@media (max-width: 640px) {
-  .thread-block { padding: var(--s-4); }
-  .bubble { max-width: 88%; font-size: 14px; }
-}
-.thread-block { padding: var(--s-5);
+/* ── V9.2 — communication thread bubbles ──────────────────────────── */
+/* Design notes:
+   - 2px gap WITHIN a sender series, 14px between role switches.
+   - No per-bubble timestamps (too noisy, too low-contrast). Single
+     time-chip separator appears at the top of each meaningful gap.
+   - Sender caption shows once per series, not per bubble.
+   - Inbound bubble warmed from cool slate-100 (#f1f5f9) to a slightly
+     warmer near-neutral so it doesn't fight the white card surface. */
+.thread-block { padding: var(--s-5) var(--s-5) var(--s-4);
                  border-bottom: 1px solid var(--border); }
 .thread-block:last-child { border-bottom: none; }
 .thread-head { display: flex; align-items: center; gap: var(--s-2);
-                margin-bottom: var(--s-3); font-size: 13px;
+                margin-bottom: var(--s-4); font-size: 13px;
                 color: var(--muted); }
 .thread-head .thread-icon { color: var(--accent); display: inline-flex; }
 .thread-head .thread-meta b { color: var(--fg); font-weight: 600; }
-.bubbles { display: flex; flex-direction: column; gap: var(--s-2);
-            margin: 0; }
-.bubble { max-width: 78%; padding: 9px 14px; border-radius: 14px;
-           font-size: 14px; line-height: 1.45;
-           display: inline-flex; flex-direction: column; gap: 2px; }
-.bubble.in  { background: var(--n-100); color: var(--fg);
-               align-self: flex-start; border-bottom-left-radius: 4px; }
+
+.bubbles { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+
+/* Time-chip — anchors the eye when there's a real gap. */
+.time-chip { align-self: center; margin: 14px 0 8px;
+              font-size: 11px; color: var(--n-500);
+              font-weight: 500; letter-spacing: .01em; }
+.time-chip:first-child { margin-top: 0; }
+.thread-block .bubbles > .time-chip:first-child { margin-top: 0; }
+
+/* Sender caption — appears once per role series, very subtle. */
+.sender-cap { font-size: 11px; color: var(--n-500);
+               font-weight: 600; letter-spacing: .02em;
+               margin: 8px 12px 3px; }
+.sender-cap.in  { align-self: flex-start; }
+.sender-cap.out { align-self: flex-end; }
+.sender-cap:first-child { margin-top: 0; }
+
+.bubble { max-width: 78%; padding: 9px 14px; border-radius: 16px;
+           font-size: 14.5px; line-height: 1.45;
+           white-space: pre-wrap; word-wrap: break-word;
+           box-shadow: 0 1px 1px rgba(15,23,42,.03); }
+.bubble.in  { background: #eef0f3; color: #0b1220;
+               align-self: flex-start; }
 .bubble.out { background: var(--accent); color: var(--accent-fg);
-               align-self: flex-end; border-bottom-right-radius: 4px; }
-.bubble-text { white-space: pre-wrap; word-wrap: break-word; }
-.bubble-ts { font-size: 11px; opacity: .65; align-self: flex-end; }
-.bubble.out .bubble-ts { color: var(--accent-fg); }
+               align-self: flex-end; }
+/* Bottom-of-series bubbles add a small bottom margin so the next
+   role's content reads as a distinct group. */
+.bubble.series-end { margin-bottom: 6px; }
+
+@media (prefers-color-scheme: dark) {
+  .bubble.in { background: #1a2541; color: #e6edf7; }
+}
+
+/* Mobile: full-width breathing room, slightly bigger bubble text. */
+@media (max-width: 640px) {
+  .thread-block { padding: var(--s-4); }
+  .bubble { max-width: 88%; font-size: 15px; padding: 10px 14px; }
+}
 
 /* ── Tabs ──────────────────────────────────────────────────────────── */
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border);

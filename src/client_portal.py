@@ -125,17 +125,19 @@ def summary(client_id: str, t: str = "", request: Request = None):
 
     # ── Recent activity (last 24h of calls + SMS, interleaved) ────────
     now_ts = int(time.time())
-    since_ts = now_ts - 24 * 60 * 60
-    partners = usage.list_conversation_partners(
-        client_id, limit=8, since_ts=since_ts)
+    today_ts = now_ts - 24 * 60 * 60
+    partners_today = usage.list_conversation_partners(
+        client_id, limit=8, since_ts=today_ts)
+    # Count today's voice + sms volume for the hero context line.
+    today_calls = sum(p["calls"] for p in partners_today)
+    today_msgs = sum(p["messages"] for p in partners_today)
+    today_emerg = _today_emergency_count(client_id, today_ts)
+
     activity_html = ""
-    if partners:
+    if partners_today:
         cards = []
-        for p in partners:
+        for p in partners_today:
             when = _human_when(p["last_ts"], now_ts)
-            raw_outcome = "answered"
-            if p["last_channel"] == "sms":
-                raw_outcome = "answered"
             cards.append(call_card(
                 caller=_partner_label(p["phone"]),
                 from_number=p["phone"],
@@ -144,7 +146,10 @@ def summary(client_id: str, t: str = "", request: Request = None):
                           ("Text message exchange"
                            if p["last_channel"] == "sms"
                            else "Voice call")),
-                status=raw_outcome,
+                status="emergency" if today_emerg and p["last_channel"] == "voice"
+                                   and (p.get("last_summary") or "")
+                                       .lower().find("emergency") >= 0
+                                   else "answered",
                 href=(
                     f"/client/{html.escape(client_id)}/conversations/"
                     f"{html.escape(_phone_slug(p['phone']))}{tq}"
@@ -157,8 +162,12 @@ def summary(client_id: str, t: str = "", request: Request = None):
         )
     else:
         activity_html = card(
-            '<div class="empty">No calls or messages in the last 24 hours. '
-            'Your line is on and ready.</div>',
+            f'<div class="empty empty-warm">'
+            f'<div class="empty-icon">{icon("phone", size=20)}</div>'
+            f'<div class="empty-title">All quiet right now</div>'
+            f'<div class="empty-sub">Your line is on. Calls and texts '
+            f'will show up here as soon as they come in.</div>'
+            f'</div>',
             title="Last 24 hours",
         )
 
@@ -190,17 +199,20 @@ def summary(client_id: str, t: str = "", request: Request = None):
 
     # ── Calm stats footer (this month) ────────────────────────────────
     top_stats = stats([
-        stat_card("Calls answered", s["calls_handled"]),
-        stat_card("Emergencies routed", s["emergencies"]),
+        stat_card("Calls answered this month", s["calls_handled"]),
+        stat_card("Emergencies routed safely", s["emergencies"]),
         stat_card("Bookings captured", bookings),
     ])
 
     # ── Hero strip — reassurance + invoice link ──────────────────────
+    headline = _today_headline(today_calls, today_msgs, today_emerg)
     hero_body = (
-        f'<div class="row" style="align-items:center;justify-content:space-between;">'
-        f'<p class="muted" style="margin:0;">'
-        f'Your receptionist line is on and answering calls. Numbers update '
-        f'in real time as calls come in.</p>'
+        f'<div class="row" style="align-items:center;justify-content:space-between;gap:16px;">'
+        f'<div><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em;">'
+        f'{html.escape(headline)}</div>'
+        f'<div class="muted" style="font-size:13px;margin-top:4px;">'
+        f'Your receptionist is online and answering. This page updates as '
+        f'calls come in.</div></div>'
         f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
         f'class="btn" style="white-space:nowrap;">'
         f'{icon("calendar", size=14)} This month\'s invoice'
@@ -596,6 +608,48 @@ def _fmt_duration(seconds: int) -> str:
     return f"{m}m {s:02d}s"
 
 
+# ── V9.2 — Today emotional helpers ────────────────────────────────────
+
+def _today_emergency_count(client_id: str, since_ts: int) -> int:
+    """How many emergencies were routed in the last 24h. Used by the
+    Today hero headline so the operator instantly sees if there's
+    anything that needed escalation."""
+    with usage._db_lock:
+        conn = usage._connect()
+        usage._init_schema(conn)
+        row = conn.execute(
+            """SELECT COUNT(*) AS n FROM calls
+                WHERE client_id = ?
+                  AND start_ts >= ?
+                  AND emergency = 1""",
+            (client_id, since_ts),
+        ).fetchone()
+        n = int(row["n"]) if row else 0
+        conn.close()
+    return n
+
+
+def _today_headline(calls: int, msgs: int, emergencies: int) -> str:
+    """Reassuring, context-aware hero headline.
+
+    Goal: in <3 seconds the operator subconsciously feels 'my line is
+    handling things'. Specific over vague — '4 calls today' beats
+    'your line is on'."""
+    if calls == 0 and msgs == 0:
+        return "Quiet line today."
+    parts: list = []
+    if calls:
+        parts.append(f"{calls} call{'s' if calls != 1 else ''}")
+    if msgs:
+        parts.append(f"{msgs} text{'s' if msgs != 1 else ''}")
+    base = " and ".join(parts) + " today"
+    if emergencies == 1:
+        return base + " — 1 emergency routed."
+    if emergencies > 1:
+        return base + f" — {emergencies} emergencies routed."
+    return base + "."
+
+
 # ── V9.1 — conversation-view helpers ──────────────────────────────────
 
 def _human_when(ts: int, now_ts: int) -> str:
@@ -698,22 +752,81 @@ def _render_thread_block(blk: dict, client_id: str, t: str) -> str:
         )
         deeper = ""
 
-    msgs = []
-    for turn in turns:
-        role = turn["role"]
-        side = "in" if role == "user" else "out"
-        ts_str = datetime.fromtimestamp(turn["ts"], tz=timezone.utc).strftime("%I:%M %p")
-        msgs.append(
-            f'<div class="bubble {side}"><div class="bubble-text">'
-            f'{html.escape(turn["text"])}</div>'
-            f'<div class="bubble-ts muted">{html.escape(ts_str)}</div></div>'
-        )
+    msgs = _render_bubble_sequence(turns)
 
     return (
         f'<div class="thread-block">{head}'
-        f'<div class="bubbles">{"".join(msgs)}</div>'
+        f'<div class="bubbles">{msgs}</div>'
         f'{deeper}</div>'
     )
+
+
+# Gap between turns at which we insert a fresh time-chip (5 min).
+_TIME_CHIP_GAP_S = 5 * 60
+
+
+def _render_bubble_sequence(turns: list) -> str:
+    """V9.2 — iMessage-style grouping. Consecutive same-role turns are
+    visually grouped (tight 2px gap, single sender caption above the
+    first); role switches break with a 14px+ gap and a fresh caption.
+    A time-chip is inserted at the top of each thread and whenever a
+    >5 min gap or day boundary opens.
+
+    No per-bubble timestamps — they were noisy and low-contrast in V9.1.
+    """
+    parts: list = []
+    prev_role: str = ""
+    prev_ts: int = 0
+    prev_day: str = ""
+    for i, turn in enumerate(turns):
+        role = turn["role"]
+        side = "in" if role == "user" else "out"
+        ts = int(turn["ts"] or 0)
+        day = (datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+               if ts else "")
+        # Time chip — at the very start, on a >5min gap, or new day.
+        if i == 0 or (ts - prev_ts) > _TIME_CHIP_GAP_S or day != prev_day:
+            parts.append(_render_time_chip(ts))
+        # Sender caption — once per series of consecutive same-role turns.
+        if role != prev_role:
+            label = "Joanna" if role == "assistant" else "Caller"
+            parts.append(
+                f'<div class="sender-cap {side}">'
+                f'{html.escape(label)}</div>'
+            )
+        # The bubble itself.
+        next_role = turns[i + 1]["role"] if (i + 1) < len(turns) else None
+        end_class = " series-end" if next_role != role else ""
+        parts.append(
+            f'<div class="bubble {side}{end_class}">'
+            f'{html.escape(turn["text"])}</div>'
+        )
+        prev_role = role
+        prev_ts = ts
+        prev_day = day
+    return "".join(parts)
+
+
+def _render_time_chip(ts: int) -> str:
+    """Human-readable temporal anchor between bubble groups."""
+    if not ts:
+        return ""
+    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    now_dt = datetime.fromtimestamp(int(time.time()), tz=timezone.utc)
+    same_day = (dt.date() == now_dt.date())
+    yesterday = (dt.date() == (now_dt.date() -
+                                 (now_dt.date() - now_dt.date())))
+    # Compute "yesterday" properly
+    from datetime import timedelta
+    is_yesterday = dt.date() == (now_dt.date() - timedelta(days=1))
+    time_part = dt.strftime("%I:%M %p").lstrip("0")
+    if same_day:
+        when = f"Today at {time_part}"
+    elif is_yesterday:
+        when = f"Yesterday at {time_part}"
+    else:
+        when = dt.strftime("%b %d at ") + time_part
+    return f'<div class="time-chip">{html.escape(when)}</div>'
 
 
 def _fallback_invoice_body(client: dict, month: str) -> str:

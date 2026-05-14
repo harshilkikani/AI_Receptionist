@@ -256,15 +256,17 @@ def test_conversation_detail_has_callback_button(app_client):
 
 
 def test_conversation_detail_uses_bubble_classes(app_client):
-    """V9.1 — communication-first means chat-style bubbles, not a
-    table of turns. Verify the bubble markup is there."""
+    """V9.1/V9.2 — communication-first means chat-style bubbles, not a
+    table of turns. V9.2 appends `series-end` to the last bubble of a
+    series so the class is `bubble in series-end` etc — match the
+    prefix only."""
     _seed_voice_call("CA_v91_bubble", "ace_hvac", "+15556665555")
     tok = client_portal.issue_token("ace_hvac")
     r = app_client.get(
         f"/client/ace_hvac/conversations/5556665555?t={tok}")
     body = r.text
-    assert '"bubble in"' in body or 'class="bubble in"' in body
-    assert '"bubble out"' in body or 'class="bubble out"' in body
+    assert 'class="bubble in' in body
+    assert 'class="bubble out' in body
 
 
 def test_conversation_detail_unknown_phone_404s(app_client):
