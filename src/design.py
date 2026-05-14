@@ -303,11 +303,13 @@ table.data td.muted { color: var(--muted); }
 .stat { background: var(--card-bg); border: 1px solid var(--border);
         border-radius: var(--radius-md); padding: var(--s-4) var(--s-5);
         box-shadow: var(--shadow-sm); }
-/* V9.2 — sentence-case label (not ALL CAPS); slightly bigger numeral. */
-.stat .label { font-size: 13px; color: var(--n-600);
+/* V9.2 — sentence-case label (not ALL CAPS); slightly bigger numeral.
+   V9.3 — dark-mode contrast fix: use --muted (which IS inverted in
+   dark mode) instead of --n-600 (which isn't). */
+.stat .label { font-size: 13px; color: var(--muted);
                 font-weight: 500; letter-spacing: 0; }
 .stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
-               margin-top: 6px; line-height: 1.1; }
+               margin-top: 6px; line-height: 1.1; color: var(--fg); }
 .stat .delta { margin-top: 6px; font-size: 12px; font-weight: 500; }
 .stat .delta.up   { color: var(--success-500); }
 .stat .delta.down { color: var(--danger-500); }
@@ -325,7 +327,13 @@ table.data td.muted { color: var(--muted); }
 .pill.bad  { background: var(--danger-100); color: var(--danger-500); }
 .pill.info { background: var(--accent-soft); color: var(--accent); }
 .pill.ghost { background: var(--n-100); color: var(--n-600); }
+/* V9.3 — pills had dark-on-darker color/bg pairs in dark mode that
+   failed contrast. Brighten the foreground for legibility. */
 @media (prefers-color-scheme: dark) {
+  .pill.good  { background: #06291f; color: #4ade80; }
+  .pill.warn  { background: #2e1f08; color: #fbbf24; }
+  .pill.bad   { background: #2e0d0d; color: #fb7185; }
+  .pill.info  { background: #16213d; color: #93c5fd; }
   .pill.ghost { background: #182338; color: #b2c2db; }
 }
 
@@ -404,15 +412,25 @@ table.data td.muted { color: var(--muted); }
 @media (prefers-color-scheme: dark) {
   .call:hover { background: #16213d; }
 }
+/* V9.3 — color-hashed avatars: each partner gets a stable hue so the
+   conversations list reads as distinct people, not a wall of sameness.
+   Hue is set inline via `style="--av-h: NNN"` from Python; the CSS
+   here defines a calm saturation/lightness pair that works in light
+   and dark mode. */
 .call .av { width: 44px; height: 44px; border-radius: 999px;
-             background: var(--accent-soft); color: var(--accent);
+             background: hsl(var(--av-h, 220), 70%, 95%);
+             color: hsl(var(--av-h, 220), 45%, 38%);
              display: flex; align-items: center; justify-content: center;
              font-weight: 600; font-size: 15px; flex-shrink: 0; }
+@media (prefers-color-scheme: dark) {
+  .call .av { background: hsl(var(--av-h, 220), 25%, 22%);
+               color: hsl(var(--av-h, 220), 60%, 78%); }
+}
 .call .body { min-width: 0; }
-.call .body .who { font-weight: 600; font-size: 15px;
+.call .body .who { font-weight: 600; font-size: 15px; color: var(--fg);
                     overflow: hidden; text-overflow: ellipsis;
                     white-space: nowrap; }
-.call .body .from { color: var(--n-500); font-size: 13px;
+.call .body .from { color: var(--muted); font-size: 13px;
                      font-weight: 400; margin-left: 8px; }
 .call .body .sum { margin-top: 4px; font-size: 14px; color: var(--n-700);
                     line-height: 1.45;
@@ -422,10 +440,10 @@ table.data td.muted { color: var(--muted); }
 @media (prefers-color-scheme: dark) {
   .call .body .sum { color: #c5d0e3; }
 }
-.call .right { text-align: right; font-size: 12px; color: var(--n-500);
+.call .right { text-align: right; font-size: 12px; color: var(--muted);
                 display: flex; flex-direction: column; gap: 6px;
                 align-items: flex-end; flex-shrink: 0; }
-.call .right .when { font-size: 12px; color: var(--n-500); }
+.call .right .when { font-size: 12px; color: var(--muted); }
 /* Mobile: bigger tap targets, right column shrinks but stays visible. */
 @media (max-width: 640px) {
   .call { padding: 16px var(--s-4); gap: var(--s-3);
@@ -436,6 +454,15 @@ table.data td.muted { color: var(--muted); }
                        font-size: 12px; }
   .call .right { font-size: 11px; }
 }
+
+/* ── V9.3 — call detail header strip ──────────────────────────────── */
+.call-detail-head { display: flex; align-items: center; gap: var(--s-4);
+                     justify-content: space-between; flex-wrap: wrap; }
+.call-detail-head .head-main { min-width: 0; flex: 1; }
+.call-detail-head .head-aside { flex-shrink: 0; }
+.back-link { display: inline-block; margin-bottom: 10px;
+              font-size: 12px; color: var(--muted); font-weight: 500; }
+.back-link:hover { color: var(--accent); text-decoration: none; }
 
 /* ── V9.2 — communication thread bubbles ──────────────────────────── */
 /* Design notes:
@@ -456,20 +483,31 @@ table.data td.muted { color: var(--muted); }
 
 .bubbles { display: flex; flex-direction: column; gap: 2px; margin: 0; }
 
-/* Time-chip — anchors the eye when there's a real gap. */
-.time-chip { align-self: center; margin: 14px 0 8px;
-              font-size: 11px; color: var(--n-500);
+/* Time-chip — anchors the eye when there's a real gap. V9.3: dark-
+   mode-aware via --muted (was --n-500 which doesn't invert). */
+.time-chip { align-self: center; margin: 16px auto 10px;
+              padding: 2px 10px; border-radius: 999px;
+              font-size: 11px; color: var(--muted);
+              background: var(--n-100);
               font-weight: 500; letter-spacing: .01em; }
 .time-chip:first-child { margin-top: 0; }
 .thread-block .bubbles > .time-chip:first-child { margin-top: 0; }
+@media (prefers-color-scheme: dark) {
+  .time-chip { background: #16213d; color: #8ea4c1; }
+}
 
-/* Sender caption — appears once per role series, very subtle. */
-.sender-cap { font-size: 11px; color: var(--n-500);
+/* Sender caption — once per series, aligned with bubble's outer edge.
+   V9.3 fix: previous margin of 8px 12px indented captions away from
+   their bubbles. Now flush with the bubble side. */
+.sender-cap { font-size: 11px; color: var(--muted);
                font-weight: 600; letter-spacing: .02em;
-               margin: 8px 12px 3px; }
+               margin: 6px 0 4px; padding: 0 4px;
+               text-transform: none; }
 .sender-cap.in  { align-self: flex-start; }
 .sender-cap.out { align-self: flex-end; }
 .sender-cap:first-child { margin-top: 0; }
+/* Reduce the gap when caption follows a time-chip — they pair. */
+.time-chip + .sender-cap { margin-top: 2px; }
 
 .bubble { max-width: 78%; padding: 9px 14px; border-radius: 16px;
            font-size: 14.5px; line-height: 1.45;
@@ -814,6 +852,18 @@ def status_pill(status: str, *, with_dot: bool = True) -> str:
     return f'<span class="pill {variant}">{dot}{html.escape(label)}</span>'
 
 
+def _avatar_hue(seed: str) -> int:
+    """V9.3 — stable hue (0-359) derived from the partner identity so
+    each card in the Conversations list has its own quiet color. Same
+    partner always gets the same color across pages. The CSS variable
+    `--av-h` on `.call .av` picks the bg/fg pair."""
+    import hashlib
+    if not seed:
+        return 220  # default slate
+    digest = hashlib.md5(seed.encode("utf-8")).hexdigest()
+    return int(digest[:4], 16) % 360
+
+
 def call_card(*, caller: str, from_number: str = "",
               when: str = "", summary: str = "",
               status: str = "answered", duration: Optional[str] = None,
@@ -823,6 +873,7 @@ def call_card(*, caller: str, from_number: str = "",
     `href` makes the whole card a link; omit for static rendering."""
     initial = html.escape((caller or "?")[:1].upper())
     who = html.escape(caller or "Unknown caller")
+    hue = _avatar_hue(from_number or caller)
     fromn = (
         f'<span class="from">{html.escape(from_number)}</span>'
         if from_number else ""
@@ -840,7 +891,7 @@ def call_card(*, caller: str, from_number: str = "",
         if summary else ""
     )
     inner = (
-        f'<div class="av">{initial}</div>'
+        f'<div class="av" style="--av-h:{hue}">{initial}</div>'
         f'<div class="body">'
         f'<div class="who">{who} {fromn}</div>'
         f'{sum_html}'

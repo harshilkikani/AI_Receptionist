@@ -364,68 +364,103 @@ def conversation_detail(client_id: str, phone_slug: str, t: str = ""):
 
 @router.get("/{client_id}/call/{call_sid}", response_class=HTMLResponse)
 def call_detail(client_id: str, call_sid: str, t: str = ""):
-    """Per-call detail (transcript). Customer-facing — no internal
-    identifiers, no engineer-y outcome strings."""
+    """V9.3 — single-call detail, redesigned to share the V9.2 bubble
+    pattern with conversation_detail. Hero strip with name + status +
+    duration, optional summary card, then the bubble timeline."""
     client = _require(client_id, t)
-    from src import transcripts
-    meta = transcripts.get_call_meta(call_sid)
+    from src import transcripts as _transcripts
+    meta = _transcripts.get_call_meta(call_sid)
     if not meta or meta.get("client_id") != client_id:
-        # Don't leak other tenants' call SIDs
         raise HTTPException(404, "call not found")
-    turns = transcripts.get_transcript(call_sid)
+    turns = _transcripts.get_transcript(call_sid)
 
-    start_iso = datetime.fromtimestamp(meta["start_ts"], tz=timezone.utc).strftime(
-        "%b %d, %Y · %H:%M:%S")
+    raw_phone = meta.get("from_number") or ""
+    start_dt = datetime.fromtimestamp(meta["start_ts"], tz=timezone.utc)
+    when_label = start_dt.strftime("%b %d · %I:%M %p").replace(" 0", " ")
     duration = _fmt_duration(meta.get("duration_s") or 0)
     raw_outcome = (meta.get("outcome") or "").strip().lower()
     status_html = (status_pill("emergency") if meta.get("emergency")
                    else status_pill(raw_outcome or "answered"))
 
-    meta_rows = [
-        ["When", html.escape(start_iso)],
-        ["Duration", (duration, "num")],
-        ["Status", status_html],
-        ["From", (html.escape(meta.get("from_number") or ""), "muted")],
-    ]
-    # Show summary if available — soften "AI summary" → "Call summary".
+    # ── Header strip — partner name, status, back-to-thread link ────
+    tq = f"?t={html.escape(t)}"
+    back_href = (
+        f"/client/{html.escape(client_id)}/conversations/"
+        f"{html.escape(_phone_slug(raw_phone))}{tq}"
+    ) if raw_phone else ""
+    head_body = (
+        f'<div class="call-detail-head">'
+        f'<div class="head-main">'
+        f'<h2 style="margin:0;font-size:20px;letter-spacing:-0.01em;">'
+        f'{html.escape(_partner_label(raw_phone) or "Caller")}</h2>'
+        f'<div class="muted" style="font-size:13px;margin-top:2px;">'
+        f'{html.escape(raw_phone)}{" · " if raw_phone else ""}'
+        f'{html.escape(when_label)} · {html.escape(duration)}</div>'
+        f'</div>'
+        f'<div class="head-aside">{status_html}</div>'
+        f'</div>'
+    )
+    # Back link rendered above the header (small breadcrumb).
+    if back_href:
+        head_body = (
+            f'<a href="{back_href}" class="back-link muted">'
+            f'← Back to conversation</a>{head_body}'
+        )
+    header = card(head_body)
+
+    # ── Summary (if present) ───────────────────────────────────────
+    summary_card = ""
     summary_text = (meta.get("summary") if hasattr(meta, "get") else None)
     if summary_text:
-        meta_rows.append(["Summary",
-                          f'<span style="font-style:italic">{html.escape(summary_text)}</span>'])
+        summary_card = card(
+            f'<p style="margin:0;font-size:14px;line-height:1.55;color:var(--fg);">'
+            f'{html.escape(summary_text)}</p>',
+            title="Call summary",
+        )
 
-    if turns:
-        conv_html = '<div style="display:flex;flex-direction:column;gap:var(--s-3);">'
-        for turn in turns:
-            role = turn["role"]
-            badge = pill("Caller" if role == "user" else "Receptionist",
-                         "ghost" if role == "user" else "info")
-            ts_str = datetime.fromtimestamp(turn["ts"], tz=timezone.utc).strftime("%H:%M:%S")
-            conv_html += (
-                f'<div style="padding:var(--s-3);'
-                f'background:var(--n-50);border-radius:var(--radius-sm);'
-                f'border:1px solid var(--border);">'
-                f'<div class="row" style="margin-bottom:4px;">'
-                f'{badge}'
-                f'<span class="muted ml-auto" style="font-size:11px;">{ts_str}</span>'
-                f'</div>'
-                f'<div>{html.escape(turn["text"])}</div>'
-                f'</div>'
+    # ── Recording indicator (admin-only proxy; portal users see status) ─
+    rec_card = ""
+    try:
+        from src import recordings as _rec
+        rec = _rec.get_recording(call_sid)
+        if rec and rec.get("recording_url"):
+            rec_dur = _fmt_duration(int(rec.get("recording_duration_s") or 0))
+            rec_card = card(
+                f'<div class="row" style="align-items:center;gap:12px;">'
+                f'{icon("voicemail", size=18)}'
+                f'<div><div style="font-weight:600;font-size:14px;">'
+                f'Audio recording captured</div>'
+                f'<div class="muted" style="font-size:12px;margin-top:2px;">'
+                f'{html.escape(rec_dur)} — available to your account contact</div>'
+                f'</div></div>'
             )
-        conv_html += '</div>'
-    else:
-        conv_html = ('<div class="empty">No transcript captured for this call.</div>')
+    except Exception:
+        rec_card = ""
 
-    body = (
-        card(data_table(headers=["", ""], rows=meta_rows),
-             title="Call summary") +
-        card(conv_html, title="Conversation")
-    )
+    # ── Bubble timeline (V9.2 helper) ──────────────────────────────
+    if turns:
+        bubble_html = _render_bubble_sequence(turns)
+        conv = card(
+            f'<div class="bubbles">{bubble_html}</div>',
+            title="Conversation", flush=True,
+        )
+    else:
+        conv = card(
+            '<div class="empty empty-warm">'
+            f'<div class="empty-icon">{icon("voicemail", size=20)}</div>'
+            '<div class="empty-title">No transcript captured</div>'
+            '<div class="empty-sub">This call ended before any conversation '
+            'was recorded.</div></div>',
+            title="Conversation",
+        )
+
+    body = header + summary_card + rec_card + conv
     return HTMLResponse(page(
         title=client["name"],
         subtitle="Call detail",
         body=body,
         nav=_nav(client_id, t),
-        active=f"/client/{client_id}/calls?t={html.escape(t)}",
+        active=f"/client/{client_id}/conversations?t={html.escape(t)}",
         accent="client",
         brand=(client.get("brand_display_name") or client["name"]),
         brand_logo_url=client.get("brand_logo_url") or None,
