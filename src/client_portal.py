@@ -37,7 +37,8 @@ from fastapi.responses import HTMLResponse
 
 from src import tenant, usage
 from src.design import (
-    card, data_table, page, pill, stat_card, stats, status_pill, icon,
+    call_card, card, data_table, page, pill, stat_card, stats,
+    status_pill, icon,
 )
 
 router = APIRouter(prefix="/client", tags=["client_portal"])
@@ -96,12 +97,15 @@ def portal_url(client_id: str, base_url: Optional[str] = None) -> str:
 # ── Nav helpers ────────────────────────────────────────────────────────
 
 def _nav(client_id: str, t: str) -> list:
+    """V9.1 — consolidated to 3 primary tabs (Today / Conversations /
+    Settings). Follow-ups is a section inside Today. Recent calls
+    folded into Conversations (one unified communications view).
+    Invoice still reachable by URL; not in the nav."""
     tq = f"?t={html.escape(t)}"
     return [
-        ("Today",         f"/client/{client_id}{tq}"),
-        ("Recent calls",  f"/client/{client_id}/calls{tq}"),
-        ("Follow-ups",    f"/client/{client_id}/followups{tq}"),
-        ("Settings",      f"/client/{client_id}/settings{tq}"),
+        ("Today",          f"/client/{client_id}{tq}"),
+        ("Conversations",  f"/client/{client_id}/conversations{tq}"),
+        ("Settings",       f"/client/{client_id}/settings{tq}"),
     ]
 
 
@@ -109,52 +113,102 @@ def _nav(client_id: str, t: str) -> list:
 
 @router.get("/{client_id}", response_class=HTMLResponse)
 def summary(client_id: str, t: str = "", request: Request = None):
+    """V9.1 — Today is a communications-first feed. Recent activity at
+    the top, follow-ups beneath, calm stats at the bottom. No table.
+    Goal: a non-technical owner reads the page in 10 seconds and
+    immediately knows 'my calls are being handled'."""
     client = _require(client_id, t)
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     s = usage.monthly_summary(client_id)
     bookings = _count_bookings(client_id, month)
-    last_call = _last_call_row(client_id)
+    tq = f"?t={html.escape(t)}"
 
-    last_call_label = "No calls yet"
-    last_call_badge = ""
-    if last_call:
-        last_call_label = datetime.fromtimestamp(
-            last_call["start_ts"], tz=timezone.utc,
-        ).strftime("%b %d, %H:%M")
-        if last_call.get("emergency"):
-            last_call_badge = " " + status_pill("emergency")
+    # ── Recent activity (last 24h of calls + SMS, interleaved) ────────
+    now_ts = int(time.time())
+    since_ts = now_ts - 24 * 60 * 60
+    partners = usage.list_conversation_partners(
+        client_id, limit=8, since_ts=since_ts)
+    activity_html = ""
+    if partners:
+        cards = []
+        for p in partners:
+            when = _human_when(p["last_ts"], now_ts)
+            raw_outcome = "answered"
+            if p["last_channel"] == "sms":
+                raw_outcome = "answered"
+            cards.append(call_card(
+                caller=_partner_label(p["phone"]),
+                from_number=p["phone"],
+                when=when,
+                summary=(p.get("last_summary") or
+                          ("Text message exchange"
+                           if p["last_channel"] == "sms"
+                           else "Voice call")),
+                status=raw_outcome,
+                href=(
+                    f"/client/{html.escape(client_id)}/conversations/"
+                    f"{html.escape(_phone_slug(p['phone']))}{tq}"
+                ),
+            ))
+        activity_html = card(
+            "".join(cards),
+            title="Last 24 hours",
+            flush=True,
+        )
+    else:
+        activity_html = card(
+            '<div class="empty">No calls or messages in the last 24 hours. '
+            'Your line is on and ready.</div>',
+            title="Last 24 hours",
+        )
 
+    # ── Follow-ups section (was a separate tab in V9.0; folded in) ────
+    followups = _followup_candidates(client_id, limit=5)
+    if followups:
+        items = []
+        for r in followups:
+            when = _human_when(r["start_ts"], now_ts)
+            raw_phone = r.get("from_number") or ""
+            items.append(call_card(
+                caller=_partner_label(raw_phone),
+                from_number=raw_phone,
+                when=when,
+                summary=(r.get("summary")
+                          if "summary" in (r.keys() if hasattr(r, "keys") else [])
+                          else None) or "Short call — caller may want a follow-up",
+                status="callback",
+                href=(
+                    f"/client/{html.escape(client_id)}/conversations/"
+                    f"{html.escape(_phone_slug(raw_phone))}{tq}"
+                    if raw_phone else ""
+                ),
+            ))
+        followups_html = card("".join(items),
+                               title="Worth a follow-up", flush=True)
+    else:
+        followups_html = ""
+
+    # ── Calm stats footer (this month) ────────────────────────────────
     top_stats = stats([
         stat_card("Calls answered", s["calls_handled"]),
         stat_card("Emergencies routed", s["emergencies"]),
         stat_card("Bookings captured", bookings),
     ])
 
-    month_label = datetime.now(timezone.utc).strftime("%B %Y")
-    summary_rows = [
-        ["Last call", f'{html.escape(last_call_label)}{last_call_badge}'],
-        ["This month so far", html.escape(month_label)],
-    ]
-    about_card = card(
-        data_table(headers=["", ""], rows=summary_rows),
-        title="At a glance",
-    )
-
-    tq = f"?t={html.escape(t)}"
-    invoice_link = (
-        f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
-        f'class="btn" style="margin-top:var(--s-3)">View this month\'s invoice →</a>'
-    )
-
+    # ── Hero strip — reassurance + invoice link ──────────────────────
     hero_body = (
-        f'<p class="muted" style="margin:0;">Live activity for '
-        f'{html.escape(client["name"])}. Bookmark this page — the link stays '
-        f'the same. Numbers update as calls come in.</p>'
-        f'{invoice_link}'
+        f'<div class="row" style="align-items:center;justify-content:space-between;">'
+        f'<p class="muted" style="margin:0;">'
+        f'Your receptionist line is on and answering calls. Numbers update '
+        f'in real time as calls come in.</p>'
+        f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
+        f'class="btn" style="white-space:nowrap;">'
+        f'{icon("calendar", size=14)} This month\'s invoice'
+        f'</a></div>'
     )
     hero = card(hero_body)
 
-    body = hero + top_stats + about_card
+    body = hero + activity_html + followups_html + top_stats
     return HTMLResponse(page(
         title=client["name"],
         subtitle="Today",
@@ -168,52 +222,127 @@ def summary(client_id: str, t: str = "", request: Request = None):
     ))
 
 
-@router.get("/{client_id}/calls", response_class=HTMLResponse)
-def call_log(client_id: str, t: str = "", limit: int = 50):
+@router.get("/{client_id}/conversations", response_class=HTMLResponse)
+@router.get("/{client_id}/calls", response_class=HTMLResponse)  # legacy alias
+def conversations_list(client_id: str, t: str = "", limit: int = 50):
+    """V9.1 — Conversations is the unified-by-partner view: one card
+    per phone number, showing the most recent activity across calls +
+    SMS. Replaces the per-call list from V9.0 (the brief explicitly
+    wants 'one conversation history')."""
     client = _require(client_id, t)
-    rows_raw = usage.recent_calls(client_id=client_id, limit=limit)
-    rows = []
-    for r in rows_raw:
-        ts = datetime.fromtimestamp(r["start_ts"], tz=timezone.utc).strftime(
-            "%b %d · %H:%M")
-        # V9.0 — status_pill handles vocabulary mapping (no engineer
-        # strings leak through). Emergency is shown via the status pill
-        # when the underlying call was flagged.
-        raw = (r.get("outcome") or "").strip().lower()
-        if r.get("emergency"):
-            status_html = status_pill("emergency")
-        else:
-            status_html = status_pill(raw or "answered")
+    partners = usage.list_conversation_partners(client_id, limit=limit)
+    tq = f"?t={html.escape(t)}"
+    now_ts = int(time.time())
 
-        detail = (
-            f'<a href="/client/{html.escape(client_id)}/call/{html.escape(r["call_sid"])}'
-            f'?t={html.escape(t)}">View →</a>'
-        ) if r["call_sid"] else ""
+    if not partners:
+        body = card(
+            '<div class="empty">No conversations yet. Calls and texts will '
+            'show up here as soon as they come in.</div>',
+            title="Conversations",
+        )
+    else:
+        cards = []
+        for p in partners:
+            when = _human_when(p["last_ts"], now_ts)
+            channel_marker = (
+                "Text message" if p["last_channel"] == "sms" else "Phone call")
+            chips = []
+            if p["calls"]:
+                chips.append(f"{p['calls']} call{'s' if p['calls'] != 1 else ''}")
+            if p["messages"]:
+                chips.append(f"{p['messages']} text{'s' if p['messages'] != 1 else ''}")
+            count_line = " · ".join(chips)
+            summary = p.get("last_summary") or (
+                f"{channel_marker}" + (f" — {count_line}" if count_line else "")
+            )
+            cards.append(call_card(
+                caller=_partner_label(p["phone"]),
+                from_number=p["phone"],
+                when=when,
+                summary=summary,
+                status="answered",
+                href=(
+                    f"/client/{html.escape(client_id)}/conversations/"
+                    f"{html.escape(_phone_slug(p['phone']))}{tq}"
+                ),
+            ))
+        body = card("".join(cards), title="Conversations",
+                    subtitle=f"{len(partners)} partner{'s' if len(partners) != 1 else ''}",
+                    flush=True)
 
-        from_n = r.get("from_number") or ""
-        rows.append([
-            (html.escape(ts), "muted"),
-            html.escape(from_n) if from_n else "",
-            (_fmt_duration(r.get("duration_s") or 0), "num muted"),
-            status_html,
-            detail,
-        ])
-
-    body = card(
-        data_table(
-            headers=["When", "From", ("Duration", "num"), "Status", ""],
-            rows=rows,
-            empty_text="No calls yet this month. Your line is ready when one comes in.",
-        ),
-        title="Recent calls",
-        subtitle=f"Last {limit}",
-    )
     return HTMLResponse(page(
         title=client["name"],
-        subtitle="Recent calls",
+        subtitle="Conversations",
         body=body,
         nav=_nav(client_id, t),
-        active=f"/client/{client_id}/calls?t={html.escape(t)}",
+        active=f"/client/{client_id}/conversations?t={html.escape(t)}",
+        accent="client",
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
+    ))
+
+
+@router.get("/{client_id}/conversations/{phone_slug}",
+            response_class=HTMLResponse)
+def conversation_detail(client_id: str, phone_slug: str, t: str = ""):
+    """V9.1 — unified per-partner thread: every call + SMS exchange
+    with one phone number, chronological."""
+    client = _require(client_id, t)
+    from src import transcripts
+    # phone_slug is normalized digits. Run it back through normalize to
+    # be safe against operators pasting raw URLs.
+    from memory import normalize_phone
+    norm = normalize_phone(phone_slug)
+    if not norm:
+        raise HTTPException(404, "conversation not found")
+    phone = "+" + norm
+
+    turns = transcripts.list_by_phone(client_id, phone, limit=500)
+    # Group turns by call_sid for distinguishable conversation blocks.
+    blocks: list = []
+    current: dict = {}
+    for turn in turns:
+        sid = turn["call_sid"]
+        if not current or current["call_sid"] != sid:
+            current = {"call_sid": sid, "channel": turn["channel"],
+                       "turns": [], "meta": None}
+            blocks.append(current)
+        current["turns"].append(turn)
+
+    # Resolve meta for each voice block.
+    for blk in blocks:
+        if blk["channel"] == "voice":
+            blk["meta"] = transcripts.get_call_meta(blk["call_sid"])
+
+    # Header: who is this + how reachable
+    head_body = (
+        f'<div class="row" style="align-items:center;justify-content:space-between;">'
+        f'<div><h2 style="margin:0;font-size:20px;">'
+        f'{html.escape(_partner_label(phone))}</h2>'
+        f'<div class="muted" style="font-size:13px;margin-top:2px;">'
+        f'{html.escape(phone)}</div></div>'
+        f'<a class="btn" href="tel:{html.escape(phone)}">'
+        f'{icon("phone", size=14)} Call back</a></div>'
+    )
+    header = card(head_body)
+
+    if not blocks:
+        body = header + card(
+            '<div class="empty">No history with this number yet.</div>')
+    else:
+        thread_html = []
+        for blk in blocks:
+            thread_html.append(_render_thread_block(blk, client_id, t))
+        body = header + card("".join(thread_html), title="Conversation",
+                              flush=True)
+
+    return HTMLResponse(page(
+        title=client["name"],
+        subtitle=_partner_label(phone),
+        body=body,
+        nav=_nav(client_id, t),
+        active=f"/client/{client_id}/conversations?t={html.escape(t)}",
         accent="client",
         brand=(client.get("brand_display_name") or client["name"]),
         brand_logo_url=client.get("brand_logo_url") or None,
@@ -465,6 +594,126 @@ def _fmt_duration(seconds: int) -> str:
         return f"{seconds}s"
     m, s = divmod(seconds, 60)
     return f"{m}m {s:02d}s"
+
+
+# ── V9.1 — conversation-view helpers ──────────────────────────────────
+
+def _human_when(ts: int, now_ts: int) -> str:
+    """Relative time for the activity feed. '2m ago', '4h ago',
+    'yesterday', 'Mon 3:15 PM', then the date for older items."""
+    if not ts:
+        return ""
+    diff = max(0, int(now_ts) - int(ts))
+    if diff < 60:
+        return "just now"
+    if diff < 3600:
+        return f"{diff // 60}m ago"
+    if diff < 86400:
+        return f"{diff // 3600}h ago"
+    if diff < 2 * 86400:
+        return "yesterday"
+    if diff < 7 * 86400:
+        # %I gives zero-padded hour (12-hour clock). Strip the leading
+        # zero manually so output reads "3:15 PM" not "03:15 PM".
+        # Cross-platform — Windows doesn't support `%-I`.
+        s = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%a %I:%M %p")
+        return s.replace(" 0", " ")
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%b %d")
+
+
+def _partner_label(phone: str) -> str:
+    """Look up a name from memory for this phone number; fall back to
+    the formatted phone. Customer-facing — never shows internal IDs."""
+    if not phone:
+        return "Unknown caller"
+    try:
+        from memory import normalize_phone, get_caller
+        digits = normalize_phone(phone)
+        if digits:
+            rec = get_caller(digits)
+            if rec and rec.get("name"):
+                return rec["name"]
+    except Exception:
+        pass
+    return _format_phone(phone)
+
+
+def _format_phone(phone: str) -> str:
+    """+15551234567 → (555) 123-4567; anything else passes through."""
+    s = (phone or "").strip()
+    digits = "".join(c for c in s if c.isdigit())
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+    if len(digits) == 10:
+        return f"({digits[0:3]}) {digits[3:6]}-{digits[6:]}"
+    return s or "Unknown"
+
+
+def _phone_slug(phone: str) -> str:
+    """URL-safe canonical form of a phone for conversation routes."""
+    try:
+        from memory import normalize_phone
+        return normalize_phone(phone or "") or ""
+    except Exception:
+        return "".join(c for c in (phone or "") if c.isdigit())
+
+
+def _render_thread_block(blk: dict, client_id: str, t: str) -> str:
+    """One per-call block in the conversation detail thread."""
+    sid = blk["call_sid"]
+    channel = blk["channel"]
+    meta = blk.get("meta") or {}
+    turns = blk["turns"]
+    when_ts = turns[0]["ts"] if turns else 0
+    when_label = (
+        datetime.fromtimestamp(when_ts, tz=timezone.utc).strftime("%b %d · %I:%M %p")
+        if when_ts else ""
+    )
+
+    if channel == "voice":
+        chip = status_pill("emergency") if meta.get("emergency") else \
+            status_pill((meta.get("outcome") or "").strip().lower() or "answered")
+        duration = _fmt_duration(meta.get("duration_s") or 0)
+        head = (
+            f'<div class="thread-head"><span class="thread-icon">'
+            f'{icon("phone", size=14)}</span>'
+            f'<span class="thread-meta">'
+            f'<b>Voice call</b> · {html.escape(when_label)} · '
+            f'<span class="muted">{html.escape(duration)}</span></span>'
+            f'<span class="ml-auto">{chip}</span></div>'
+        )
+        deeper = (
+            f'<div style="margin-top:6px"><a class="muted" href="/client/'
+            f'{html.escape(client_id)}/call/{html.escape(sid)}?t={html.escape(t)}">'
+            f'Open full call detail →</a></div>'
+        )
+    else:
+        chip = status_pill("answered")
+        head = (
+            f'<div class="thread-head"><span class="thread-icon">'
+            f'{icon("voicemail", size=14)}</span>'
+            f'<span class="thread-meta">'
+            f'<b>Text message</b> · {html.escape(when_label)}</span>'
+            f'<span class="ml-auto">{chip}</span></div>'
+        )
+        deeper = ""
+
+    msgs = []
+    for turn in turns:
+        role = turn["role"]
+        side = "in" if role == "user" else "out"
+        ts_str = datetime.fromtimestamp(turn["ts"], tz=timezone.utc).strftime("%I:%M %p")
+        msgs.append(
+            f'<div class="bubble {side}"><div class="bubble-text">'
+            f'{html.escape(turn["text"])}</div>'
+            f'<div class="bubble-ts muted">{html.escape(ts_str)}</div></div>'
+        )
+
+    return (
+        f'<div class="thread-block">{head}'
+        f'<div class="bubbles">{"".join(msgs)}</div>'
+        f'{deeper}</div>'
+    )
 
 
 def _fallback_invoice_body(client: dict, month: str) -> str:

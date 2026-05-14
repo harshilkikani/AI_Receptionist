@@ -351,6 +351,160 @@ def recent_calls(client_id: Optional[str] = None, limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
+# ── V9.1 — Conversation partners (per-phone aggregation) ──────────────
+
+def list_conversation_partners(client_id: str, *,
+                                limit: int = 50,
+                                since_ts: Optional[int] = None) -> list:
+    """V9.1 — distinct phone numbers we've talked with, ordered by most
+    recent activity. Unifies the voice + SMS sides of a conversation.
+
+    The frontend uses this to render the Conversations list: one card
+    per partner with name (memory lookup), latest summary, latest
+    activity time, channel mix.
+
+    Returns list of dicts:
+        {
+          phone: "+14155551234",
+          last_ts: 1778700000,
+          last_channel: "voice" | "sms",
+          last_call_sid: "CA..." | "SMS_4155551234",
+          calls: 3,
+          messages: 4,
+          last_summary: "Booking pump-out next Tuesday" | None,
+        }
+    """
+    if not client_id:
+        return []
+    since_clause = ""
+    args: list = [client_id]
+    if since_ts:
+        since_clause = " AND start_ts >= ?"
+        args.append(int(since_ts))
+
+    with _db_lock:
+        conn = _connect()
+        _init_schema(conn)
+        # All voice calls for this tenant (group by from_number).
+        voice_rows = conn.execute(
+            f"""
+            SELECT from_number AS phone,
+                   COUNT(*)     AS n_calls,
+                   MAX(start_ts) AS last_ts
+              FROM calls
+             WHERE client_id = ?
+               AND COALESCE(from_number, '') <> ''
+               {since_clause}
+          GROUP BY from_number
+            """,
+            args,
+        ).fetchall()
+        # All SMS exchanges (call_sid LIKE 'SMS_%') — group by the SID.
+        sms_args: list = [client_id]
+        if since_ts:
+            sms_args.append(int(since_ts))
+        sms_since = " AND ts >= ?" if since_ts else ""
+        sms_rows = conn.execute(
+            f"""
+            SELECT call_sid AS sms_sid,
+                   COUNT(*)  AS n_msg,
+                   MAX(ts)   AS last_ts
+              FROM sms
+             WHERE client_id = ?
+               AND call_sid LIKE 'SMS_%'
+               {sms_since}
+          GROUP BY call_sid
+            """,
+            sms_args,
+        ).fetchall()
+        conn.close()
+
+    from memory import normalize_phone as _norm
+
+    # Merge into a single partner-keyed dict, keyed by normalized digits.
+    by_phone: dict = {}
+
+    for r in voice_rows:
+        raw_phone = r["phone"]
+        n = _norm(raw_phone)
+        if not n:
+            continue
+        slot = by_phone.setdefault(n, {
+            "phone": raw_phone, "last_ts": 0, "last_channel": "voice",
+            "calls": 0, "messages": 0,
+            "last_call_sid": "", "last_summary": None,
+        })
+        slot["calls"] += int(r["n_calls"] or 0)
+        if (r["last_ts"] or 0) > slot["last_ts"]:
+            slot["last_ts"] = int(r["last_ts"])
+            slot["last_channel"] = "voice"
+
+    for r in sms_rows:
+        sms_sid = r["sms_sid"] or ""
+        if not sms_sid.startswith("SMS_"):
+            continue
+        n = sms_sid[4:]
+        if not n:
+            continue
+        slot = by_phone.setdefault(n, {
+            "phone": "+" + n, "last_ts": 0, "last_channel": "sms",
+            "calls": 0, "messages": 0,
+            "last_call_sid": "", "last_summary": None,
+        })
+        slot["messages"] += int(r["n_msg"] or 0)
+        if (r["last_ts"] or 0) > slot["last_ts"]:
+            slot["last_ts"] = int(r["last_ts"])
+            slot["last_channel"] = "sms"
+            slot["last_call_sid"] = sms_sid
+
+    # For the voice winners, fill in the latest call_sid + summary.
+    # Summary is added via migration (src.migrations), so fresh test
+    # DBs may not have the column yet — fall back gracefully.
+    voice_phones = [p for p, s in by_phone.items()
+                    if s["last_channel"] == "voice"]
+    if voice_phones:
+        with _db_lock:
+            conn = _connect()
+            _init_schema(conn)
+            # Detect whether the summary column exists once; the loop
+            # below uses the right SELECT either way.
+            try:
+                conn.execute("SELECT summary FROM calls LIMIT 0").fetchone()
+                has_summary = True
+            except sqlite3.OperationalError:
+                has_summary = False
+            for p in voice_phones:
+                slot = by_phone[p]
+                if has_summary:
+                    row = conn.execute(
+                        """SELECT call_sid, summary FROM calls
+                            WHERE client_id = ?
+                              AND from_number = ?
+                         ORDER BY start_ts DESC LIMIT 1""",
+                        (client_id, slot["phone"]),
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        """SELECT call_sid FROM calls
+                            WHERE client_id = ?
+                              AND from_number = ?
+                         ORDER BY start_ts DESC LIMIT 1""",
+                        (client_id, slot["phone"]),
+                    ).fetchone()
+                if row:
+                    slot["last_call_sid"] = row["call_sid"] or ""
+                    if has_summary:
+                        try:
+                            slot["last_summary"] = row["summary"]
+                        except (IndexError, KeyError):
+                            slot["last_summary"] = None
+            conn.close()
+
+    out = sorted(by_phone.values(),
+                 key=lambda r: r["last_ts"], reverse=True)
+    return out[:limit]
+
+
 # ── V5.8 — TTS provider usage (ElevenLabs char tracking) ──────────────
 
 def bump_tts_chars(client_id: str, provider: str, n: int):

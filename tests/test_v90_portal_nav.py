@@ -37,13 +37,18 @@ def test_today_page_loads(app_client):
 
 
 def test_nav_includes_today_calls_followups_settings(app_client):
+    """V9.1 — nav consolidated to Today / Conversations / Settings.
+    Recent calls folded into Conversations; Follow-ups moved into Today
+    as a section."""
     tok = client_portal.issue_token("ace_hvac")
     r = app_client.get(f"/client/ace_hvac?t={tok}")
     body = r.text
     assert ">Today<" in body
-    assert ">Recent calls<" in body
-    assert ">Follow-ups<" in body
+    assert ">Conversations<" in body
     assert ">Settings<" in body
+    # V9.1 — Recent calls + Follow-ups no longer primary nav items
+    assert ">Recent calls<" not in body
+    assert ">Follow-ups<" not in body
 
 
 def test_nav_does_not_include_invoice(app_client):
@@ -73,7 +78,11 @@ def test_today_page_links_to_current_invoice(app_client):
 # ── status vocabulary ─────────────────────────────────────────────────
 
 def test_calls_page_uses_plain_english_status(app_client):
-    """V9.0 contract: engineer-y outcome strings never leak."""
+    """V9.0 contract: engineer-y outcome strings never leak.
+    V9.1 — /calls now renders the per-partner Conversations list; one
+    card per phone number. Spam calls don't get a card (they're filtered
+    server-side from the partner roll-up), so we just verify no raw
+    engineer strings appear anywhere."""
     usage.start_call("CA_v90_1", "ace_hvac", "+14155550199", "+18449403274")
     usage.end_call("CA_v90_1", outcome="normal")
     usage.start_call("CA_v90_2", "ace_hvac", "+14155550100", "+18449403274")
@@ -82,9 +91,8 @@ def test_calls_page_uses_plain_english_status(app_client):
     r = app_client.get(f"/client/ace_hvac/calls?t={tok}")
     body = r.text
     assert r.status_code == 200
-    # Plain English shows up
+    # Plain English status shows up
     assert "Answered" in body
-    assert "Filtered" in body
     # Engineer strings do NOT
     assert "spam_phrase" not in body
     assert "spam_number" not in body

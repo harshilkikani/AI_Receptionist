@@ -139,6 +139,18 @@ async def _lifespan(app: FastAPI):
     except Exception as e:
         log.error("startup: scheduler failed to start: %s", e)
 
+    # V9.1 — seed the marketing-demo tenant (septic_pro) so the portal
+    # has real-looking activity for live demos. Idempotent: skips if
+    # rows already exist. Never touches the live tenant.
+    try:
+        from src import demo_seed as _demo_seed
+        r = _demo_seed.seed_septic_pro()
+        if r.get("seeded"):
+            log.info("startup: demo seed planted v=%d sms=%d",
+                     r.get("voice", 0), r.get("sms", 0))
+    except Exception as e:
+        log.error("startup: demo seed failed (non-fatal): %s", e)
+
     yield
 
     # Shutdown — same defense in depth on the way out

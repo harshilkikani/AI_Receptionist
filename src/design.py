@@ -155,10 +155,6 @@ pre {
   grid-template-columns: 240px 1fr;
   min-height: 100vh;
 }
-@media (max-width: 820px) {
-  .app { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
-}
 .sidebar {
   background: var(--card-bg);
   border-right: 1px solid var(--border);
@@ -176,7 +172,7 @@ pre {
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
 .sidebar nav a {
   display: flex; align-items: center;
-  padding: 9px 12px; border-radius: var(--radius-sm);
+  padding: 10px 12px; border-radius: var(--radius-sm);
   color: var(--n-600); font-weight: 500;
   transition: background 120ms, color 120ms;
 }
@@ -189,6 +185,39 @@ pre {
 @media (prefers-color-scheme: dark) {
   .sidebar nav a { color: var(--n-300); }
   .sidebar nav a:hover { background: #17223d; }
+}
+
+/* V9.1 — mobile bottom-tab-bar pattern. Below 640px (one-handed
+   phone), the sidebar becomes a fixed bottom dock with horizontal
+   tabs. The page content adds matching bottom padding so the last
+   item isn't hidden under it. */
+@media (max-width: 640px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    border-right: none; border-top: 1px solid var(--border);
+    background: var(--card-bg);
+    padding: 4px 8px env(safe-area-inset-bottom, 8px);
+    box-shadow: 0 -4px 12px rgba(15,23,42,.04);
+  }
+  .sidebar .brand { display: none; }
+  .sidebar nav {
+    flex-direction: row; gap: 0;
+    justify-content: space-around;
+  }
+  .sidebar nav a {
+    flex: 1; justify-content: center; min-width: 0;
+    padding: 10px 6px; border-radius: 6px; font-size: 12px;
+    text-align: center;
+  }
+  .main { padding-bottom: 80px; }
+}
+/* 641-820px: tablet-ish — sidebar on top, stacked */
+@media (min-width: 641px) and (max-width: 820px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .sidebar nav a { flex: 0 0 auto; }
 }
 
 .main {
@@ -329,19 +358,62 @@ table.data td.muted { color: var(--muted); }
          padding: var(--s-4) var(--s-5);
          border-bottom: 1px solid var(--border); }
 .call:last-child { border-bottom: none; }
+.call:hover { background: var(--n-50); }
+@media (prefers-color-scheme: dark) {
+  .call:hover { background: #0c1a33; }
+}
 .call .av { width: 40px; height: 40px; border-radius: 999px;
              background: var(--accent-soft); color: var(--accent);
              display: flex; align-items: center; justify-content: center;
-             font-weight: 600; font-size: 14px; }
-.call .body .who { font-weight: 600; }
-.call .body .from { color: var(--muted); font-size: 12px; }
-.call .body .sum { margin-top: 4px; font-size: 13px; color: var(--n-700); }
+             font-weight: 600; font-size: 14px; flex-shrink: 0; }
+.call .body { min-width: 0; }
+.call .body .who { font-weight: 600;
+                    overflow: hidden; text-overflow: ellipsis;
+                    white-space: nowrap; }
+.call .body .from { color: var(--muted); font-size: 12px;
+                     font-weight: 400; margin-left: 6px; }
+.call .body .sum { margin-top: 4px; font-size: 13px; color: var(--n-700);
+                    overflow: hidden; text-overflow: ellipsis;
+                    display: -webkit-box; -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical; }
 @media (prefers-color-scheme: dark) {
   .call .body .sum { color: #b7c4dc; }
 }
 .call .right { text-align: right; font-size: 12px; color: var(--muted);
                 display: flex; flex-direction: column; gap: 4px;
-                align-items: flex-end; }
+                align-items: flex-end; flex-shrink: 0; }
+/* Mobile: bigger tap targets, right column shrinks but stays visible. */
+@media (max-width: 640px) {
+  .call { padding: var(--s-4); gap: var(--s-3); }
+  .call .body .from { display: block; margin-left: 0; margin-top: 2px; }
+  .call .right { font-size: 11px; }
+}
+
+/* ── V9.1 — communication thread bubbles ──────────────────────────── */
+@media (max-width: 640px) {
+  .thread-block { padding: var(--s-4); }
+  .bubble { max-width: 88%; font-size: 14px; }
+}
+.thread-block { padding: var(--s-5);
+                 border-bottom: 1px solid var(--border); }
+.thread-block:last-child { border-bottom: none; }
+.thread-head { display: flex; align-items: center; gap: var(--s-2);
+                margin-bottom: var(--s-3); font-size: 13px;
+                color: var(--muted); }
+.thread-head .thread-icon { color: var(--accent); display: inline-flex; }
+.thread-head .thread-meta b { color: var(--fg); font-weight: 600; }
+.bubbles { display: flex; flex-direction: column; gap: var(--s-2);
+            margin: 0; }
+.bubble { max-width: 78%; padding: 9px 14px; border-radius: 14px;
+           font-size: 14px; line-height: 1.45;
+           display: inline-flex; flex-direction: column; gap: 2px; }
+.bubble.in  { background: var(--n-100); color: var(--fg);
+               align-self: flex-start; border-bottom-left-radius: 4px; }
+.bubble.out { background: var(--accent); color: var(--accent-fg);
+               align-self: flex-end; border-bottom-right-radius: 4px; }
+.bubble-text { white-space: pre-wrap; word-wrap: break-word; }
+.bubble-ts { font-size: 11px; opacity: .65; align-self: flex-end; }
+.bubble.out .bubble-ts { color: var(--accent-fg); }
 
 /* ── Tabs ──────────────────────────────────────────────────────────── */
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border);

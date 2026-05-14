@@ -104,6 +104,18 @@ def maybe_send_followup(call_sid: str, client: dict, *,
     # feedback table as pending.
     usage.log_sms(call_sid, client.get("id", ""), caller_phone, body,
                   direction="outbound_feedback")
+    # V9.1 — also persist the body in transcripts so the V9.1 unified
+    # conversations timeline can show the follow-up message alongside
+    # the call it followed up on. Best-effort; a transcript hiccup must
+    # NEVER unsend the SMS.
+    try:
+        from src import transcripts as _transcripts
+        _transcripts.record_turn(
+            call_sid, client.get("id", ""), "assistant", body,
+            intent="follow_up",
+        )
+    except Exception as e:
+        log.warning("feedback transcript append failed: %s", e)
     _write_pending(call_sid, client.get("id", ""), caller_phone,
                    body, conversation)
     log.info("feedback_sms_sent call_sid=%s to=%s", call_sid, caller_phone)
