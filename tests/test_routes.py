@@ -76,6 +76,9 @@ EXPECTED_ROUTES: Set[tuple] = {
     # V9.0 — public lead capture
     ("POST", "/contact"),
 
+    # V9.6 — combined demo at / live-refreshes the operator pane via this fragment
+    ("GET",  "/demo/today"),
+
     # V9.1 — unified per-partner conversations
     ("GET",  "/client/{client_id}/conversations"),
     ("GET",  "/client/{client_id}/conversations/{phone_slug}"),

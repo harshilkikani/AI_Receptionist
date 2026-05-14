@@ -686,6 +686,30 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   color: var(--muted); text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0 0 14px 6px;
+  display: flex; align-items: center; gap: 10px;
+}
+/* V9.6 — small "Live" indicator on the operator pane label. Pulses
+   subtly when the pane refreshes after a chat message lands. */
+.live-pulse { display: inline-flex; align-items: center; gap: 6px;
+               padding: 2px 8px; border-radius: 999px;
+               background: var(--success-100); color: var(--success-500);
+               text-transform: none; letter-spacing: 0.01em;
+               font-size: 10.5px; font-weight: 600;
+               transition: filter 200ms; }
+.live-pulse .live-dot { width: 6px; height: 6px; border-radius: 999px;
+                         background: var(--success-500);
+                         box-shadow: 0 0 0 0 rgba(22,163,74,0.5);
+                         animation: live-breathe 2.2s ease-in-out infinite; }
+.live-pulse-flash { filter: brightness(1.1); }
+.live-pulse-flash .live-dot { animation-duration: 0.6s; }
+@keyframes live-breathe {
+  0%   { box-shadow: 0 0 0 0 rgba(22,163,74,0.35); }
+  70%  { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+  100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); }
+}
+@media (prefers-color-scheme: dark) {
+  .live-pulse { background: #06291f; color: #4ade80; }
+  .live-pulse .live-dot { background: #4ade80; }
 }
 
 /* Phone shell — abstract device frame, no notch / no skeuomorphism. */

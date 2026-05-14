@@ -463,7 +463,12 @@ def index():
 
     operator_pane = f"""
     <section class="demo-pane demo-pane-operator">
-      <div class="pane-label">What you see</div>
+      <div class="pane-label">
+        <span>What you see</span>
+        <span class="live-pulse" id="live-pulse" aria-hidden="true">
+          <span class="live-dot"></span> Live
+        </span>
+      </div>
       <div class="portal-shell">
         <div class="window-bar">
           <span class="dot red"></span>
@@ -471,7 +476,7 @@ def index():
           <span class="dot green"></span>
           <span class="url-pill">your-business.ai/today</span>
         </div>
-        <div class="portal-shell-body">{operator_inner}</div>
+        <div class="portal-shell-body" id="portal-body">{operator_inner}</div>
       </div>
     </section>
     """
@@ -595,6 +600,37 @@ def index():
       $input.focus();
     }
 
+    /* V9.6 — live-refresh the operator portal pane after each chat
+       turn so prospects see the message they just typed appear in the
+       operator's "Recent activity" feed. Plus a 10s background poll
+       for general data movement. */
+    const $portal = document.getElementById("portal-body");
+    const $pulse  = document.getElementById("live-pulse");
+    let _portalRefreshing = false;
+    let _portalRefreshScheduled = null;
+    async function refreshPortal(){
+      if (!$portal || _portalRefreshing) return;
+      _portalRefreshing = true;
+      try {
+        const r = await fetch("/demo/today", {cache:"no-store"});
+        if (r.ok){
+          const html = await r.text();
+          $portal.innerHTML = html;
+          if ($pulse){
+            $pulse.classList.add("live-pulse-flash");
+            setTimeout(()=>$pulse.classList.remove("live-pulse-flash"), 1200);
+          }
+        }
+      } catch(_) { /* silent — next poll will retry */ }
+      finally { _portalRefreshing = false; }
+    }
+    function scheduleRefresh(delayMs){
+      if (_portalRefreshScheduled) clearTimeout(_portalRefreshScheduled);
+      _portalRefreshScheduled = setTimeout(refreshPortal, delayMs);
+    }
+    /* Background poll — natural data movement when no one is chatting. */
+    setInterval(refreshPortal, 10000);
+
     async function send(text){
       if(!activeCaller || !text.trim()) return;
       appendMsg("user", text);
@@ -620,6 +656,11 @@ def index():
         if(data.intent) meta.push(data.intent);
         if(data.priority === "high") meta.push("priority: high");
         appendMsg("ai", data.reply, {meta});
+        /* Schedule the portal refresh ~600ms after the reply lands so
+           the prospect sees the chat update first, then the portal
+           catches up. That sequencing makes the cause-and-effect
+           visceral instead of jarring. */
+        scheduleRefresh(600);
       } catch(e){
         loading.remove();
         appendSystem("Network error.");
@@ -645,6 +686,28 @@ def index():
     return HTMLResponse(demo_page(title="AI Receptionist", body=body))
 
 
+@app.get("/demo/today")
+def demo_today_fragment():
+    """V9.6 — HTML fragment endpoint for live-refreshing the operator
+    portal pane on the combined demo. Returns just the body content
+    (no `<html>` chrome) so the JS can drop it into `#portal-body`.
+
+    No auth: matches /. The fragment is the same body the real portal
+    renders, just for septic_pro and without the invoice button."""
+    from src.client_portal import _today_body
+    from fastapi.responses import HTMLResponse
+    try:
+        body = _today_body("septic_pro", t="", include_invoice_link=False)
+    except Exception as e:
+        log.error("demo/today fragment failed: %s", e)
+        body = (
+            '<div class="empty empty-warm">'
+            '<div class="empty-title">Demo data not ready</div>'
+            '<div class="empty-sub">Refresh in a moment.</div></div>'
+        )
+    return HTMLResponse(body)
+
+
 @app.get("/missed-calls")
 def missed_calls():
     """Seed callers shown in the left sidebar of the web UI."""
@@ -665,7 +728,40 @@ def chat(body: ChatIn):
             raise HTTPException(404, f"client {body.client_id!r} not found")
     else:
         client = tenant.load_client_by_number("")
-    return _run_pipeline(caller, body.message, client=client)
+
+    # V9.6 — when the web chat targets a marketing-demo tenant, persist
+    # each exchange to the SMS-style storage so the operator portal pane
+    # in the combined demo surfaces it live. The call_sid uses the same
+    # `SMS_<digits>` pattern that /sms/incoming uses — web chat IS
+    # functionally an SMS exchange, so the data layer treats them
+    # identically. That keeps list_by_phone / list_conversation_partners
+    # happy without special-casing.
+    caller_phone = (caller.get("phone") or "").strip()
+    sid = ""
+    if caller_phone and (client.get("id") or "").startswith(("septic_pro",
+                                                              "demo_")):
+        digits = memory.normalize_phone(caller_phone)
+        if digits:
+            sid = f"SMS_{digits}"
+            try:
+                usage.log_sms(sid, client["id"], caller_phone,
+                               body.message, direction="inbound")
+            except Exception as e:
+                log.warning("demo log_sms inbound failed: %s", e)
+
+    result = _run_pipeline(caller, body.message, client=client,
+                            call_sid=sid)
+
+    # V9.6 — also log the AI reply on the way out so the operator
+    # portal preview shows both sides of the exchange.
+    if sid and caller_phone:
+        try:
+            usage.log_sms(sid, client["id"], caller_phone,
+                           result.get("reply", ""), direction="outbound")
+        except Exception as e:
+            log.warning("demo log_sms outbound failed: %s", e)
+
+    return result
 
 
 @app.post("/recover/{caller_id}")
