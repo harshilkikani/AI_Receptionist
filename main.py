@@ -476,6 +476,64 @@ def recover(caller_id: str):
     }
 
 
+# V9.0 — public contact form. The landing page replaces the mailto: link
+# with a real form so leads land in a file we can act on even if the
+# prospect's browser has no mail client configured. Append-only JSONL
+# at data/contact_leads.jsonl; operators read it directly.
+
+class ContactIn(BaseModel):
+    name: str
+    business: str
+    phone: str
+    email: str | None = None
+    note: str | None = None
+
+
+_CONTACT_LEADS_PATH = ROOT / "data" / "contact_leads.jsonl"
+_CONTACT_FIELD_LIMITS = {
+    "name": 80, "business": 120, "phone": 40, "email": 120, "note": 600,
+}
+
+
+@app.post("/contact")
+def contact(body: ContactIn, request: Request):
+    """Public lead-capture endpoint for the landing page form."""
+    name = (body.name or "").strip()
+    business = (body.business or "").strip()
+    phone = (body.phone or "").strip()
+    if not name or not business or not phone:
+        raise HTTPException(400, "name, business, phone required")
+    # Field-length guards — match the form maxlengths so a bad client
+    # can't write multi-MB rows.
+    payload = {
+        "name": name, "business": business, "phone": phone,
+        "email": (body.email or "").strip() or None,
+        "note": (body.note or "").strip() or None,
+    }
+    for k, limit in _CONTACT_FIELD_LIMITS.items():
+        v = payload.get(k)
+        if isinstance(v, str) and len(v) > limit:
+            raise HTTPException(400, f"{k} too long (max {limit})")
+
+    record = {
+        "ts": int(time.time()),
+        "ip": (request.client.host if request.client else None),
+        "ua": request.headers.get("user-agent", "")[:200],
+        **payload,
+    }
+    try:
+        _CONTACT_LEADS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        with _CONTACT_LEADS_PATH.open("a", encoding="utf-8") as f:
+            f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        # Don't surface filesystem detail to the public, but don't claim
+        # success either — return 503 so the form shows the retry hint.
+        raise HTTPException(503, "could not record lead") from e
+
+    return {"ok": True}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 2 — explicit memory endpoints (store / retrieve by ID or phone)
 # ─────────────────────────────────────────────────────────────────────────────

@@ -70,6 +70,11 @@ EXPECTED_ROUTES: Set[tuple] = {
     ("GET",  "/client/{client_id}/calls"),
     ("GET",  "/client/{client_id}/call/{call_sid}"),     # V4 — client-side detail
     ("GET",  "/client/{client_id}/invoice/{month}"),
+    ("GET",  "/client/{client_id}/followups"),           # V9.0 — followup queue
+    ("GET",  "/client/{client_id}/settings"),            # V9.0 — settings reference
+
+    # V9.0 — public lead capture
+    ("POST", "/contact"),
 }
 
 

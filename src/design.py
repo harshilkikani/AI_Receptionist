@@ -4,10 +4,16 @@ Admin, client portal, and the public landing page all pull from here so
 the visual language stays consistent. Pure CSS + a small render helper —
 no JavaScript, no Jinja, no frontend deps.
 
-The design is light-mode-first with an explicit `@media (prefers-color-scheme: dark)`
-block that inverts tokens for users on dark-mode systems. Tokens
-(colors, spacing, typography) are CSS custom properties so future
-palette tweaks touch one place.
+V9.0 — ink + slate-blue. Three accents (violet/blue/teal) collapsed to
+one calm slate-blue. The `accent` parameter is kept for back-compat but
+all values now produce the same visual treatment; surfaces are
+differentiated by content, not color. White-label per-tenant accent
+override still works via `custom_accent_hex`.
+
+The design is light-mode-first with an explicit
+`@media (prefers-color-scheme: dark)` block that inverts tokens for
+users on dark-mode systems. Tokens (colors, spacing, typography) are
+CSS custom properties so palette tweaks touch one place.
 
 Usage:
     from src.design import page, card, data_table, sparkline, stat_card
@@ -18,7 +24,6 @@ Usage:
         body=body,
         nav=[("Overview", "/admin"), ("Calls", "/admin/calls")],
         active="/admin",
-        accent="ops",    # "ops" for admin, "client" for portal, "brand" for landing
     ))
 """
 from __future__ import annotations
@@ -31,7 +36,7 @@ from typing import Iterable, Optional
 
 _CSS = r"""
 :root {
-  /* Neutral scale */
+  /* Neutral scale (slate) */
   --n-50:  #f8fafc;
   --n-100: #f1f5f9;
   --n-200: #e2e8f0;
@@ -41,32 +46,35 @@ _CSS = r"""
   --n-600: #475569;
   --n-700: #334155;
   --n-800: #1e293b;
-  --n-900: #0f172a;
+  --n-900: #0b1220;   /* ink */
 
-  /* Accents — one picked per surface via data-accent attr on <body> */
-  --ops-500:    #2563eb;   /* blue  — operator / admin */
-  --ops-100:    #dbeafe;
-  --client-500: #0d9488;   /* teal  — client portal    */
-  --client-100: #ccfbf1;
-  --brand-500:  #7c3aed;   /* violet — public landing  */
-  --brand-100:  #ede9fe;
+  /* V9.0 — single accent across every surface (slate-blue).
+     The `--ops-500` / `--client-500` / `--brand-500` aliases are
+     preserved so older call sites resolve identically. */
+  --accent:       #1e3a8a;
+  --accent-soft:  #eef2ff;
+  --accent-fg:    #ffffff;
+  --ops-500:      var(--accent);
+  --ops-100:      var(--accent-soft);
+  --client-500:   var(--accent);
+  --client-100:   var(--accent-soft);
+  --brand-500:    var(--accent);
+  --brand-100:    var(--accent-soft);
 
   /* Semantic */
-  --success-500: #059669;
-  --success-100: #d1fae5;
-  --warn-500:    #d97706;
-  --warn-100:    #fed7aa;
-  --danger-500:  #dc2626;
+  --success-500: #16a34a;
+  --success-100: #dcfce7;
+  --warn-500:    #b45309;
+  --warn-100:    #fef3c7;
+  --danger-500:  #b91c1c;
   --danger-100:  #fee2e2;
 
-  /* Surface tokens (resolved below based on accent) */
-  --bg:      var(--n-50);
+  /* Surface tokens */
+  --bg:      #ffffff;
   --card-bg: #ffffff;
   --fg:      var(--n-900);
   --muted:   var(--n-500);
   --border:  var(--n-200);
-  --accent:  var(--ops-500);
-  --accent-soft: var(--ops-100);
 
   /* Spacing rhythm */
   --s-1: 4px;
@@ -88,12 +96,14 @@ _CSS = r"""
   --radius-md: 10px;
   --radius-lg: 16px;
 
-  --shadow-sm: 0 1px 2px rgba(15,23,42,.05);
-  --shadow-md: 0 2px 8px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+  --shadow-sm: 0 1px 2px rgba(15,23,42,.04);
+  --shadow-md: 0 2px 8px rgba(15,23,42,.05), 0 1px 2px rgba(15,23,42,.04);
 }
 
-body[data-accent="client"] { --accent: var(--client-500); --accent-soft: var(--client-100); }
-body[data-accent="brand"]  { --accent: var(--brand-500);  --accent-soft: var(--brand-100); }
+/* V9.0 — accent variants kept as no-op attributes so existing surface
+   markup (admin / portal / public) still validates; visual treatment is
+   identical across all three. Tenant white-label still overrides via
+   custom_accent_hex below. */
 
 @media (prefers-color-scheme: dark) {
   :root {
@@ -102,9 +112,9 @@ body[data-accent="brand"]  { --accent: var(--brand-500);  --accent-soft: var(--b
     --fg:      #e6edf7;
     --muted:   #8aa0bd;
     --border:  #1e2a44;
-    --ops-100:    #0c1a3a;
-    --client-100: #0b2a27;
-    --brand-100:  #1d163a;
+    --accent:       #93c5fd;
+    --accent-soft:  #16213d;
+    --accent-fg:    #0b1220;
     --success-100: #052e22;
     --warn-100:    #2e1f08;
     --danger-100:  #2e0d0d;
@@ -225,21 +235,19 @@ table.data {
   font-variant-numeric: tabular-nums;
 }
 table.data th, table.data td {
-  text-align: left; padding: 10px 14px;
+  text-align: left; padding: 14px 18px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
 table.data th {
   font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--muted); font-weight: 600; background: var(--n-50);
-}
-@media (prefers-color-scheme: dark) {
-  table.data th { background: #0c1628; }
+  color: var(--muted); font-weight: 600; background: transparent;
+  padding-top: 10px; padding-bottom: 10px;
 }
 table.data tr:last-child td { border-bottom: none; }
-table.data tr:hover td { background: var(--n-50); }
+table.data tr.row-link:hover td { background: var(--n-50); cursor: pointer; }
 @media (prefers-color-scheme: dark) {
-  table.data tr:hover td { background: #0c1a33; }
+  table.data tr.row-link:hover td { background: #0c1a33; }
 }
 table.data td.num, table.data th.num { text-align: right; }
 table.data td.muted { color: var(--muted); }
@@ -260,8 +268,12 @@ table.data td.muted { color: var(--muted); }
 .stat .delta.flat { color: var(--muted); }
 
 /* ── Pills / chips ─────────────────────────────────────────────────── */
-.pill { display: inline-block; padding: 2px 10px; border-radius: 999px;
-        font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.pill { display: inline-flex; align-items: center; gap: 6px;
+        padding: 3px 10px; border-radius: 999px;
+        font-size: 11px; font-weight: 600; letter-spacing: .02em;
+        line-height: 1.4; white-space: nowrap; }
+.pill .dot { width: 6px; height: 6px; border-radius: 999px;
+             background: currentColor; display: inline-block; }
 .pill.good { background: var(--success-100); color: var(--success-500); }
 .pill.warn { background: var(--warn-100); color: var(--warn-500); }
 .pill.bad  { background: var(--danger-100); color: var(--danger-500); }
@@ -289,17 +301,57 @@ table.data td.muted { color: var(--muted); }
 @media (prefers-color-scheme: dark) { .invoice .total td { background: #0c1a33; } }
 
 /* ── Button ────────────────────────────────────────────────────────── */
-.btn { display: inline-block; padding: 8px 14px; border-radius: var(--radius-sm);
+.btn { display: inline-flex; align-items: center; gap: 6px;
+       padding: 9px 16px; border-radius: var(--radius-sm);
        font-weight: 500; border: 1px solid var(--border); background: var(--card-bg);
        color: var(--fg); text-decoration: none; font-size: 13px;
-       transition: background 120ms, border-color 120ms; }
+       cursor: pointer; line-height: 1.3;
+       transition: background 120ms, border-color 120ms, transform 120ms; }
 .btn:hover { background: var(--n-100); text-decoration: none; }
 @media (prefers-color-scheme: dark) { .btn:hover { background: #162139; } }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+.btn.primary { background: var(--accent); border-color: var(--accent);
+                color: var(--accent-fg); }
 .btn.primary:hover { filter: brightness(0.95); background: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Empty state ───────────────────────────────────────────────────── */
 .empty { text-align: center; padding: var(--s-6) var(--s-4); color: var(--muted); }
+
+/* ── Icon (inline SVG slot) ────────────────────────────────────────── */
+.icon { display: inline-flex; vertical-align: -2px;
+         stroke: currentColor; fill: none; }
+.icon svg { display: block; }
+
+/* ── Call card (communications-as-primary-object) ──────────────────── */
+.call { display: grid;
+         grid-template-columns: 40px 1fr auto;
+         gap: var(--s-4); align-items: start;
+         padding: var(--s-4) var(--s-5);
+         border-bottom: 1px solid var(--border); }
+.call:last-child { border-bottom: none; }
+.call .av { width: 40px; height: 40px; border-radius: 999px;
+             background: var(--accent-soft); color: var(--accent);
+             display: flex; align-items: center; justify-content: center;
+             font-weight: 600; font-size: 14px; }
+.call .body .who { font-weight: 600; }
+.call .body .from { color: var(--muted); font-size: 12px; }
+.call .body .sum { margin-top: 4px; font-size: 13px; color: var(--n-700); }
+@media (prefers-color-scheme: dark) {
+  .call .body .sum { color: #b7c4dc; }
+}
+.call .right { text-align: right; font-size: 12px; color: var(--muted);
+                display: flex; flex-direction: column; gap: 4px;
+                align-items: flex-end; }
+
+/* ── Tabs ──────────────────────────────────────────────────────────── */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border);
+         margin-bottom: var(--s-5); overflow-x: auto; }
+.tabs a { padding: 10px 14px; color: var(--muted); font-weight: 500;
+           font-size: 13px; border-bottom: 2px solid transparent;
+           margin-bottom: -1px; white-space: nowrap; }
+.tabs a:hover { color: var(--fg); text-decoration: none; }
+.tabs a[aria-current="page"] { color: var(--fg);
+                                 border-bottom-color: var(--accent); }
 
 /* ── Footer ────────────────────────────────────────────────────────── */
 footer.page { margin-top: var(--s-6); padding-top: var(--s-4);
@@ -539,3 +591,126 @@ def heatbar(value: float, max_value: float, *, width: int = 120) -> str:
         f'<span class="heatbar" '
         f'style="width:{w}px;opacity:{opacity:.2f}"></span>'
     )
+
+
+# ── V9.0 components ────────────────────────────────────────────────────
+
+# Stroke-icon library. Keep this set deliberately small — operators
+# don't need 200 icons, they need a calm, consistent vocabulary. Add
+# only when a real surface requires one. All paths assume 24x24 viewBox
+# with stroke-width 1.75; size scales via the outer wrapper.
+_ICONS = {
+    "phone":     'M6.6 10.8a13 13 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11 11 0 0 0 3.5.55 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11 11 0 0 0 .55 3.5 1 1 0 0 1-.25 1Z',
+    "voicemail": 'M6 10.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0Zm11.5-3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM6 14h11.5',
+    "mic":       'M12 3v10m0 0a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Zm-7-3a7 7 0 0 0 14 0M12 17v4',
+    "calendar":  'M5 6h14v14H5zM5 6V4m14 2V4M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01',
+    "alert":     'M12 4 2 20h20L12 4Zm0 6v4m0 3.5v.01',
+    "check":     'm5 12 5 5L20 7',
+    "chevron":   'm9 6 6 6-6 6',
+    "arrow":     'M5 12h14M13 6l6 6-6 6',
+    "transfer": 'M7 7h11l-3-3m3 3-3 3M17 17H6l3 3m-3-3 3-3',
+    "search":    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm10 2-5-5',
+    "settings":  'M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm8 2.5a8 8 0 0 0-.1-1.3l2-1.5-2-3.4-2.4.9a8 8 0 0 0-2.2-1.3L14.8 3h-4l-.5 2.4a8 8 0 0 0-2.2 1.3l-2.4-.9-2 3.4 2 1.5a8 8 0 0 0 0 2.6l-2 1.5 2 3.4 2.4-.9a8 8 0 0 0 2.2 1.3l.5 2.4h4l.5-2.4a8 8 0 0 0 2.2-1.3l2.4.9 2-3.4-2-1.5c.1-.4.1-.9.1-1.3Z',
+    "user":      'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9a8 8 0 0 1 16 0',
+    "clock":     'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v5l3 2',
+    "home":      'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1v-9Z',
+    "list":      'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+}
+
+
+def icon(name: str, *, size: int = 16, cls: str = "") -> str:
+    """Inline SVG icon. Returns empty string for unknown names rather
+    than raising — keeps the page robust if a caller typos a name."""
+    path = _ICONS.get(name)
+    if not path:
+        return ""
+    extra = f' {cls}' if cls else ""
+    return (
+        f'<span class="icon{extra}" aria-hidden="true">'
+        f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" '
+        f'stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75">'
+        f'<path d="{path}"/></svg></span>'
+    )
+
+
+# Plain-English status vocabulary. Map from internal call outcomes to
+# user-facing labels and pill variants. Anything not in this map renders
+# as a neutral "ghost" pill so engineer-y strings never leak through.
+_STATUS_MAP = {
+    "answered":      ("Answered",      "info"),
+    "normal":        ("Answered",      "info"),
+    "missed":        ("Missed",        "warn"),
+    "no_answer":     ("No answer",     "warn"),
+    "transferred":   ("Transferred",   "good"),
+    "voicemail":     ("Voicemail",     "ghost"),
+    "emergency":     ("Emergency",     "bad"),
+    "callback":      ("Callback sent", "info"),
+    "follow_up":     ("Follow-up",     "info"),
+    "wrong_number":  ("Wrong number",  "ghost"),
+    "spam":          ("Filtered",      "ghost"),
+    "spam_number":   ("Filtered",      "ghost"),
+    "spam_phrase":   ("Filtered",      "ghost"),
+    "duration_capped": ("Long call",   "ghost"),
+}
+
+
+def status_pill(status: str, *, with_dot: bool = True) -> str:
+    """Plain-English status pill. Unknown statuses fall back to a
+    neutral pill with the raw (title-cased) string."""
+    s = (status or "").strip().lower()
+    label, variant = _STATUS_MAP.get(
+        s, (s.replace("_", " ").title() or "Unknown", "ghost"))
+    dot = '<span class="dot"></span>' if with_dot else ""
+    return f'<span class="pill {variant}">{dot}{html.escape(label)}</span>'
+
+
+def call_card(*, caller: str, from_number: str = "",
+              when: str = "", summary: str = "",
+              status: str = "answered", duration: Optional[str] = None,
+              href: Optional[str] = None) -> str:
+    """Single-call row, communications-as-primary-object pattern.
+    Used on portal Today / Calls / admin recent-calls.
+    `href` makes the whole card a link; omit for static rendering."""
+    initial = html.escape((caller or "?")[:1].upper())
+    who = html.escape(caller or "Unknown caller")
+    fromn = (
+        f'<span class="from">{html.escape(from_number)}</span>'
+        if from_number else ""
+    )
+    when_html = (
+        f'<div class="when">{html.escape(when)}</div>'
+        if when else ""
+    )
+    dur_html = (
+        f'<div class="dur muted">{html.escape(duration)}</div>'
+        if duration else ""
+    )
+    sum_html = (
+        f'<div class="sum">{html.escape(summary)}</div>'
+        if summary else ""
+    )
+    inner = (
+        f'<div class="av">{initial}</div>'
+        f'<div class="body">'
+        f'<div class="who">{who} {fromn}</div>'
+        f'{sum_html}'
+        f'</div>'
+        f'<div class="right">{status_pill(status)}{when_html}{dur_html}</div>'
+    )
+    if href:
+        return (
+            f'<a class="call" href="{html.escape(href)}" '
+            f'style="color:inherit;text-decoration:none;">{inner}</a>'
+        )
+    return f'<div class="call">{inner}</div>'
+
+
+def tabs(items: list, *, active: Optional[str] = None) -> str:
+    """items: list of (label, href). Use on portal/admin tabbed views."""
+    out = []
+    for label, href in items:
+        cur = ' aria-current="page"' if href == active else ""
+        out.append(
+            f'<a href="{html.escape(href)}"{cur}>{html.escape(label)}</a>'
+        )
+    return f'<nav class="tabs">{"".join(out)}</nav>'

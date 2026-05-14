@@ -11,10 +11,14 @@ Auth:
   - No database of tokens. Verify by recomputing HMAC.
   - Secret unset → ALL tokens rejected (safe default, portal disabled).
 
+V9.0 — nav restructured for non-technical operators: Today / Recent
+calls / Follow-ups / Settings. Invoice still accessible at its URL but
+no longer surfaced in primary nav. All outcome strings rendered via
+status_pill so engineer-y vocabulary ("spam_phrase", "duration_capped")
+never reaches the customer.
+
 CLI:
     python -m src.client_portal issue <client_id>
-
-Visual language lives in src.design (accent="client" = teal).
 """
 from __future__ import annotations
 
@@ -32,7 +36,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from src import tenant, usage
-from src.design import card, data_table, page, pill, stat_card, stats
+from src.design import (
+    card, data_table, page, pill, stat_card, stats, status_pill, icon,
+)
 
 router = APIRouter(prefix="/client", tags=["client_portal"])
 
@@ -90,12 +96,12 @@ def portal_url(client_id: str, base_url: Optional[str] = None) -> str:
 # ── Nav helpers ────────────────────────────────────────────────────────
 
 def _nav(client_id: str, t: str) -> list:
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
     tq = f"?t={html.escape(t)}"
     return [
-        ("Overview",  f"/client/{client_id}{tq}"),
-        ("Call log",  f"/client/{client_id}/calls{tq}"),
-        ("Invoice",   f"/client/{client_id}/invoice/{month}{tq}"),
+        ("Today",         f"/client/{client_id}{tq}"),
+        ("Recent calls",  f"/client/{client_id}/calls{tq}"),
+        ("Follow-ups",    f"/client/{client_id}/followups{tq}"),
+        ("Settings",      f"/client/{client_id}/settings{tq}"),
     ]
 
 
@@ -106,64 +112,52 @@ def summary(client_id: str, t: str = "", request: Request = None):
     client = _require(client_id, t)
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     s = usage.monthly_summary(client_id)
-    plan = client.get("plan") or {}
-    included_min = float(plan.get("included_minutes", 0) or 0)
     bookings = _count_bookings(client_id, month)
     last_call = _last_call_row(client_id)
 
-    minutes_line = f"{s['total_minutes']:.1f} / {included_min:.0f}"
-    minutes_delta = None
-    minutes_direction = "flat"
-    if included_min > 0:
-        pct = s["total_minutes"] / included_min * 100
-        minutes_delta = f"{pct:.0f}% of plan"
-        if pct < 60:
-            minutes_direction = "up"
-        elif pct < 90:
-            minutes_direction = "flat"
-        else:
-            minutes_direction = "down"
-
-    last_call_label = "—"
+    last_call_label = "No calls yet"
     last_call_badge = ""
     if last_call:
         last_call_label = datetime.fromtimestamp(
             last_call["start_ts"], tz=timezone.utc,
-        ).strftime("%b %d, %H:%M UTC")
-        last_call_badge = f' {pill("Emergency", "bad")}' if last_call.get("emergency") else ""
+        ).strftime("%b %d, %H:%M")
+        if last_call.get("emergency"):
+            last_call_badge = " " + status_pill("emergency")
 
     top_stats = stats([
-        stat_card("Calls handled", s["calls_handled"]),
+        stat_card("Calls answered", s["calls_handled"]),
         stat_card("Emergencies routed", s["emergencies"]),
         stat_card("Bookings captured", bookings),
-        stat_card("Minutes used", minutes_line,
-                  delta=minutes_delta, direction=minutes_direction),
     ])
 
+    month_label = datetime.now(timezone.utc).strftime("%B %Y")
     summary_rows = [
         ["Last call", f'{html.escape(last_call_label)}{last_call_badge}'],
-        ["Calls filtered (spam/silence)",
-         f'<span class="muted">{s["calls_filtered"]}</span>'],
-        ["Service month", html.escape(month)],
+        ["This month so far", html.escape(month_label)],
     ]
     about_card = card(
-        data_table(headers=["Field", "Value"], rows=summary_rows),
-        title="This month at a glance",
+        data_table(headers=["", ""], rows=summary_rows),
+        title="At a glance",
     )
 
-    # Quick explainer for new visitors
+    tq = f"?t={html.escape(t)}"
+    invoice_link = (
+        f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
+        f'class="btn" style="margin-top:var(--s-3)">View this month\'s invoice →</a>'
+    )
+
     hero_body = (
-        f'<p class="muted" style="margin:0;">This is {html.escape(client["name"])}\'s '
-        f'live activity panel. Bookmark this page — the link stays the same unless '
-        f'{html.escape(client.get("owner_name") or "the operator")} rotates it. '
-        f'Nothing here updates on a schedule; the numbers are current.</p>'
+        f'<p class="muted" style="margin:0;">Live activity for '
+        f'{html.escape(client["name"])}. Bookmark this page — the link stays '
+        f'the same. Numbers update as calls come in.</p>'
+        f'{invoice_link}'
     )
     hero = card(hero_body)
 
     body = hero + top_stats + about_card
     return HTMLResponse(page(
         title=client["name"],
-        subtitle=f"Activity dashboard · {month}",
+        subtitle="Today",
         body=body,
         nav=_nav(client_id, t), active=f"/client/{client_id}?t={html.escape(t)}",
         accent="client",
@@ -182,36 +176,41 @@ def call_log(client_id: str, t: str = "", limit: int = 50):
     for r in rows_raw:
         ts = datetime.fromtimestamp(r["start_ts"], tz=timezone.utc).strftime(
             "%b %d · %H:%M")
-        outcome = _friendly_outcome(r.get("outcome") or "")
-        intent = _top_intent_for_call(r["call_sid"])
-        variant = "good" if outcome == "Handled" else (
-            "bad" if "spam" in outcome.lower() or "fail" in outcome.lower() else
-            "warn" if "wrap" in outcome.lower() else "ghost")
-        flag = pill("Emergency", "bad") if r.get("emergency") else ""
+        # V9.0 — status_pill handles vocabulary mapping (no engineer
+        # strings leak through). Emergency is shown via the status pill
+        # when the underlying call was flagged.
+        raw = (r.get("outcome") or "").strip().lower()
+        if r.get("emergency"):
+            status_html = status_pill("emergency")
+        else:
+            status_html = status_pill(raw or "answered")
+
         detail = (
             f'<a href="/client/{html.escape(client_id)}/call/{html.escape(r["call_sid"])}'
-            f'?t={html.escape(t)}">detail</a>'
+            f'?t={html.escape(t)}">View →</a>'
         ) if r["call_sid"] else ""
+
+        from_n = r.get("from_number") or ""
         rows.append([
-            (html.escape(ts), "muted mono"),
-            (f'{r.get("duration_s") or 0}s', "num"),
-            pill(outcome, variant),
-            (html.escape(intent or "—"), ""),
-            flag,
+            (html.escape(ts), "muted"),
+            html.escape(from_n) if from_n else "",
+            (_fmt_duration(r.get("duration_s") or 0), "num muted"),
+            status_html,
             detail,
         ])
 
     body = card(
         data_table(
-            headers=["When", ("Duration", "num"), "Outcome", "Intent", "", ""],
+            headers=["When", "From", ("Duration", "num"), "Status", ""],
             rows=rows,
-            empty_text="No calls logged yet — the AI hasn't taken any calls for you this month.",
+            empty_text="No calls yet this month. Your line is ready when one comes in.",
         ),
         title="Recent calls",
         subtitle=f"Last {limit}",
     )
     return HTMLResponse(page(
-        title=f"{client['name']} — calls",
+        title=client["name"],
+        subtitle="Recent calls",
         body=body,
         nav=_nav(client_id, t),
         active=f"/client/{client_id}/calls?t={html.escape(t)}",
@@ -224,7 +223,8 @@ def call_log(client_id: str, t: str = "", limit: int = 50):
 
 @router.get("/{client_id}/call/{call_sid}", response_class=HTMLResponse)
 def call_detail(client_id: str, call_sid: str, t: str = ""):
-    """V4 — client-facing per-call detail (transcript)."""
+    """Per-call detail (transcript). Customer-facing — no internal
+    identifiers, no engineer-y outcome strings."""
     client = _require(client_id, t)
     from src import transcripts
     meta = transcripts.get_call_meta(call_sid)
@@ -234,23 +234,29 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
     turns = transcripts.get_transcript(call_sid)
 
     start_iso = datetime.fromtimestamp(meta["start_ts"], tz=timezone.utc).strftime(
-        "%b %d, %Y · %H:%M:%S UTC")
-    duration = f'{meta.get("duration_s") or 0}s'
-    outcome = _friendly_outcome(meta.get("outcome") or "")
+        "%b %d, %Y · %H:%M:%S")
+    duration = _fmt_duration(meta.get("duration_s") or 0)
+    raw_outcome = (meta.get("outcome") or "").strip().lower()
+    status_html = (status_pill("emergency") if meta.get("emergency")
+                   else status_pill(raw_outcome or "answered"))
 
     meta_rows = [
         ["When", html.escape(start_iso)],
         ["Duration", (duration, "num")],
-        ["Outcome", pill(outcome, "good" if outcome == "Handled" else "ghost")],
-        ["Emergency", "🚨 yes" if meta.get("emergency") else "no"],
-        ["From", (html.escape(meta.get("from_number") or ""), "mono muted")],
+        ["Status", status_html],
+        ["From", (html.escape(meta.get("from_number") or ""), "muted")],
     ]
+    # Show summary if available — soften "AI summary" → "Call summary".
+    summary_text = (meta.get("summary") if hasattr(meta, "get") else None)
+    if summary_text:
+        meta_rows.append(["Summary",
+                          f'<span style="font-style:italic">{html.escape(summary_text)}</span>'])
 
     if turns:
         conv_html = '<div style="display:flex;flex-direction:column;gap:var(--s-3);">'
         for turn in turns:
             role = turn["role"]
-            badge = pill("caller" if role == "user" else "receptionist",
+            badge = pill("Caller" if role == "user" else "Receptionist",
                          "ghost" if role == "user" else "info")
             ts_str = datetime.fromtimestamp(turn["ts"], tz=timezone.utc).strftime("%H:%M:%S")
             conv_html += (
@@ -259,7 +265,7 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
                 f'border:1px solid var(--border);">'
                 f'<div class="row" style="margin-bottom:4px;">'
                 f'{badge}'
-                f'<span class="muted ml-auto mono" style="font-size:11px;">{ts_str}</span>'
+                f'<span class="muted ml-auto" style="font-size:11px;">{ts_str}</span>'
                 f'</div>'
                 f'<div>{html.escape(turn["text"])}</div>'
                 f'</div>'
@@ -269,13 +275,13 @@ def call_detail(client_id: str, call_sid: str, t: str = ""):
         conv_html = ('<div class="empty">No transcript captured for this call.</div>')
 
     body = (
-        card(data_table(headers=["Field", "Value"], rows=meta_rows),
+        card(data_table(headers=["", ""], rows=meta_rows),
              title="Call summary") +
-        card(conv_html, title="Conversation",
-             subtitle=f"{len(turns)} turn(s)")
+        card(conv_html, title="Conversation")
     )
     return HTMLResponse(page(
-        title=f"Call detail — {call_sid[:10]}…",
+        title=client["name"],
+        subtitle="Call detail",
         body=body,
         nav=_nav(client_id, t),
         active=f"/client/{client_id}/calls?t={html.escape(t)}",
@@ -309,7 +315,157 @@ def invoice_view(client_id: str, month: str, t: str = ""):
     ))
 
 
+# ── V9.0 — Follow-ups + Settings ──────────────────────────────────────
+
+# Callers who didn't get a real conversation in the last week (no
+# answer / silence / wrong-number / spam are excluded since those need
+# no follow-up). Emergencies are excluded — they already went to the
+# operator's cell. The result is "calls that came in, were handled, and
+# might benefit from a human touch."
+_FOLLOWUP_WINDOW_SECONDS = 7 * 24 * 60 * 60
+
+
+def _followup_candidates(client_id: str, limit: int = 50) -> list:
+    """Heuristic: short answered calls in the last 7 days that aren't
+    emergencies and didn't go to spam. The operator decides who to
+    actually call back; we just surface the candidates."""
+    cutoff = int(time.time()) - _FOLLOWUP_WINDOW_SECONDS
+    out = []
+    for r in usage.recent_calls(client_id=client_id, limit=200):
+        if r["start_ts"] < cutoff:
+            continue
+        if r.get("emergency"):
+            continue
+        outcome = (r.get("outcome") or "").lower()
+        if outcome in ("spam_number", "spam_phrase", "wrong_number"):
+            continue
+        # Short calls (< 25s) or silence-timeout calls are the typical
+        # "they hung up before they got what they wanted" pattern.
+        dur = int(r.get("duration_s") or 0)
+        if dur >= 60 and outcome not in ("silence_timeout", "no_answer"):
+            continue
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+@router.get("/{client_id}/followups", response_class=HTMLResponse)
+def followups(client_id: str, t: str = ""):
+    """Callers who may want a human callback — short calls, no-answer
+    timeouts, the kind of thing where a 60-second human follow-up
+    converts a missed lead into a booked job."""
+    client = _require(client_id, t)
+    candidates = _followup_candidates(client_id)
+    rows = []
+    for r in candidates:
+        ts = datetime.fromtimestamp(r["start_ts"], tz=timezone.utc).strftime(
+            "%b %d · %H:%M")
+        from_n = r.get("from_number") or ""
+        summary = (r.get("summary") if "summary" in (r.keys() if hasattr(r, "keys") else []) else None) or ""
+        sum_cell = (
+            f'<span class="muted" style="font-style:italic">{html.escape(summary)}</span>'
+            if summary else '<span class="muted">—</span>'
+        )
+        detail = (
+            f'<a href="/client/{html.escape(client_id)}/call/{html.escape(r["call_sid"])}'
+            f'?t={html.escape(t)}">View →</a>'
+        ) if r["call_sid"] else ""
+        rows.append([
+            (html.escape(ts), "muted"),
+            html.escape(from_n) if from_n else "",
+            (_fmt_duration(r.get("duration_s") or 0), "num muted"),
+            sum_cell,
+            detail,
+        ])
+
+    body = card(
+        data_table(
+            headers=["When", "From", ("Duration", "num"), "What they said", ""],
+            rows=rows,
+            empty_text=(
+                "No follow-ups needed right now. Every call this week was "
+                "handled cleanly."
+            ),
+        ),
+        title="Callers worth a follow-up",
+        subtitle="Short or interrupted calls in the last 7 days",
+    )
+    return HTMLResponse(page(
+        title=client["name"],
+        subtitle="Follow-ups",
+        body=body,
+        nav=_nav(client_id, t),
+        active=f"/client/{client_id}/followups?t={html.escape(t)}",
+        accent="client",
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
+    ))
+
+
+@router.get("/{client_id}/settings", response_class=HTMLResponse)
+def settings(client_id: str, t: str = ""):
+    """Read-only view of the tenant's current configuration.
+
+    V9.0 — deliberately NOT editable. The brief explicitly asks to
+    'aggressively reduce unnecessary settings' and prefer 'opinionated
+    defaults'. Operators see what's set + a clear path to change it
+    ('contact us'). Cuts the surface from a config wizard to a
+    one-screen reference card.
+    """
+    client = _require(client_id, t)
+    rows = [
+        ["Business name", html.escape(client.get("name") or "—")],
+        ["Owner", html.escape(client.get("owner_name") or "—")],
+        ["Hours", html.escape(client.get("hours") or "—")],
+        ["Transfer number",
+         html.escape(client.get("escalation_phone") or "—")],
+        ["Service area", html.escape(client.get("service_area") or "—")],
+        ["Default language",
+         html.escape((client.get("default_language") or "en").upper())],
+    ]
+    services = (client.get("services") or "").strip()
+    services_html = (
+        card(f'<p style="margin:0">{html.escape(services)}</p>',
+             title="What the receptionist knows about your business")
+        if services else ""
+    )
+    contact_note = card(
+        '<p style="margin:0;color:var(--muted)">'
+        'To change any of these, reply to your welcome email or call your '
+        'account contact. Changes typically apply within a few minutes.'
+        '</p>',
+    )
+    body = (
+        card(data_table(headers=["", ""], rows=rows),
+             title="Account settings")
+        + services_html
+        + contact_note
+    )
+    return HTMLResponse(page(
+        title=client["name"],
+        subtitle="Settings",
+        body=body,
+        nav=_nav(client_id, t),
+        active=f"/client/{client_id}/settings?t={html.escape(t)}",
+        accent="client",
+        brand=(client.get("brand_display_name") or client["name"]),
+        brand_logo_url=client.get("brand_logo_url") or None,
+        custom_accent_hex=client.get("brand_accent_color") or None,
+    ))
+
+
 # ── helpers ────────────────────────────────────────────────────────────
+
+def _fmt_duration(seconds: int) -> str:
+    """Plain-English duration. 47s; 1m 12s; 12m 03s."""
+    seconds = int(seconds or 0)
+    if seconds < 60:
+        return f"{seconds}s"
+    m, s = divmod(seconds, 60)
+    return f"{m}m {s:02d}s"
+
 
 def _fallback_invoice_body(client: dict, month: str) -> str:
     s = usage.monthly_summary(client["id"], month=month)

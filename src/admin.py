@@ -26,21 +26,26 @@ from src import tenant, usage, alerts
 from src.admin_auth import check_admin_auth, auth_required
 from src.design import (
     card, data_table, heatbar, page, pill, sparkline, stat_card, stats,
+    status_pill,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-# Nav items shown on every admin page
+# Nav items shown on every admin page.
+# V9.0 — operator-facing surfaces (Today, Recent calls, Live, Bookings)
+# are surfaced first because those are the views a prospect might see
+# during a demo. Engineering surfaces (Analytics, Evals, Diagnose,
+# Export, Feature flags) come after.
 NAV: list = [
-    ("Overview",     "/admin"),
-    ("Recent calls", "/admin/calls"),
-    ("Live",         "/admin/live"),
-    ("Bookings",     "/admin/bookings"),
-    ("Analytics",    "/admin/analytics"),
-    ("Evals",        "/admin/evals"),
-    ("Diagnose",     "/admin/diagnose"),    # V6.3
-    ("Export CSV",   "/admin/export.csv"),
+    ("Today",         "/admin"),
+    ("Recent calls",  "/admin/calls"),
+    ("Live",          "/admin/live"),
+    ("Bookings",      "/admin/bookings"),
+    ("Analytics",     "/admin/analytics"),
+    ("Evals",         "/admin/evals"),
+    ("Diagnose",      "/admin/diagnose"),
+    ("Export CSV",    "/admin/export.csv"),
     ("Feature flags", "/admin/flags"),
 ]
 
@@ -167,10 +172,10 @@ def overview(user=Depends(_check_auth)):
     body = top_stats + card(table, title="Per-client breakdown",
                             subtitle=f"Month: {month}")
     return HTMLResponse(page(
-        title="Margin overview",
+        title="Today",
         body=body,
         nav=NAV, active="/admin",
-        subtitle="Live cost + revenue by tenant",
+        subtitle=f"All-tenant view · {month}",
         brand="Receptionist · Ops",
         footer_note=f"month {month}",
     ))
@@ -182,18 +187,17 @@ def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)
     rows = []
     for r in rows_raw:
         start_iso = datetime.fromtimestamp(r["start_ts"], tz=timezone.utc).strftime(
-            "%b %d %H:%M UTC")
-        outcome = r.get("outcome") or "—"
-        outcome_pill_variant = "good" if outcome == "normal" else (
-            "warn" if outcome in ("duration_capped", "no_answer") else
-            "bad" if outcome in ("spam_number", "spam_phrase") else "ghost")
-        emoji = "🚨" if r.get("emergency") else ""
+            "%b %d %H:%M")
+        raw_outcome = (r.get("outcome") or "").strip().lower()
+        # V9.0 — emergency takes precedence in the status pill; otherwise
+        # status_pill renders the plain-English label for the outcome.
+        status_html = (status_pill("emergency") if r.get("emergency")
+                       else status_pill(raw_outcome or "answered"))
         call_sid = html.escape(r["call_sid"])
         detail_link = (
-            f'<a href="/admin/call/{call_sid}">detail</a>'
+            f'<a href="/admin/call/{call_sid}">View →</a>'
             if call_sid else ""
         )
-        # V3.4 — show AI summary when available (col may not exist in old DBs)
         summary = r.get("summary") if "summary" in r.keys() else None
         summary_cell = (
             f'<span class="muted" style="font-style:italic">{html.escape(summary)}</span>'
@@ -205,16 +209,15 @@ def recent_calls(limit: int = 50, client_id: str = "", user=Depends(_check_auth)
             html.escape(r["client_id"]),
             (html.escape(r.get("from_number") or ""), "muted"),
             (f'{r.get("duration_s") or 0}s', "num"),
-            pill(html.escape(outcome), outcome_pill_variant),
+            status_html,
             summary_cell,
-            emoji,
             detail_link,
         ])
 
     header_filter = f' · filter: <code>{html.escape(client_id)}</code>' if client_id else ""
     table = data_table(
-        headers=["When", "Client", "From", ("Duration", "num"), "Outcome",
-                 "AI summary", "Flag", ""],
+        headers=["When", "Client", "From", ("Duration", "num"),
+                 "Status", "Call summary", ""],
         rows=rows,
         empty_text="No calls logged yet.",
     )
@@ -249,11 +252,13 @@ def call_detail(call_sid: str, user=Depends(_check_auth)):
         ["Start", html.escape(start_iso)],
         ["End", html.escape(end_iso)],
         ["Duration", (duration, "num")],
-        ["Outcome", pill(meta.get("outcome") or "—", "ghost")],
-        ["Emergency", "🚨 yes" if meta.get("emergency") else "no"],
+        ["Status",
+         (status_pill("emergency") if meta.get("emergency")
+          else status_pill((meta.get("outcome") or "").strip().lower()
+                            or "answered"))],
     ]
     if summary:
-        meta_rows.append(["AI summary",
+        meta_rows.append(["Call summary",
                           f'<span style="font-style:italic">{html.escape(summary)}</span>'])
     meta_table = data_table(headers=["Field", "Value"], rows=meta_rows)
 

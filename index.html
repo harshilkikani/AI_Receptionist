@@ -11,10 +11,10 @@
 :root {
   --n-50:#f8fafc; --n-100:#f1f5f9; --n-200:#e2e8f0; --n-300:#cbd5e1;
   --n-400:#94a3b8; --n-500:#64748b; --n-600:#475569; --n-700:#334155;
-  --n-800:#1e293b; --n-900:#0f172a;
-  --brand:#7c3aed; --brand-soft:#ede9fe; --brand-dark:#6d28d9;
-  --accent:#0d9488; --accent-soft:#ccfbf1;
-  --good:#059669; --warn:#d97706; --bad:#dc2626;
+  --n-800:#1e293b; --n-900:#0b1220;
+  --brand:#1e3a8a; --brand-soft:#eef2ff; --brand-dark:#172554;
+  --accent:#1e3a8a; --accent-soft:#eef2ff;
+  --good:#16a34a; --warn:#b45309; --bad:#b91c1c;
   --bg:#ffffff; --card:#ffffff; --border:#e2e8f0; --fg:#0f172a; --muted:#64748b;
   --shadow-sm:0 1px 2px rgba(15,23,42,.05);
   --shadow-md:0 4px 16px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);
@@ -29,7 +29,8 @@
     --bg:#0b1220; --card:#111a2e; --border:#1e2a44;
     --fg:#e6edf7; --muted:#8aa0bd;
     --n-50:#0c1628; --n-100:#111e38; --n-200:#1e2a44;
-    --brand-soft:#1d163a; --accent-soft:#0b2a27;
+    --brand:#93c5fd; --brand-soft:#16213d; --brand-dark:#bfdbfe;
+    --accent:#93c5fd; --accent-soft:#16213d;
     --shadow-sm:0 1px 2px rgba(0,0,0,.4);
     --shadow-md:0 4px 16px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.3);
     --shadow-lg:0 24px 48px rgba(0,0,0,.5);
@@ -53,7 +54,7 @@ code{font-family:var(--font-mono);font-size:.9em;background:var(--n-100);padding
 @media (prefers-color-scheme: dark){.nav{background:rgba(11,18,32,.85);}}
 .nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;padding:14px 24px;gap:20px;}
 .nav-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:var(--fg);text-decoration:none;}
-.nav-brand .dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--brand),var(--accent));}
+.nav-brand .dot{width:10px;height:10px;border-radius:999px;background:var(--brand);}
 .nav-links{margin-left:auto;display:flex;gap:20px;align-items:center;}
 .nav-links a{color:var(--n-600);font-weight:500;}
 .nav-links a:hover{color:var(--fg);text-decoration:none;}
@@ -70,27 +71,31 @@ section.tight{padding:48px 24px;}
 .container.narrow{max-width:780px;}
 
 /* ── Hero ────────────────────────────────────────────────── */
-.hero{padding:88px 24px 56px;position:relative;overflow:hidden;}
-.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 20% 0%,var(--brand-soft) 0%,transparent 50%),radial-gradient(circle at 80% 90%,var(--accent-soft) 0%,transparent 50%);pointer-events:none;z-index:-1;}
-.hero-kicker{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:var(--brand-soft);color:var(--brand);font-size:13px;font-weight:600;letter-spacing:.01em;}
-.hero h1{margin-top:16px;max-width:920px;}
-.hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent;}
-.hero-sub{max-width:700px;margin-top:20px;color:var(--muted);font-size:18px;line-height:1.55;}
-.hero-ctas{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap;}
-.hero-proof{margin-top:36px;display:flex;gap:28px;flex-wrap:wrap;color:var(--muted);font-size:13px;}
-.hero-proof strong{color:var(--fg);font-weight:700;font-size:18px;display:block;}
+.hero{padding:104px 24px 72px;border-bottom:1px solid var(--border);}
+.hero-kicker{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:var(--brand-soft);color:var(--brand);font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
+.hero h1{margin-top:18px;max-width:880px;}
+.hero h1 em{font-style:normal;color:var(--brand);}
+.hero-sub{max-width:640px;margin-top:20px;color:var(--muted);font-size:18px;line-height:1.55;}
+.hero-ctas{margin-top:32px;display:flex;gap:12px;flex-wrap:wrap;}
+.hero-proof{margin-top:48px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px;max-width:680px;}
+@media (max-width:640px){.hero-proof{grid-template-columns:1fr;gap:20px;}}
+.hero-proof div{font-size:13px;color:var(--muted);}
+.hero-proof strong{color:var(--fg);font-weight:700;font-size:28px;letter-spacing:-0.02em;display:block;margin-bottom:4px;line-height:1.1;}
 
 /* ── Feature grid ────────────────────────────────────────── */
-.features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
-@media (max-width:900px){.features{grid-template-columns:1fr;}}
-.feature{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-sm);}
-.feature .icon{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand-soft),var(--accent-soft));display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px;}
-.feature p{color:var(--muted);font-size:14px;margin:0;}
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:48px;}
+@media (max-width:900px){.features{grid-template-columns:1fr;gap:32px;}}
+.feature{padding:0;}
+.feature .icon{width:36px;height:36px;border-radius:8px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;margin-bottom:18px;}
+.feature .icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;}
+.feature h3{font-size:17px;font-weight:600;margin-bottom:8px;}
+.feature p{color:var(--muted);font-size:14px;margin:0;line-height:1.6;}
 
 /* ── Chat demo section ──────────────────────────────────── */
-.demo{background:linear-gradient(180deg,var(--n-50) 0%,var(--bg) 100%);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
-.demo .eyebrow{color:var(--accent);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
-.demo-shell{margin-top:32px;display:grid;grid-template-columns:280px 1fr;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;}
+.demo{background:var(--n-50);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+@media (prefers-color-scheme: dark){.demo{background:var(--n-50);}}
+.demo .eyebrow{color:var(--brand);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
+.demo-shell{margin-top:32px;display:grid;grid-template-columns:280px 1fr;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);overflow:hidden;}
 @media (max-width:760px){.demo-shell{grid-template-columns:1fr;}}
 .callers{background:var(--n-50);padding:16px;border-right:1px solid var(--border);}
 @media (max-width:760px){.callers{border-right:none;border-bottom:1px solid var(--border);}}
@@ -106,7 +111,7 @@ section.tight{padding:48px 24px;}
 
 .conv{display:flex;flex-direction:column;min-height:560px;}
 .conv-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
-.conv-head .avatar{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--accent));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;}
+.conv-head .avatar{width:40px;height:40px;border-radius:999px;background:var(--brand);display:flex;align-items:center;justify-content:center;color:white;font-weight:600;}
 .conv-head .title{font-weight:700;font-size:15px;}
 .conv-head .sub{color:var(--muted);font-size:12px;}
 .conv-body{flex:1;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;max-height:480px;}
@@ -136,22 +141,38 @@ section.tight{padding:48px 24px;}
 @media (max-width:860px){.steps{grid-template-columns:repeat(2,1fr);}}
 @media (max-width:500px){.steps{grid-template-columns:1fr;}}
 .step{padding:20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);}
-.step .num{color:var(--brand);font-weight:800;font-size:28px;letter-spacing:-.02em;}
+.step .num{color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:10px;}
 .step h3{margin-top:8px;}
 .step p{color:var(--muted);font-size:13px;margin:0;}
 
-/* ── Code / terminal teaser ──────────────────────────────── */
-.terminal{background:#0b1220;color:#e6edf7;padding:20px 24px;border-radius:var(--radius);font-family:var(--font-mono);font-size:13px;line-height:1.7;box-shadow:var(--shadow-lg);}
-.terminal .prompt{color:#a78bfa;margin-right:6px;}
-.terminal .out{color:#94a3b8;}
-.terminal .hl{color:#10b981;}
+/* ── Phone CTA panel ────────────────────────────────────── */
+.phone-cta{margin-top:36px;display:flex;align-items:center;gap:24px;padding:24px 28px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);}
+@media (max-width:640px){.phone-cta{flex-direction:column;align-items:flex-start;gap:14px;padding:20px;}}
+.phone-cta .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;}
+.phone-cta .num{font-size:28px;font-weight:700;letter-spacing:-.01em;color:var(--fg);font-variant-numeric:tabular-nums;margin-top:4px;}
+.phone-cta .num a{color:inherit;text-decoration:none;}
+.phone-cta .num a:hover{color:var(--brand);text-decoration:none;}
+.phone-cta .ring{margin-left:auto;width:48px;height:48px;border-radius:999px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+@media (max-width:640px){.phone-cta .ring{margin-left:0;}}
+.phone-cta .ring svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;}
 
-/* ── CTA footer ─────────────────────────────────────────── */
-.cta{background:linear-gradient(135deg,var(--brand) 0%,var(--accent) 140%);color:white;text-align:center;padding:72px 24px;}
-.cta h2{color:white;margin-bottom:12px;}
-.cta p{color:rgba(255,255,255,.92);font-size:17px;max-width:620px;margin:0 auto 24px;}
-.cta .btn{background:white;color:var(--brand);font-weight:700;border-color:white;}
-.cta .btn:hover{background:var(--n-100);color:var(--brand);}
+/* ── CTA / contact ──────────────────────────────────────── */
+.cta{background:var(--n-50);text-align:center;padding:88px 24px;border-top:1px solid var(--border);}
+@media (prefers-color-scheme: dark){.cta{background:var(--n-50);}}
+.cta h2{margin-bottom:12px;}
+.cta p{color:var(--muted);font-size:17px;max-width:600px;margin:0 auto 28px;}
+.contact-form{max-width:520px;margin:0 auto;display:grid;gap:12px;text-align:left;}
+.contact-form label{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.contact-form input,.contact-form textarea{width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:8px;font-family:var(--font);font-size:14px;background:var(--card);color:var(--fg);}
+.contact-form input:focus,.contact-form textarea:focus{outline:2px solid var(--brand);outline-offset:-1px;border-color:transparent;}
+.contact-form textarea{resize:vertical;min-height:88px;}
+.contact-form .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media (max-width:520px){.contact-form .row2{grid-template-columns:1fr;}}
+.contact-form button{margin-top:8px;background:var(--brand);color:white;border:none;padding:13px 24px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;transition:filter .12s;}
+.contact-form button:hover{filter:brightness(0.95);}
+.contact-form button:disabled{opacity:.5;cursor:not-allowed;}
+.contact-form .field-error{color:var(--bad);font-size:12px;}
+.contact-form .ok{padding:20px;background:var(--brand-soft);color:var(--brand);border-radius:8px;text-align:center;font-weight:500;}
 
 footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;}
 .footer-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
@@ -166,7 +187,6 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
     <div class="nav-links">
       <a href="#how">How it works</a>
       <a href="#demo">Try it</a>
-      <a href="https://github.com/harshilkikani/AI_Receptionist" target="_blank" rel="noopener">GitHub</a>
       <a href="#contact" class="btn primary">Talk to us</a>
     </div>
   </div>
@@ -175,44 +195,48 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
 <!-- ═════ Hero ═════ -->
 <section class="hero">
   <div class="container">
-    <span class="hero-kicker">● One of the AI agents we build</span>
-    <h1>The phone that <em>always</em> picks up — and only calls you when it matters.</h1>
+    <h1>Never miss <em>another job.</em></h1>
     <p class="hero-sub">
-      A voice + SMS receptionist for service businesses that can't afford to miss a call.
-      Answers in under a second, routes real emergencies to your cell, remembers every
-      customer by phone number, and gets better every night from its own mistakes.
+      An always-on receptionist that answers the phone the way you would.
+      Books the easy ones. Texts you when it's an emergency. Remembers every
+      customer by their number.
     </p>
     <div class="hero-ctas">
-      <a href="#demo" class="btn primary">Try the live demo →</a>
-      <a href="https://github.com/harshilkikani/AI_Receptionist" target="_blank" rel="noopener" class="btn ghost">View the code</a>
+      <a href="#demo" class="btn primary">See it work</a>
+      <a href="#contact" class="btn ghost">Talk to us</a>
     </div>
     <div class="hero-proof">
-      <div><strong>&lt;1s</strong>first-turn latency</div>
-      <div><strong>24/7</strong>answered, every call</div>
-      <div><strong>9</strong>languages, caller's choice</div>
-      <div><strong>229</strong>tests, continuously green</div>
+      <div><strong>24/7</strong>Answered, day or night</div>
+      <div><strong>&lt;30s</strong>Emergency text before your phone rings</div>
+      <div><strong>9</strong>Languages, caller's choice</div>
     </div>
   </div>
 </section>
 
 <!-- ═════ Features ═════ -->
-<section class="tight">
+<section>
   <div class="container">
     <div class="features">
       <div class="feature">
-        <div class="icon">🚨</div>
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M12 4 2 20h20L12 4Zm0 6v4m0 3.5v.01"/></svg>
+        </div>
         <h3>Emergencies reach you, the rest doesn't</h3>
-        <p>Keyword-tuned detection transfers real emergencies to your cell — with an SMS briefing that hits your phone <em>before</em> the call bridges. No blind transfers.</p>
+        <p>Real emergencies transfer straight to your cell — with a text briefing that arrives before the call bridges, so you pick up already knowing who, what, and where.</p>
       </div>
       <div class="feature">
-        <div class="icon">🧠</div>
-        <h3>Remembers every caller</h3>
-        <p>Keyed by phone number. Returning customers get greeted by name. Address on file, prior issues, preferences — all loaded into the next conversation automatically.</p>
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9a8 8 0 0 1 16 0"/></svg>
+        </div>
+        <h3>Knows your customers</h3>
+        <p>Returning callers are greeted by name. Address on file, the job you did last spring, what they said about the price — all loaded into the next conversation automatically.</p>
       </div>
       <div class="feature">
-        <div class="icon">📈</div>
-        <h3>Gets better while you sleep</h3>
-        <p>Every non-emergency call gets a YES/NO follow-up text. NO replies become new test cases. Regressions are caught before the next customer sees them.</p>
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v5l3 2"/></svg>
+        </div>
+        <h3>Books the easy ones</h3>
+        <p>Routine pump-outs, tune-ups, follow-up appointments — handled without you having to call them back. You see the booking when you check your phone.</p>
       </div>
     </div>
   </div>
@@ -221,12 +245,11 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
 <!-- ═════ Live demo ═════ -->
 <section class="demo" id="demo">
   <div class="container">
-    <div class="eyebrow">Live demo · Septic Pro</div>
-    <h2>Type a message like a customer. Get a real receptionist reply in under a second.</h2>
-    <p style="color:var(--muted);max-width:700px;">
-      This is the actual production agent running against Anthropic Claude. Pick a
-      caller on the left — returning customers come in with their history pre-loaded.
-      Try an emergency. Try a wrong number. Try getting a price.
+    <div class="eyebrow">Try it · Septic Pro</div>
+    <h2>Talk to it like a customer would.</h2>
+    <p style="color:var(--muted);max-width:640px;">
+      Pick a caller on the left — returning customers come in with their history
+      pre-loaded. Try an emergency. Try booking an appointment. Try a wrong number.
     </p>
 
     <div class="demo-shell">
@@ -248,7 +271,7 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
         </div>
 
         <div class="suggestions" id="suggestions">
-          <button class="suggestion" data-msg="My toilets are backing up and there's sewage in the basement!">🚨 Overflow emergency</button>
+          <button class="suggestion" data-msg="My toilets are backing up and there's sewage in the basement!">Overflow emergency</button>
           <button class="suggestion" data-msg="Hey, I need to schedule a routine pumping.">Book a pump-out</button>
           <button class="suggestion" data-msg="How much does a pump-out cost?">Price check</button>
           <button class="suggestion" data-msg="Sorry, wrong number.">Wrong number</button>
@@ -258,6 +281,16 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
           <input id="conv-input" type="text" placeholder="Type as the customer…" aria-label="Message" disabled />
           <button type="submit" id="conv-send" disabled>Send</button>
         </form>
+      </div>
+    </div>
+
+    <div class="phone-cta">
+      <div class="ring">
+        <svg viewBox="0 0 24 24"><path d="M6.6 10.8a13 13 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11 11 0 0 0 3.5.55 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11 11 0 0 0 .55 3.5 1 1 0 0 1-.25 1Z"/></svg>
+      </div>
+      <div>
+        <div class="label">Hear it for yourself</div>
+        <div class="num"><a href="tel:+18449403274">+1 (844) 940-3274</a></div>
       </div>
     </div>
   </div>
@@ -277,7 +310,7 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
       <div class="step">
         <div class="num">01</div>
         <h3>Customer calls your number</h3>
-        <p>Your business line forwards to a Twilio number after hours (or always). Caller hears a real-sounding receptionist in under a second.</p>
+        <p>Your business line forwards to our number after hours (or always). Caller hears a real-sounding receptionist in under a second.</p>
       </div>
       <div class="step">
         <div class="num">02</div>
@@ -298,39 +331,49 @@ footer{padding:28px 24px;border-top:1px solid var(--border);color:var(--muted);f
   </div>
 </section>
 
-<!-- ═════ Tech teaser ═════ -->
-<section>
-  <div class="container narrow">
-    <h2 style="text-align:center;">Full source. No magic.</h2>
-    <p style="color:var(--muted);text-align:center;margin-bottom:28px;">
-      Claude Haiku 4.5 + Twilio + FastAPI. Multi-tenant YAML configs.
-      229 tests. MIT-licensed. Clone it, read it, change it.
-    </p>
-    <div class="terminal">
-      <div><span class="prompt">$</span> git clone https://github.com/harshilkikani/AI_Receptionist</div>
-      <div><span class="prompt">$</span> pip install -r requirements.txt</div>
-      <div><span class="prompt">$</span> pytest tests/</div>
-      <div class="out">................................ <span class="hl">229 passed</span></div>
-      <div><span class="prompt">$</span> uvicorn main:app --port 8765</div>
-      <div class="out">📞 ready on :8765</div>
-    </div>
-  </div>
-</section>
-
 <!-- ═════ CTA ═════ -->
 <section class="cta" id="contact">
-  <h2>Your phone doesn't have to keep ringing out.</h2>
-  <p>We build AI agents for service businesses — receptionist, support triage, inbound sales. Whatever line keeps missing the calls you can't afford to miss, we build the agent for it.</p>
-  <a href="mailto:hello@example.com" class="btn">Let's talk →</a>
+  <div class="container narrow">
+    <h2>Your phone doesn't have to keep ringing out.</h2>
+    <p>Tell us about your business. We'll set up an agent for your line and you can hear it answer your number — usually within a day.</p>
+
+    <form class="contact-form" id="contact-form" autocomplete="on">
+      <div class="row2">
+        <div>
+          <label for="ct-name">Your name</label>
+          <input id="ct-name" name="name" required maxlength="80" />
+        </div>
+        <div>
+          <label for="ct-business">Business name</label>
+          <input id="ct-business" name="business" required maxlength="120" />
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <label for="ct-phone">Phone</label>
+          <input id="ct-phone" name="phone" type="tel" required maxlength="40" />
+        </div>
+        <div>
+          <label for="ct-email">Email <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <input id="ct-email" name="email" type="email" maxlength="120" />
+        </div>
+      </div>
+      <div>
+        <label for="ct-note">What line is missing the calls?</label>
+        <textarea id="ct-note" name="note" maxlength="600" placeholder="HVAC, plumbing, septic — and roughly how many calls you miss a week."></textarea>
+      </div>
+      <div id="contact-err" class="field-error" style="display:none"></div>
+      <button type="submit" id="contact-submit">Start the conversation</button>
+    </form>
+  </div>
 </section>
 
 <footer>
   <div class="footer-inner">
-    <div>© 2026 AI Receptionist · built with Claude</div>
+    <div>© 2026 AI Receptionist</div>
     <div>
-      <a href="https://github.com/harshilkikani/AI_Receptionist" target="_blank" rel="noopener">GitHub</a> ·
-      <a href="/admin">Admin</a> ·
-      <a href="mailto:hello@example.com">Contact</a>
+      <a href="#contact">Contact</a> ·
+      <a href="/admin">Admin</a>
     </div>
   </div>
 </footer>
@@ -402,7 +445,7 @@ async function loadCallers(){
     const first = list[0];
     if(first) selectCaller(first.id);
   } catch(e){
-    $callers.innerHTML = `<div style="padding:16px;color:var(--muted)">Backend not reachable.<br>Start: <code>uvicorn main:app</code></div>`;
+    $callers.innerHTML = `<div style="padding:16px;color:var(--muted)">Demo offline. Please try again in a moment.</div>`;
   }
 }
 
@@ -463,6 +506,40 @@ document.getElementById("suggestions").addEventListener("click", e=>{
 });
 
 loadCallers();
+
+/* ── Contact form ───────────────────────────────────────── */
+const $contactForm = document.getElementById("contact-form");
+const $contactErr  = document.getElementById("contact-err");
+const $contactBtn  = document.getElementById("contact-submit");
+
+$contactForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $contactErr.style.display = "none";
+  $contactBtn.disabled = true;
+  const orig = $contactBtn.textContent;
+  $contactBtn.textContent = "Sending…";
+  const fd = new FormData($contactForm);
+  const payload = Object.fromEntries(fd.entries());
+  try {
+    const r = await fetch("/contact", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const detail = await r.text();
+      throw new Error(detail.slice(0, 200) || "request failed");
+    }
+    $contactForm.innerHTML =
+      `<div class="ok">Got it — we'll be in touch within a day. Talk soon.</div>`;
+  } catch (err) {
+    $contactErr.textContent =
+      "Something went wrong. Try calling +1 (844) 940-3274 instead.";
+    $contactErr.style.display = "block";
+    $contactBtn.disabled = false;
+    $contactBtn.textContent = orig;
+  }
+});
 </script>
 </body>
 </html>

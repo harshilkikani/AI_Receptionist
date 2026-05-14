@@ -98,8 +98,12 @@ def test_calls_route_shows_log(app_client):
     tok = client_portal.issue_token("ace_hvac")
     r = app_client.get(f"/client/ace_hvac/calls?t={tok}")
     assert r.status_code == 200
-    assert "Handled" in r.text
-    assert "Scheduling" in r.text
+    # V9.0 — status pill renders "Answered" for outcome=normal; we drop
+    # the per-turn Intent column from the customer view (it leaked
+    # engineer-y vocab) so this assertion now just verifies the call
+    # rendered as a row with a plain-English status.
+    assert "Answered" in r.text
+    assert "+14155550199" in r.text
 
 
 def test_invoice_route_renders_fallback(app_client):
