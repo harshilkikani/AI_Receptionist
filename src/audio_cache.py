@@ -313,12 +313,15 @@ def filler_payload_for(client: Optional[dict], *,
     candidates = list(PREWARM_FILLERS)
     r.shuffle(candidates)
     voice_id = _tts.voice_id_for(client) or ""
-    # V8.10a — fillers are rendered with the PREWARM model, so the
-    # cache lookup must hash with the same model or it'll miss.
+    # V8.10a/V8.12.5 — fillers are rendered with the PREWARM model
+    # and the tenant's voice_settings; the cache lookup must hash with
+    # the same parameters or it'll miss.
     prewarm_model = _tts.model_for(client, prewarm=True)
+    voice_settings = _tts.voice_settings_for(client)
     for text in candidates:
         h = _tts._hash_key(text, voice_id, "elevenlabs",
-                            model=prewarm_model)
+                            model=prewarm_model,
+                            settings=voice_settings)
         cached = _AUDIO_DIR / f"{h}.mp3"
         if cached.exists():
             # Build the play URL via the same resolver used in render

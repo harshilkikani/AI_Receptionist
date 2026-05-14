@@ -213,11 +213,44 @@ def check_elevenlabs_key(*, ping: bool = False) -> Check:
             headers={"xi-api-key": key},
         )
         with urllib.request.urlopen(req, timeout=5) as r:
-            if r.status == 200:
-                return _ok("ELEVENLABS_API_KEY",
-                           "valid; api.elevenlabs.io accepted the key")
-            return _fail("ELEVENLABS_API_KEY",
-                         f"unexpected response {r.status}")
+            if r.status != 200:
+                return _fail("ELEVENLABS_API_KEY",
+                             f"unexpected response {r.status}")
+            import json as _json
+            body = _json.loads(r.read())
+        # V8.12 — quota guard. Every prewarm cycle burns ~1.5k chars;
+        # multiple iterations on the free tier (10k chars/month) can
+        # exhaust the budget silently — every subsequent render falls
+        # back to Polly. Surface this in preflight BEFORE the operator
+        # picks up the phone.
+        used = int(body.get("character_count") or 0)
+        limit = int(body.get("character_limit") or 0)
+        tier = body.get("tier") or "?"
+        if limit == 0:
+            return _ok("ELEVENLABS_API_KEY",
+                       f"valid (tier={tier}, no character limit)")
+        pct = (used / limit) * 100 if limit else 0
+        if used >= limit:
+            return _fail(
+                "ELEVENLABS_API_KEY",
+                f"QUOTA EXHAUSTED — {used}/{limit} chars used "
+                f"(tier={tier}). All renders fall back to Polly until "
+                f"the next reset.",
+                detail="Either upgrade the ElevenLabs plan, rotate to "
+                       "a key with quota left, or wait for the monthly "
+                       "reset. Live demo is in DEGRADED VOICE MODE.",
+            )
+        if pct >= 90:
+            return _warn(
+                "ELEVENLABS_API_KEY",
+                f"quota at {pct:.0f}% — {used}/{limit} chars "
+                f"(tier={tier}). Each re-prewarm burns ~1.5k chars.",
+                detail="Avoid re-prewarming until next reset to "
+                       "preserve runtime budget.",
+            )
+        return _ok(
+            "ELEVENLABS_API_KEY",
+            f"valid; quota {used}/{limit} ({pct:.0f}%, tier={tier})")
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             return _fail("ELEVENLABS_API_KEY",

@@ -258,3 +258,38 @@ matter:
 | Voice consistency | one provider end-to-end (V8.1 invariant) |
 
 A regression in any of these is a ship-blocker.
+
+## V8.12 cost reality (operational)
+
+Each prewarm cycle renders ~50 phrases × ~30 chars = **~1.5k ElevenLabs
+chars consumed**. ElevenLabs free tier is 10k chars/month. Hitting
+re-prewarm 6+ times in a development cycle exhausts the free budget
+and every render silently falls back to Polly.
+
+**Pre-V8.12:** the operator only found out by calling and hearing
+Polly Joanna. The V8.1 voice-consistency invariant was broken in
+production with no warning.
+
+**V8.12:** `preflight.check_elevenlabs_key(ping=True)` now reports
+character_count / character_limit / tier and:
+  - FAILs when quota is exhausted with explicit remediation guidance
+  - WARNs at ≥90% so the operator can avoid another re-prewarm burning
+    the last buffer
+  - OKs with usage % shown otherwise
+
+Run `python -m src.preflight --ping` before any voice work to surface
+quota state. If the live demo "voice change mid-call" symptom returns,
+the FIRST thing to check is whether the quota was exhausted.
+
+### Operational notes
+
+- The free-tier monthly reset happens at `next_character_count_reset_unix`
+  on the ElevenLabs subscription endpoint.
+- A re-prewarm only fires when the cache hash changes — i.e. when
+  `voice_id`, `model`, OR `voice_settings` change (V8.12.5 invalidation).
+- The cache hash key was deliberately designed to NOT churn on unrelated
+  yaml edits (only stability / similarity / style / use_speaker_boost
+  matter).
+- During development, prefer minor prompt edits + manual re-render of
+  ONE phrase over a full re-prewarm. The V5.6 evict + V5.4 lazy
+  migration handle the rest.

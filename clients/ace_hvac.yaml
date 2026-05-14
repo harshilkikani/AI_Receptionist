@@ -2,32 +2,27 @@
 # updating Twilio webhooks for +18449403274.
 id: ace_hvac
 name: "Ace HVAC & Plumbing"
-owner_name: "the owner"
-# V7.1 — flipped to ElevenLabs. The default voice (Rachel) is warm,
-# native English. Browse elevenlabs.io/app/voice-library to swap.
-# Falls back to Polly Joanna Neural if ELEVENLABS_API_KEY is missing,
-# the public base URL is empty, or the render fails for any reason.
+owner_name: "Mike"     # V8.12.5 — real-business feel: "Mike will call you" > "the owner will call you"
+# V7.1 — flipped to ElevenLabs. Falls back to Polly Joanna Neural if
+# ELEVENLABS_API_KEY is missing, the public base URL is empty, or the
+# render fails for any reason.
 tts_provider: elevenlabs
 tts_voice_id: "EXAVITQu4vr4xnSDxMaL"   # Rachel
-# V8.10a — asymmetric model selection.
-#   prewarm_model: paid ONCE at startup per phrase, served forever
-#     from cache. Use the highest-prosody model — caller's first
-#     impression (greeting + ack + filler + goodbye) is the biggest
-#     perception lever.
-#   runtime_model: live mid-call LLM renders. Latency-sensitive;
-#     Flash keeps the first-byte budget under ~150ms.
-tts_prewarm_model: "eleven_multilingual_v2"
+# V8.12.2 — asymmetric model selection, walked back from Multilingual_v2.
+#   prewarm_model: Multilingual_v2 was built for narration / expressive
+#     content — it stretched vowels ("haaai") on greetings and felt
+#     performative. Turbo_v2_5 is positioned as conversational —
+#     natural local-business cadence without the production feel.
+#   runtime_model: live mid-call renders. Flash for latency.
+tts_prewarm_model: "eleven_turbo_v2_5"
 tts_runtime_model: "eleven_flash_v2_5"
-# V8.5 + V8.10a — voice settings tuned for natural phone-call cadence.
-#   stability low → more turn-to-turn variance (less robotic uniform)
-#   similarity slightly lower → expressive without compression artifacts
-#   style 0.30 → deliberate prosody, breathing room between phrases
-#   use_speaker_boost → emphasizes natural voice characteristics
-tts_voice_settings:
-  stability: 0.40
-  similarity: 0.75
-  style: 0.30
-  use_speaker_boost: true
+# V8.12.1 — voice_settings removed entirely. Previous V8.5 + V8.10a
+# values (stability=0.40, style=0.30, use_speaker_boost=true) layered
+# into an over-shaped "AI trying to sound human" cadence. ElevenLabs
+# defaults (stability=0.5, similarity=0.75, no style boost, no speaker
+# boost) produce the most natural conversational delivery. To re-tune
+# later, ADD this block back — but A/B against the no-settings default
+# before assuming any change is an improvement.
 # V7.2 — natural disfluency (opt-in). Fires after anti_robot + grounding.
 disfluency: true
 disfluency_intensity: 0.15

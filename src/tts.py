@@ -104,15 +104,31 @@ def _polly_voice_for_lang(lang: str) -> str:
 
 
 def _hash_key(text: str, voice_id: str, provider: str,
-              model: Optional[str] = None) -> str:
+              model: Optional[str] = None,
+              settings: Optional[dict] = None) -> str:
     """V8.10a — `model` is included in the key when supplied so a
     re-render with a different ElevenLabs model produces a different
-    cache file. Backwards-compatible: omit model to preserve V5.6/V8.4
-    hashes for pre-V8.10a callers.
+    cache file.
+    V8.12.5 — `settings` is hashed in too so tuning stability /
+    style / use_speaker_boost auto-invalidates the cache. Without
+    this, a voice-settings change would silently serve stale audio
+    rendered under the old settings.
+    Backwards-compatible: omit either to preserve pre-version hashes.
     """
     parts = [provider, voice_id, text]
     if model:
         parts.append(f"m={model}")
+    if settings:
+        # Stable JSON repr keyed only on the four fields that actually
+        # affect the rendered audio. Ignore any other client-level
+        # cruft so unrelated config edits don't churn the cache.
+        relevant = {k: settings[k] for k in
+                    ("stability", "similarity", "style",
+                     "use_speaker_boost", "speaker_boost")
+                    if k in settings}
+        if relevant:
+            import json as _json
+            parts.append("s=" + _json.dumps(relevant, sort_keys=True))
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
@@ -203,7 +219,10 @@ class ElevenLabsProvider(TtsProvider):
         effective_model = (model
                             or os.environ.get("ELEVENLABS_MODEL")
                             or self.DEFAULT_MODEL)
-        h = _hash_key(text, vid, "elevenlabs", model=effective_model)
+        # V8.12.5 — settings in hash so style / stability / speaker_boost
+        # changes invalidate stale audio automatically.
+        h = _hash_key(text, vid, "elevenlabs",
+                      model=effective_model, settings=settings)
         path = _AUDIO_DIR / f"{h}.mp3"
 
         if path.exists():

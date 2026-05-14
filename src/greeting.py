@@ -75,22 +75,28 @@ def _time_bucket(dt: datetime) -> str:
 # don't get the exact same opener every time. Choice is deterministic
 # (rotated by date) to avoid "stutter" mid-shift.
 
+# V8.12.4 — tightened to "local business" cadence. Previous templates
+# read like a hospitality script ("this is Joanna from {company} — what
+# can I do for you?"); a real busy receptionist answers shorter and
+# more direct ("{company}, this is Joanna."). Shorter greetings also
+# render less performatively in TTS — fewer chances for a stretched
+# vowel to leak into the cadence.
 _TEMPLATES_EN = {
     "morning": [
-        "Good morning, this is Joanna from {company}— what's going on?",
-        "Morning! Joanna from {company}, what can I do for you?",
+        "{company}, this is Joanna. What's going on?",
+        "Morning — Joanna at {company}. How can I help?",
     ],
     "afternoon": [
-        "Hey, this is Joanna from {company}— what's going on?",
-        "Hi, Joanna from {company}— what can I do for you?",
+        "{company}, Joanna speaking.",
+        "Hi, {company}. This is Joanna.",
     ],
     "evening": [
-        "Hey, Joanna from {company}, evening shift— what's up?",
-        "Hi, Joanna from {company}— what's going on tonight?",
+        "{company}, this is Joanna. What's up?",
+        "Hi — Joanna at {company}.",
     ],
     "late_night": [
-        "Hey, this is Joanna from {company}, after-hours line— what's the emergency?",
-        "Joanna from {company} on the after-hours line— what's going on?",
+        "{company} after hours, Joanna here.",
+        "Hey — {company} on-call. What's going on?",
     ],
 }
 
