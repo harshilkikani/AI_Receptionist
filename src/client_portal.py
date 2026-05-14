@@ -111,24 +111,30 @@ def _nav(client_id: str, t: str) -> list:
 
 # ── Routes ─────────────────────────────────────────────────────────────
 
-@router.get("/{client_id}", response_class=HTMLResponse)
-def summary(client_id: str, t: str = "", request: Request = None):
-    """V9.1 — Today is a communications-first feed. Recent activity at
-    the top, follow-ups beneath, calm stats at the bottom. No table.
-    Goal: a non-technical owner reads the page in 10 seconds and
-    immediately knows 'my calls are being handled'."""
-    client = _require(client_id, t)
+def _today_body(client_id: str, t: str = "", *,
+                 include_invoice_link: bool = True,
+                 partners_limit: int = 8) -> str:
+    """V9.5 — extracted from summary() so both the real portal route
+    and the public combined-demo page at / can render the same content
+    with the same components and the same data. No page chrome,
+    no auth — pure body fragment.
+
+    `include_invoice_link` controls the inline invoice button in the
+    hero (demo doesn't need it). `partners_limit` caps the activity feed.
+    """
+    client = tenant.load_client_by_id(client_id)
+    if not client:
+        return '<div class="empty">Tenant not configured.</div>'
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     s = usage.monthly_summary(client_id)
     bookings = _count_bookings(client_id, month)
-    tq = f"?t={html.escape(t)}"
+    tq = f"?t={html.escape(t)}" if t else ""
 
     # ── Recent activity (last 24h of calls + SMS, interleaved) ────────
     now_ts = int(time.time())
     today_ts = now_ts - 24 * 60 * 60
     partners_today = usage.list_conversation_partners(
-        client_id, limit=8, since_ts=today_ts)
-    # Count today's voice + sms volume for the hero context line.
+        client_id, limit=partners_limit, since_ts=today_ts)
     today_calls = sum(p["calls"] for p in partners_today)
     today_msgs = sum(p["messages"] for p in partners_today)
     today_emerg = _today_emergency_count(client_id, today_ts)
@@ -153,7 +159,7 @@ def summary(client_id: str, t: str = "", request: Request = None):
                 href=(
                     f"/client/{html.escape(client_id)}/conversations/"
                     f"{html.escape(_phone_slug(p['phone']))}{tq}"
-                ),
+                ) if t else "",
             ))
         activity_html = (
             section_caption("Recent activity")
@@ -175,6 +181,7 @@ def summary(client_id: str, t: str = "", request: Request = None):
 
     # ── Follow-ups section (soft variant — context, not data) ────────
     followups = _followup_candidates(client_id, limit=5)
+    followups_html = ""
     if followups:
         items = []
         for r in followups:
@@ -191,15 +198,13 @@ def summary(client_id: str, t: str = "", request: Request = None):
                 href=(
                     f"/client/{html.escape(client_id)}/conversations/"
                     f"{html.escape(_phone_slug(raw_phone))}{tq}"
-                    if raw_phone else ""
+                    if (raw_phone and t) else ""
                 ),
             ))
         followups_html = (
             section_caption("Worth a follow-up")
             + card("".join(items), variant="soft", flush=True)
         )
-    else:
-        followups_html = ""
 
     # ── Bare stat strip — no card chrome ──────────────────────────────
     top_stats = (
@@ -213,6 +218,14 @@ def summary(client_id: str, t: str = "", request: Request = None):
 
     # ── Bare typographic hero — no card chrome around the headline ───
     headline = _today_headline(today_calls, today_msgs, today_emerg)
+    invoice_action = ""
+    if include_invoice_link and t:
+        invoice_action = (
+            f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
+            f'class="btn">'
+            f'{icon("calendar", size=14)} '
+            f'{html.escape(month_label_short(month))} invoice</a>'
+        )
     hero = (
         f'<div class="today-hero">'
         f'<div class="today-hero-text">'
@@ -220,13 +233,20 @@ def summary(client_id: str, t: str = "", request: Request = None):
         f'<p class="today-sub">Your receptionist is online and answering. '
         f'This page updates as calls come in.</p>'
         f'</div>'
-        f'<a href="/client/{html.escape(client_id)}/invoice/{html.escape(month)}{tq}" '
-        f'class="btn">'
-        f'{icon("calendar", size=14)} {html.escape(month_label_short(month))} invoice'
-        f'</a></div>'
+        f'{invoice_action}'
+        f'</div>'
     )
 
-    body = hero + activity_html + followups_html + top_stats
+    return hero + activity_html + followups_html + top_stats
+
+
+@router.get("/{client_id}", response_class=HTMLResponse)
+def summary(client_id: str, t: str = "", request: Request = None):
+    """V9.1 — Today is a communications-first feed. V9.5 — body
+    composition lives in _today_body() so the public demo at / can
+    render the same content with the same components."""
+    client = _require(client_id, t)
+    body = _today_body(client_id, t=t, include_invoice_link=True)
     return HTMLResponse(page(
         title=client["name"],
         subtitle="Today",

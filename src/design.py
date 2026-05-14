@@ -642,6 +642,225 @@ footer.page { margin-top: var(--s-6); padding-top: var(--s-4);
               font-size: 12px; display: flex; justify-content: space-between;
               gap: var(--s-4); }
 
+/* ── V9.5 — combined demo shell ───────────────────────────────────────
+   Public-facing showcase at /. Strips marketing copy and shows the
+   actual product in two panes (customer side + operator side). The
+   design tokens are shared with the real portal so the demo IS the
+   product, not a marketing rendering of it. */
+body.demo-page { background: var(--bg); min-height: 100vh; }
+.demo-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 32px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+.demo-brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 16px; letter-spacing: -0.01em;
+  color: var(--fg); text-decoration: none;
+}
+.demo-brand .dot {
+  width: 10px; height: 10px; border-radius: 999px;
+  background: var(--accent); flex-shrink: 0;
+}
+.demo-phone-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-weight: 600; font-size: 13px;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  transition: filter 120ms;
+}
+.demo-phone-link:hover { filter: brightness(0.96); text-decoration: none; }
+
+.demo-stage {
+  max-width: 1280px; margin: 0 auto;
+  padding: 48px 32px 80px;
+  display: grid; grid-template-columns: 420px 1fr;
+  gap: 36px; align-items: start;
+}
+.demo-pane { display: flex; flex-direction: column; }
+.pane-label {
+  font-size: 12px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 14px 6px;
+}
+
+/* Phone shell — abstract device frame, no notch / no skeuomorphism. */
+.phone-shell {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  box-shadow: 0 32px 64px rgba(15,23,42,0.10),
+              0 12px 24px rgba(15,23,42,0.04),
+              0 2px 4px rgba(15,23,42,0.03);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.phone-bar {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+}
+.phone-bar .biz { font-weight: 600; font-size: 15px;
+                   letter-spacing: -0.005em; color: var(--fg); }
+.phone-bar .biz-sub { font-size: 12px; color: var(--muted);
+                       margin-top: 2px;
+                       font-variant-numeric: tabular-nums; }
+
+.phone-screen {
+  display: flex; flex-direction: column;
+  min-height: 580px; max-height: 700px;
+  background: var(--bg);
+}
+
+.chat-chips { display: flex; gap: 6px; padding: 12px 14px;
+               border-bottom: 1px solid var(--border);
+               overflow-x: auto; flex-shrink: 0;
+               background: var(--card-bg); }
+.chat-chips::-webkit-scrollbar { display: none; }
+.chat-chip { display: inline-flex; align-items: center; gap: 6px;
+              padding: 6px 10px; border-radius: 999px;
+              background: var(--n-100); color: var(--n-700);
+              font-size: 12px; font-weight: 500;
+              border: 1px solid transparent;
+              cursor: pointer; white-space: nowrap;
+              text-decoration: none;
+              transition: background 120ms; }
+.chat-chip:hover { background: var(--n-200); text-decoration: none; }
+.chat-chip.active { background: var(--accent-soft); color: var(--accent);
+                     border-color: var(--accent); font-weight: 600; }
+.chat-chip .av { width: 18px; height: 18px; border-radius: 999px;
+                  display: inline-flex; align-items: center; justify-content: center;
+                  font-size: 10px; font-weight: 700;
+                  background: hsl(var(--av-h, 220), 70%, 90%);
+                  color: hsl(var(--av-h, 220), 45%, 38%); }
+@media (prefers-color-scheme: dark) {
+  .chat-chip { background: #182338; color: #b2c2db; }
+  .chat-chip:hover { background: #1f2e4d; }
+  .chat-chip .av { background: hsl(var(--av-h, 220), 25%, 22%);
+                    color: hsl(var(--av-h, 220), 60%, 78%); }
+}
+
+.phone-conv { flex: 1; padding: 18px 16px;
+               overflow-y: auto;
+               display: flex; flex-direction: column; gap: 10px; }
+
+.phone-suggestions { display: flex; gap: 6px; padding: 8px 14px 0;
+                      flex-wrap: wrap; flex-shrink: 0; }
+.phone-suggestion { font-size: 12px; padding: 6px 10px;
+                     border-radius: 999px;
+                     background: var(--accent-soft); color: var(--accent);
+                     border: none; cursor: pointer; font-weight: 500; }
+.phone-suggestion:hover { filter: brightness(0.95); }
+
+.phone-input { border-top: 1px solid var(--border);
+                padding: 12px 14px;
+                display: flex; gap: 8px;
+                background: var(--card-bg); flex-shrink: 0; }
+.phone-input input { flex: 1; padding: 10px 14px;
+                      border: 1px solid var(--border);
+                      border-radius: 999px;
+                      font-family: var(--font); font-size: 14px;
+                      background: var(--bg); color: var(--fg);
+                      outline: none;
+                      transition: border-color 120ms; }
+.phone-input input:focus { border-color: var(--accent); }
+.phone-input button { border: none; background: var(--accent);
+                       color: var(--accent-fg);
+                       width: 38px; height: 38px;
+                       border-radius: 999px;
+                       cursor: pointer; flex-shrink: 0;
+                       display: inline-flex; align-items: center; justify-content: center;
+                       font-size: 18px;
+                       transition: filter 120ms; }
+.phone-input button:hover { filter: brightness(0.95); }
+.phone-input button:disabled { background: var(--n-300);
+                                cursor: not-allowed; }
+
+/* Phone-shell-internal chat bubbles. Same vocabulary as .bubble but
+   scoped under .phone-conv so the spacing reads chat-app-native. */
+.phone-conv .pmsg { max-width: 80%; padding: 9px 14px;
+                     border-radius: 18px; font-size: 14px;
+                     line-height: 1.45;
+                     white-space: pre-wrap; word-wrap: break-word; }
+.phone-conv .pmsg.user { background: var(--accent); color: var(--accent-fg);
+                          align-self: flex-end;
+                          border-bottom-right-radius: 6px; }
+.phone-conv .pmsg.ai { background: var(--n-100); color: var(--fg);
+                        align-self: flex-start;
+                        border-bottom-left-radius: 6px; }
+@media (prefers-color-scheme: dark) {
+  .phone-conv .pmsg.ai { background: #1a2541; color: #e6edf7; }
+}
+.phone-conv .psys { color: var(--muted); font-size: 11px;
+                     align-self: center; text-align: center;
+                     padding: 4px 12px; }
+.phone-conv .pmsg.loading { color: var(--muted); font-style: italic; }
+.phone-conv .pmeta { display: flex; gap: 4px; flex-wrap: wrap;
+                      margin-top: 6px; align-self: flex-start; }
+.phone-conv .pmeta .tag { font-size: 10px; font-weight: 600;
+                           padding: 2px 7px; border-radius: 999px;
+                           background: var(--accent-soft);
+                           color: var(--accent);
+                           text-transform: lowercase;
+                           letter-spacing: 0.02em; }
+.phone-conv .pmeta .tag.emergency { background: var(--danger-100);
+                                     color: var(--danger-500); }
+
+/* Portal shell — minimal browser-window framing for the right pane. */
+.portal-shell {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 32px 64px rgba(15,23,42,0.10),
+              0 12px 24px rgba(15,23,42,0.04),
+              0 2px 4px rgba(15,23,42,0.03);
+  overflow: hidden;
+}
+.window-bar {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 7px; align-items: center;
+  background: var(--card-bg);
+}
+.window-bar .dot {
+  width: 11px; height: 11px; border-radius: 999px;
+  display: inline-block;
+}
+.window-bar .dot.red { background: #ff5f57; }
+.window-bar .dot.amber { background: #febc2e; }
+.window-bar .dot.green { background: #28c840; }
+.window-bar .url-pill {
+  margin-left: auto;
+  font-size: 11px; color: var(--muted);
+  background: var(--n-100); padding: 3px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.portal-shell-body {
+  padding: 28px 32px 32px;
+  max-height: 820px; overflow-y: auto;
+}
+/* Tone down the embedded today body — drop margins on the headline
+   since the shell provides outer padding. */
+.portal-shell-body .today-hero { margin-top: 0; }
+.portal-shell-body .section-caption:first-of-type { margin-top: 16px; }
+
+@media (max-width: 900px) {
+  .demo-stage { grid-template-columns: 1fr; padding: 24px 16px 48px;
+                  gap: 24px; }
+  .demo-top { padding: 14px 16px; }
+  .phone-shell { max-width: 440px; margin: 0 auto; width: 100%; }
+  .portal-shell-body { padding: 20px 18px; max-height: none; }
+}
+@media (max-width: 480px) {
+  .demo-phone-link span:last-child { display: none; }
+  .demo-phone-link { padding: 8px; }
+}
+
 /* ── Print ─────────────────────────────────────────────────────────── */
 @media print {
   body { background: white; color: black; }
@@ -810,6 +1029,44 @@ def section_caption(text: str) -> str:
     card (e.g., "Recent activity"). Doesn't add a card chrome — just a
     confident typographic anchor."""
     return f'<div class="section-caption">{html.escape(text)}</div>'
+
+
+def demo_page(*, title: str, body: str,
+              phone_number: str = "+1 (844) 940-3274",
+              tel_href: str = "tel:+18449403274") -> str:
+    """V9.5 — public-facing combined demo shell.
+
+    Differs from `page()`: no sidebar nav, no per-tenant brand, just a
+    minimal top bar with the product mark and the live demo phone
+    number. The body is expected to be a split-screen of two panes.
+    Uses the same `_CSS` design tokens so the demo and the real portal
+    share one visual system.
+    """
+    phone_label = html.escape(phone_number)
+    tel = html.escape(tel_href)
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="AI Receptionist live demo — see the customer side and the operator side, in real time.">
+<title>{html.escape(title)}</title>
+<style>{_CSS}</style>
+</head><body data-accent="brand" class="demo-page">
+<header class="demo-top">
+  <a href="/" class="demo-brand">
+    <span class="dot"></span><span>AI Receptionist</span>
+  </a>
+  <a href="{tel}" class="demo-phone-link">
+    <svg width="14" height="14" viewBox="0 0 24 24"
+         stroke="currentColor" fill="none" stroke-width="1.75"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.6 10.8a13 13 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11 11 0 0 0 3.5.55 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11 11 0 0 0 .55 3.5 1 1 0 0 1-.25 1Z"/>
+    </svg>
+    <span>{phone_label}</span>
+  </a>
+</header>
+{body}
+</body></html>"""
 
 
 def data_table(headers: list, rows: list, *, empty_text: str = "No data yet.") -> str:

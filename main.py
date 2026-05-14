@@ -21,7 +21,7 @@ load_dotenv()  # MUST run before importing llm (SDK reads key at instantiation)
 
 import anthropic
 from fastapi import FastAPI, Form, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import llm
@@ -441,7 +441,208 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
 
 @app.get("/")
 def index():
-    return FileResponse(ROOT / "index.html")
+    """V9.5 — combined demo at /. Two panes (customer chat + operator
+    portal) using the same V9.4 design system as the real portal.
+    No marketing copy — the product IS the demo."""
+    from src.design import demo_page, icon
+    from src.client_portal import _today_body
+    from fastapi.responses import HTMLResponse
+
+    # ── Operator pane: real portal Today body for septic_pro ──────
+    try:
+        operator_inner = _today_body(
+            "septic_pro", t="", include_invoice_link=False)
+    except Exception as e:
+        log.error("demo: _today_body failed: %s", e)
+        operator_inner = (
+            '<div class="empty empty-warm">'
+            '<div class="empty-title">Demo data not ready yet</div>'
+            '<div class="empty-sub">Restart the server to seed the '
+            'marketing tenant.</div></div>'
+        )
+
+    operator_pane = f"""
+    <section class="demo-pane demo-pane-operator">
+      <div class="pane-label">What you see</div>
+      <div class="portal-shell">
+        <div class="window-bar">
+          <span class="dot red"></span>
+          <span class="dot amber"></span>
+          <span class="dot green"></span>
+          <span class="url-pill">your-business.ai/today</span>
+        </div>
+        <div class="portal-shell-body">{operator_inner}</div>
+      </div>
+    </section>
+    """
+
+    # ── Customer pane: phone-shell wrapping the chat widget ───────
+    chat_inner = """
+        <div class="phone-bar">
+          <div class="biz">Septic Pro</div>
+          <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
+        </div>
+        <div class="phone-screen">
+          <div class="chat-chips" id="callers"></div>
+          <div class="phone-conv" id="conv-body">
+            <div class="psys">Pick a caller above to start.</div>
+          </div>
+          <div class="phone-suggestions" id="suggestions">
+            <button class="phone-suggestion" data-msg="My toilets are backing up and there's sewage in the basement!">Emergency</button>
+            <button class="phone-suggestion" data-msg="Hey, I need to schedule a routine pumping.">Book a pump-out</button>
+            <button class="phone-suggestion" data-msg="How much does a pump-out cost?">Price check</button>
+            <button class="phone-suggestion" data-msg="Sorry, wrong number.">Wrong number</button>
+          </div>
+          <form class="phone-input" id="conv-form" autocomplete="off">
+            <input id="conv-input" type="text"
+                   placeholder="Type as the customer…"
+                   aria-label="Message" disabled />
+            <button type="submit" id="conv-send" disabled
+                    aria-label="Send">→</button>
+          </form>
+        </div>
+    """
+    customer_pane = f"""
+    <section class="demo-pane demo-pane-customer">
+      <div class="pane-label">What your customer sees</div>
+      <div class="phone-shell">{chat_inner}</div>
+    </section>
+    """
+
+    # ── Chat-widget JS (adapted from the V9.0 inline widget). ──────
+    # Caller list renders as chips; rest of the conversation pattern
+    # remains. Same backend endpoints (/missed-calls, /chat).
+    chat_js = """
+    <script>
+    const DEMO_CLIENT_ID = "septic_pro";
+    const PREFERRED_ORDER = ["ellen", "linda", "travis", "sarah", "dave", "mike"];
+    let activeCaller = null;
+    let callersById = {};
+    const $body = document.getElementById("conv-body");
+    const $input = document.getElementById("conv-input");
+    const $send  = document.getElementById("conv-send");
+    const $form  = document.getElementById("conv-form");
+    const $chips = document.getElementById("callers");
+
+    function escapeHTML(s){return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+    function hashHue(s){
+      let h = 0;
+      for (let i = 0; i < (s||"").length; i++) h = ((h<<5)-h + s.charCodeAt(i)) | 0;
+      return Math.abs(h) % 360;
+    }
+
+    function appendMsg(role, text, opts){
+      opts = opts || {};
+      const div = document.createElement("div");
+      const cls = role === "ai" ? "pmsg ai" : (role === "user" ? "pmsg user" : "psys");
+      div.className = cls + (opts.loading ? " loading":"");
+      div.textContent = text;
+      if(opts.meta && opts.meta.length){
+        const m = document.createElement("div");
+        m.className = "pmeta";
+        opts.meta.forEach(t=>{
+          const span = document.createElement("span");
+          span.className = "tag" + (/emergency|high/i.test(t) ? " emergency":"");
+          span.textContent = t;
+          m.appendChild(span);
+        });
+        div.appendChild(m);
+      }
+      $body.appendChild(div);
+      $body.scrollTop = $body.scrollHeight;
+      return div;
+    }
+    function appendSystem(t){ appendMsg("sys", t); }
+
+    async function loadCallers(){
+      try {
+        const r = await fetch("/missed-calls");
+        const list = await r.json();
+        list.forEach(c => callersById[c.id] = c);
+        list.sort((a, b) => {
+          const ai = PREFERRED_ORDER.indexOf(a.id), bi = PREFERRED_ORDER.indexOf(b.id);
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+        $chips.innerHTML = list.map(c=>{
+          const initial = (c.name||"?").charAt(0).toUpperCase();
+          const hue = hashHue(c.phone||c.id);
+          return `<a class="chat-chip" data-id="${escapeHTML(c.id)}" href="#" style="--av-h:${hue}">
+            <span class="av">${escapeHTML(initial)}</span>
+            <span>${escapeHTML(c.name)}</span>
+          </a>`;
+        }).join("");
+        $chips.querySelectorAll(".chat-chip").forEach(el=>{
+          el.addEventListener("click", e=>{ e.preventDefault(); selectCaller(el.dataset.id); });
+        });
+        const first = list[0];
+        if(first) selectCaller(first.id);
+      } catch(e){
+        $chips.innerHTML = `<div style="padding:10px;color:var(--muted);font-size:12px;">Demo offline. Try again in a moment.</div>`;
+      }
+    }
+
+    function selectCaller(id){
+      activeCaller = id;
+      document.querySelectorAll(".chat-chip").forEach(el => el.classList.toggle("active", el.dataset.id === id));
+      const c = callersById[id];
+      $body.innerHTML = "";
+      appendSystem(`You're now ${c.name} · ${c.phone}`);
+      if(c.type === "return" && c.address){
+        appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
+      }
+      $input.disabled = false;
+      $send.disabled = false;
+      $input.focus();
+    }
+
+    async function send(text){
+      if(!activeCaller || !text.trim()) return;
+      appendMsg("user", text);
+      $input.value = "";
+      $input.disabled = true;
+      $send.disabled = true;
+      const loading = appendMsg("ai", "…", {loading:true});
+      try {
+        const r = await fetch("/chat", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({caller_id: activeCaller, message: text, client_id: DEMO_CLIENT_ID}),
+        });
+        if(!r.ok){
+          const detail = await r.text();
+          loading.remove();
+          appendSystem(`Error ${r.status}: ${detail.slice(0,120)}`);
+          return;
+        }
+        const data = await r.json();
+        loading.remove();
+        const meta = [];
+        if(data.intent) meta.push(data.intent);
+        if(data.priority === "high") meta.push("priority: high");
+        appendMsg("ai", data.reply, {meta});
+      } catch(e){
+        loading.remove();
+        appendSystem("Network error.");
+      } finally {
+        $input.disabled = false;
+        $send.disabled = false;
+        $input.focus();
+      }
+    }
+    $form.addEventListener("submit", e=>{ e.preventDefault(); send($input.value); });
+    document.getElementById("suggestions").addEventListener("click", e=>{
+      const btn = e.target.closest(".phone-suggestion");
+      if(btn && !$input.disabled){ send(btn.dataset.msg); }
+    });
+    loadCallers();
+    </script>
+    """
+
+    body = (
+        f'<main class="demo-stage">{customer_pane}{operator_pane}</main>'
+        f'{chat_js}'
+    )
+    return HTMLResponse(demo_page(title="AI Receptionist", body=body))
 
 
 @app.get("/missed-calls")

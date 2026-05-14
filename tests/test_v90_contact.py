@@ -158,12 +158,17 @@ def test_contact_ts_is_unix_seconds(app_client):
     assert before <= rec["ts"] <= after
 
 
-def test_landing_page_includes_contact_form(app_client):
-    """V9.0 — make sure the form is wired into the page the user sees."""
+def test_contact_endpoint_still_reachable_after_v95(app_client):
+    """V9.5 — the public page at / no longer hosts a marketing contact
+    form (the brief said 'no marketing, just a demo'). The /contact
+    endpoint stays as a dormant API for any external marketing site
+    that wants to POST to it. Verify the endpoint contract is intact
+    even with no caller in the codebase."""
     client, _ = app_client
-    r = client.get("/")
+    r = client.post("/contact", json={
+        "name": "API user",
+        "business": "External site",
+        "phone": "555-0123",
+    })
     assert r.status_code == 200
-    body = r.text
-    assert 'id="contact-form"' in body
-    assert '/contact' in body
-    assert 'name="business"' in body
+    assert r.json() == {"ok": True}
