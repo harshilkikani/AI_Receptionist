@@ -336,6 +336,54 @@ def filler_payload_for(client: Optional[dict], *,
     return None
 
 
+def invalidate_text(client: dict, text: str, *,
+                    runtime: bool = True,
+                    prewarm: bool = True) -> dict:
+    """V8.13 — drop the cached audio for ONE phrase under this client's
+    voice config. Lets the operator re-render a single greeting after a
+    voice-settings tweak without flushing the whole cache (which would
+    burn the next full prewarm against the ElevenLabs budget).
+
+    Both the prewarm-model variant and the runtime-model variant are
+    invalidated by default — they hash to different files but the
+    operator usually wants both re-rendered (the prewarm path covers
+    greetings/acks/fillers; the runtime path covers fresh LLM turns).
+
+    Returns {"removed": [hash, ...], "missing": [hash, ...]}.
+
+    Safe to call when the audio dir doesn't exist — returns empty.
+    """
+    out = {"removed": [], "missing": []}
+    if not _is_elevenlabs_tenant(client) or not (text or "").strip():
+        return out
+    from src import tts as _tts
+    voice_id = _tts.voice_id_for(client) or ""
+    settings = _tts.voice_settings_for(client)
+    models = []
+    if prewarm:
+        m = _tts.model_for(client, prewarm=True)
+        if m:
+            models.append(m)
+    if runtime:
+        m = _tts.model_for(client, prewarm=False)
+        if m and m not in models:
+            models.append(m)
+    for model in models:
+        h = _tts._hash_key(text, voice_id, "elevenlabs",
+                            model=model, settings=settings)
+        path = _AUDIO_DIR / f"{h}.mp3"
+        if path.exists():
+            try:
+                path.unlink()
+                out["removed"].append(h)
+            except OSError as e:
+                log.warning("invalidate_text unlink %s failed: %s",
+                            h, e)
+        else:
+            out["missing"].append(h)
+    return out
+
+
 def cache_stats() -> dict:
     """Quick disk-usage snapshot — used by /admin and tests."""
     if not _AUDIO_DIR.exists():
@@ -351,3 +399,67 @@ def cache_stats() -> dict:
         except OSError:
             continue
     return {"file_count": n, "total_bytes": total}
+
+
+# ── CLI ───────────────────────────────────────────────────────────────
+#
+# Small operator-facing entrypoint for V8.13 voice tuning. Lets the
+# operator invalidate one phrase, run stats, or trigger a prewarm
+# without writing a Python one-liner each time.
+#
+#   python -m src.audio_cache stats
+#   python -m src.audio_cache invalidate ace_hvac "the phrase"
+#   python -m src.audio_cache prewarm ace_hvac
+
+def _cli(argv: Optional[list] = None) -> int:
+    import sys
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except Exception:
+        pass
+    args = list(argv if argv is not None else sys.argv[1:])
+    if not args or args[0] in ("-h", "--help"):
+        print("usage: python -m src.audio_cache <command> [args]")
+        print("  stats")
+        print("  invalidate <client_id> <text>")
+        print("  prewarm <client_id>")
+        return 0
+    cmd = args[0]
+    if cmd == "stats":
+        s = cache_stats()
+        print(f"file_count   {s['file_count']}")
+        print(f"total_bytes  {s['total_bytes']} "
+              f"({s['total_bytes'] / 1024:.1f} KiB)")
+        return 0
+    if cmd == "invalidate":
+        if len(args) < 3:
+            print("usage: invalidate <client_id> <text>")
+            return 2
+        from src import tenant
+        client = tenant.load_client_by_id(args[1])
+        if not client:
+            print(f"unknown client: {args[1]}")
+            return 2
+        r = invalidate_text(client, args[2])
+        print(f"removed: {len(r['removed'])} ({r['removed']})")
+        print(f"missing: {len(r['missing'])} ({r['missing']})")
+        return 0
+    if cmd == "prewarm":
+        if len(args) < 2:
+            print("usage: prewarm <client_id>")
+            return 2
+        from src import tenant
+        client = tenant.load_client_by_id(args[1])
+        if not client:
+            print(f"unknown client: {args[1]}")
+            return 2
+        r = prewarm_for_tenant(client)
+        print(f"prewarm result: {r}")
+        return 0
+    print(f"unknown command: {cmd}")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())
