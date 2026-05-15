@@ -1134,42 +1134,85 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
 }
 .owner-sms {
   background: var(--n-100); color: var(--fg);
-  padding: 8px 12px 9px; border-radius: 14px;
+  padding: 10px 12px 11px; border-radius: 14px;
   max-width: 92%; align-self: flex-start;
-  font-size: 13px; line-height: 1.4;
+  font-size: 13px; line-height: 1.42;
   border-bottom-left-radius: 4px;
 }
 @media (prefers-color-scheme: dark) {
   .owner-sms { background: #1a2541; color: #e6edf7; }
 }
-.owner-sms .sms-from { font-size: 11px; color: var(--muted);
-                        font-weight: 600; margin-bottom: 3px; }
+/* V11.1 — sms-head: avatar · sender · timestamp on one flex row.
+   Replaces the pre-V11.1 stacked "sender / body / timestamp" layout
+   which felt vertically dense and lacked person-identity. */
+.owner-sms .sms-head {
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: 5px;
+}
+.owner-sms .sms-av {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--n-200); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; overflow: hidden; position: relative;
+  font-size: 9.5px; font-weight: 600;
+}
+.owner-sms .sms-av-initial {
+  position: absolute; inset: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.owner-sms .sms-av img {
+  width: 100%; height: 100%; object-fit: cover;
+  position: relative; z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .owner-sms .sms-av { background: #243152; color: #94a3b8; }
+  .owner-sms .sms-av-initial { color: #94a3b8; }
+}
+.owner-sms .sms-from {
+  font-size: 11px; color: var(--muted);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.owner-sms .sms-ts {
+  font-size: 10.5px; color: var(--muted);
+  margin-left: auto;
+  letter-spacing: 0.01em;
+}
+.owner-sms .sms-body {
+  font-size: 13px; line-height: 1.42;
+}
 .owner-sms.urgent { background: var(--danger-100);
                      color: var(--danger-500); }
 .owner-sms.urgent .sms-from { color: var(--danger-500); }
+.owner-sms.urgent .sms-ts { color: rgba(220, 38, 38, 0.65); }
+.owner-sms.urgent .sms-av {
+  background: rgba(220, 38, 38, 0.12);
+}
 @media (prefers-color-scheme: dark) {
   .owner-sms.urgent { background: #2e0d0d; color: #fb7185; }
   .owner-sms.urgent .sms-from { color: #fb7185; }
+  .owner-sms.urgent .sms-ts { color: rgba(251,113,133,0.65); }
+  .owner-sms.urgent .sms-av { background: rgba(251,113,133,0.18); }
 }
-.owner-sms .sms-ts { font-size: 10px; color: var(--muted);
-                      margin-top: 4px; }
-.owner-sms.urgent .sms-ts { color: rgba(251,113,133,0.7); }
-/* V10.5 / V11.1 — owner read-receipt continuity. ~3-4s after an
-   SMS lands in the owner-notifications view, a small "Read"
-   indicator appears below it. No animation; just appears.
-   Communicates that the owner saw the brief without ever showing
-   the mechanism. */
+/* V10.5 / V11.1 — refined Read indicator: single muted check glyph,
+   no "Read" text. Once the visual is established by the seeded
+   bubbles the prospect parses subsequent appearances instantly. */
 .owner-sms .sms-read {
-  font-size: 9.5px; color: var(--muted);
-  margin-top: 3px; letter-spacing: 0.01em;
-  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0; color: var(--muted);
+  margin-top: 4px;
+  display: inline-flex; align-items: center;
   opacity: 0; transition: opacity 280ms ease;
 }
-.owner-sms .sms-read.shown { opacity: 1; }
-.owner-sms .sms-read svg { width: 9px; height: 9px;
+.owner-sms .sms-read.shown { opacity: 0.7; }
+.owner-sms .sms-read svg { width: 11px; height: 11px;
                             stroke: currentColor; fill: none;
                             stroke-width: 2.2; stroke-linecap: round;
                             stroke-linejoin: round; }
+.owner-sms.urgent .sms-read svg { color: rgba(220, 38, 38, 0.6); }
+@media (prefers-color-scheme: dark) {
+  .owner-sms.urgent .sms-read svg { color: rgba(251,113,133,0.55); }
+}
 /* New-arrival animation when an SMS slides in. */
 .owner-sms.just-arrived {
   animation: sms-arrive 360ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -1898,17 +1941,39 @@ document.addEventListener("click", function(e){{
     const dynamicBubbles = Array.from(
       $conv.querySelectorAll(".owner-sms"))
       .filter(el => el.dataset.dynamic === "1");
+    /* V11.1 — bubble renders with customer avatar (small Pravatar +
+       initial fallback), sms-head row (avatar · sender · timestamp),
+       sms-body (alert text), and a muted check-only read receipt.
+       iMessage-pattern grouping. */
+    function _esc(s){{ return (s || "").replace(/</g, "&lt;"); }}
+    function _seed(phone){{
+      const d = (phone || "").replace(/\\D/g, "").replace(/^1/, "");
+      return d || "x";
+    }}
     const seedHTML = (seededSms || []).map(function(s){{
       const urgentClass = s.urgent ? " urgent" : "";
-      const body = (s.body || "").replace(/</g, "&lt;");
-      const ts = (s.ts_label || "").replace(/</g, "&lt;");
+      const body = _esc(s.body);
+      const ts = _esc(s.ts_label);
+      const name = (s.customer_name || "").trim();
+      const initial = (name.charAt(0) || "").toUpperCase();
+      const seed = _seed(s.customer_phone);
+      const avatar = seed !== "x"
+        ? ('<span class="sms-av">'
+            + '<span class="sms-av-initial">' + _esc(initial) + '</span>'
+            + '<img src="https://i.pravatar.cc/150?u=' + seed + '" alt="" loading="lazy" '
+            + 'onerror="if(this.dataset.tried!==\\'fallback\\'){{'
+            + 'this.dataset.tried=\\'fallback\\';this.src=\\'https://api.dicebear.com/9.x/notionists/svg?seed=' + seed + '\\';'
+            + '}}else{{this.style.display=\\'none\\';}}">'
+            + '</span>')
+        : '';
       return '<div class="owner-sms' + urgentClass + '">'
-        + '<div class="sms-from">AI Receptionist</div>'
-        + '<div>' + body + '</div>'
-        + '<div class="sms-ts">' + ts + '</div>'
-        + '<div class="sms-read shown">'
+        + '<div class="sms-head">' + avatar
+        + '<span class="sms-from">AI Receptionist</span>'
+        + '<span class="sms-ts">' + ts + '</span></div>'
+        + '<div class="sms-body">' + body + '</div>'
+        + '<div class="sms-read shown" aria-label="Read">'
         + '<svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>'
-        + ' Read</div>'
+        + '</div>'
         + '</div>';
     }}).join("");
     $conv.innerHTML = seedHTML;

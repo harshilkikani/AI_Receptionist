@@ -122,10 +122,14 @@ _HVAC = {
     # one urgent (or near-urgent), one routine.
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Marcus Reilly",
+         "customer_phone": "+15550102001",
          "body": "Emergency · Marcus Reilly · 4729 Maple · "
                  "AC out, baby in house · Call about to bridge.",
          "ts_label": "6h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Wendy Larsen",
+         "customer_phone": "+15550102002",
          "body": "Service · Wendy Larsen · 218 Linden · "
                  "Thursday 1pm furnace tune-up.",
          "ts_label": "yesterday"},
@@ -201,10 +205,14 @@ _REAL_ESTATE = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Jordan Bailey",
+         "customer_phone": "+15550103005",
          "body": "Lockbox issue · Jordan Bailey · 1100 Birch · "
                  "Buyer on-site now. Paging you.",
          "ts_label": "15m ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Caleb Morrison",
+         "customer_phone": "+15550103001",
          "body": "Showing requested · Caleb Morrison · 1100 Birch · "
                  "Saturday 1pm.",
          "ts_label": "1h ago"},
@@ -275,10 +283,14 @@ _SEPTIC = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Marcus Reilly",
+         "customer_phone": "+15550101001",
          "body": "Emergency · Marcus Reilly · 412 Maple · "
                  "sewage backup · Call about to bridge.",
          "ts_label": "6h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Sarah Wong",
+         "customer_phone": "+15550101002",
          "body": "Booking · Sarah Wong · Tuesday 1pm pump-out · "
                  "412 Oak Street.",
          "ts_label": "yesterday"},
@@ -355,10 +367,14 @@ _PLUMBING = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Anita Brooks",
+         "customer_phone": "+15550104001",
          "body": "Emergency · Anita Brooks · 319 Cedar · "
                  "pipe burst behind wall · Tech dispatched.",
          "ts_label": "2h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Tony Russo",
+         "customer_phone": "+15550104002",
          "body": "Service · Tony Russo · 1428 Oak Hollow · "
                  "Tuesday 10am water heater.",
          "ts_label": "yesterday"},
@@ -430,10 +446,14 @@ _ROOFING = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Brad Mitchell",
+         "customer_phone": "+15550105001",
          "body": "Active roof leak · Brad Mitchell · 623 Hillcrest · "
                  "Tarp crew dispatched.",
          "ts_label": "1h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Lisa Yoon",
+         "customer_phone": "+15550105004",
          "body": "Inspection · Lisa Yoon · 388 Magnolia · "
                  "Wednesday 9am.",
          "ts_label": "6h ago"},
@@ -504,10 +524,14 @@ _CONSTRUCTION = {
     },
     "seeded_owner_sms": [
         {"kind": "booking", "urgent": True,
+         "customer_name": "Paul Anderson",
+         "customer_phone": "+15550106001",
          "body": "Estimate visit · Paul Anderson · 927 Crestview · "
                  "Friday 10am kitchen remodel.",
          "ts_label": "5h ago"},
         {"kind": "quote", "urgent": False,
+         "customer_name": "Julia Sanchez",
+         "customer_phone": "+15550106002",
          "body": "Estimate · Julia Sanchez · 1503 Beverly · "
                  "Thursday 2pm addition.",
          "ts_label": "yesterday"},
@@ -580,11 +604,15 @@ _PROPERTY_MANAGEMENT = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Jasmine Lee",
+         "customer_phone": "+15550107001",
          "body": "Tenant emergency · Jasmine Lee · Unit 4B / "
                  "218 Fifth · no heat, baby in unit · "
                  "Maintenance dispatched.",
          "ts_label": "3h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Alex Pham",
+         "customer_phone": "+15550107002",
          "body": "Tour · Alex Pham · 218 Fifth · "
                  "Saturday 11am 2BR.",
          "ts_label": "yesterday"},
@@ -655,10 +683,14 @@ _ELECTRICAL = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Nina Castro",
+         "customer_phone": "+15550108002",
          "body": "Electrical emergency · Nina Castro · 682 Willowbrook · "
                  "Sparking outlet · Tech dispatched.",
          "ts_label": "30m ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Steve Whitman",
+         "customer_phone": "+15550108003",
          "body": "Estimate · Steve Whitman · 2218 Walnut Hollow · "
                  "Friday 10am panel upgrade.",
          "ts_label": "yesterday"},
@@ -733,10 +765,14 @@ _LANDSCAPING = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Chris Boyd",
+         "customer_phone": "+15550109002",
          "body": "Tree down · Chris Boyd · 1840 Forest Edge · "
                  "Driveway blocked · Crew dispatched.",
          "ts_label": "2h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Helen Vargas",
+         "customer_phone": "+15550109001",
          "body": "Service walk · Helen Vargas · 412 Garden View · "
                  "Saturday 10am weekly lawn quote.",
          "ts_label": "5h ago"},
@@ -807,10 +843,14 @@ _RESTORATION = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Jacob Cole",
+         "customer_phone": "+15550201001",
          "body": "Mitigation · Jacob Cole · 344 Brookside · "
                  "Active flooding · Crew within the hour.",
          "ts_label": "30m ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Naomi Reyes",
+         "customer_phone": "+15550201002",
          "body": "Mitigation · Naomi Reyes · 1207 Maple Ridge · "
                  "This afternoon · Allstate claim.",
          "ts_label": "6h ago"},
@@ -884,10 +924,14 @@ _MED_SPA = {
     },
     "seeded_owner_sms": [
         {"kind": "booking", "urgent": False,
+         "customer_name": "Olivia Bennett",
+         "customer_phone": "+15550202001",
          "body": "Consultation · Olivia Bennett · "
                  "Saturday 2pm Botox.",
          "ts_label": "4h ago"},
         {"kind": "followup", "urgent": False,
+         "customer_name": "Chen Liu",
+         "customer_phone": "+15550202003",
          "body": "Reschedule · Chen Liu · "
                  "Friday 11am filler.",
          "ts_label": "yesterday"},
@@ -963,10 +1007,14 @@ _LEGAL_INTAKE = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
+         "customer_name": "Renata Cruz",
+         "customer_phone": "+15550203003",
          "body": "Time-sensitive intake · Renata Cruz · "
                  "Eviction · court in 6 days · Callback today.",
          "ts_label": "2h ago"},
         {"kind": "booking", "urgent": False,
+         "customer_name": "Anita Powell",
+         "customer_phone": "+15550203001",
          "body": "Consultation · Anita Powell · "
                  "Friday 3pm workplace matter.",
          "ts_label": "6h ago"},

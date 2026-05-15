@@ -565,14 +565,37 @@ def index():
     seeded_sms_html_parts = []
     for entry in seeded_sms:
         urgent_class = " urgent" if entry.get("urgent") else ""
+        # V11.1 — each alert carries a small customer avatar so the
+        # notification visually belongs to a person, not a generic
+        # "AI Receptionist" sender. Pravatar URL seeded by the same
+        # phone digits used elsewhere — unified identity.
+        cust_phone = (entry.get("customer_phone") or "").strip()
+        cust_name = entry.get("customer_name") or ""
+        cust_initial = (cust_name[0].upper() if cust_name else "")
+        avatar_html = ""
+        if cust_phone:
+            seed = "".join(c for c in cust_phone if c.isdigit())
+            if seed.startswith("1") and len(seed) == 11:
+                seed = seed[1:]
+            avatar_primary = f"https://i.pravatar.cc/150?u={seed}"
+            avatar_fallback = (
+                f"https://api.dicebear.com/9.x/notionists/svg?seed={seed}"
+            )
+            avatar_html = (
+                f'<span class="sms-av">'
+                f'<span class="sms-av-initial">{_html.escape(cust_initial)}</span>'
+                f'<img src="{avatar_primary}" alt="" loading="lazy" '
+                f'onerror="if(this.dataset.tried!==\'fallback\'){{'
+                f'this.dataset.tried=\'fallback\';this.src=\'{avatar_fallback}\';'
+                f'}}else{{this.style.display=\'none\';}}">'
+                f'</span>'
+            )
         seeded_sms_html_parts.append(
             f'''<div class="owner-sms{urgent_class}">
-              <div class="sms-from">AI Receptionist</div>
-              <div>{_html.escape(entry.get("body", ""))}</div>
-              <div class="sms-ts">{_html.escape(entry.get("ts_label", ""))}</div>
-              <div class="sms-read shown">
+              <div class="sms-head">{avatar_html}<span class="sms-from">AI Receptionist</span><span class="sms-ts">{_html.escape(entry.get("ts_label", ""))}</span></div>
+              <div class="sms-body">{_html.escape(entry.get("body", ""))}</div>
+              <div class="sms-read shown" aria-label="Read">
                 <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
-                Read
               </div>
             </div>'''
         )
@@ -751,13 +774,25 @@ def index():
          rebuildOwnerSeed() preserves this bubble across industry
          switches (only the pre-baked seed swaps). */
       div.dataset.dynamic = "1";
+      /* V11.1 — small customer avatar so the alert visually links
+         to a person. Pravatar by phone digits, DiceBear fallback. */
+      const avSeed = ((caller.phone || caller.id || "") + "")
+        .replace(/\\D/g, "").replace(/^1/, "") || caller.id || "x";
+      const avPrimary = "https://i.pravatar.cc/150?u=" + encodeURIComponent(avSeed);
+      const avFallback = "https://api.dicebear.com/9.x/notionists/svg?seed=" + encodeURIComponent(avSeed);
+      const avInitial = ((caller.name || "?").charAt(0)).toUpperCase();
+      const avatarHtml =
+        '<span class="sms-av">' +
+          '<span class="sms-av-initial">' + escapeHTML(avInitial) + '</span>' +
+          '<img src="' + avPrimary + '" alt="" loading="lazy" ' +
+          "onerror=\"if(this.dataset.tried!=='fallback'){this.dataset.tried='fallback';this.src='" +
+          avFallback + "';}else{this.style.display='none';}\">" +
+        '</span>';
       div.innerHTML =
-        `<div class="sms-from">AI Receptionist</div>` +
-        `<div>${escapeHTML(body)}</div>` +
-        `<div class="sms-ts">just now</div>` +
-        `<div class="sms-read">` +
+        `<div class="sms-head">${avatarHtml}<span class="sms-from">AI Receptionist</span><span class="sms-ts">just now</span></div>` +
+        `<div class="sms-body">${escapeHTML(body)}</div>` +
+        `<div class="sms-read" aria-label="Read">` +
           `<svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>` +
-          `Read` +
         `</div>`;
       $ownerConv.insertBefore(div, $ownerConv.firstChild);
       setTimeout(()=>div.classList.remove("just-arrived"), 600);
