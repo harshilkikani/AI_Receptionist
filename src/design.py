@@ -1401,21 +1401,34 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   height: 1px; background: var(--border);
   margin: 2px -2px;
 }
+/* V11.1 hotfix — drawer dropdown contrast.
+   Pre-V11.1 used `var(--n-50)` for background which is static
+   (#f8fafc light) — in dark mode the light bg combined with the
+   dark-mode-overridden light text color became unreadable. Switched
+   to `var(--card-bg)` + `var(--fg)` which both adapt to color
+   scheme, restoring contrast in both modes. */
 .demo-drawer .dd-row .tenant-switcher {
   margin: 0; padding: 10px 13px;
-  background: var(--n-50); border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
   width: 100%; border-radius: 9px;
   transition: border-color 120ms, background 120ms;
 }
 .demo-drawer .dd-row .tenant-switcher:hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, var(--card-bg));
 }
 .demo-drawer .dd-row .tenant-switcher::after {
-  right: 14px;
+  right: 14px; color: var(--muted);
 }
 .demo-drawer .dd-row .tenant-switcher select {
   width: 100%; padding-right: 18px; font-size: 13.5px;
   font-weight: 500; letter-spacing: -0.005em;
+  color: var(--fg);
+}
+.demo-drawer .dd-row .tenant-switcher select option {
+  background: var(--card-bg); color: var(--fg);
 }
 .demo-drawer .dd-actions { flex-direction: row; gap: 8px; }
 .demo-drawer .dd-btn {

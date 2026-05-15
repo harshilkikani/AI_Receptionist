@@ -775,19 +775,20 @@ def index():
          switches (only the pre-baked seed swaps). */
       div.dataset.dynamic = "1";
       /* V11.1 — small customer avatar so the alert visually links
-         to a person. Pravatar by phone digits, DiceBear fallback. */
+         to a person. Pravatar by phone digits, DiceBear fallback.
+         V11.1 hotfix — original implementation used quote-escaped
+         string concatenation that emitted invalid JS to the
+         browser. Switched to a single template literal. */
       const avSeed = ((caller.phone || caller.id || "") + "")
-        .replace(/\\D/g, "").replace(/^1/, "") || caller.id || "x";
+        .replace(/\D/g, "").replace(/^1/, "") || caller.id || "x";
       const avPrimary = "https://i.pravatar.cc/150?u=" + encodeURIComponent(avSeed);
       const avFallback = "https://api.dicebear.com/9.x/notionists/svg?seed=" + encodeURIComponent(avSeed);
       const avInitial = ((caller.name || "?").charAt(0)).toUpperCase();
-      const avatarHtml =
-        '<span class="sms-av">' +
-          '<span class="sms-av-initial">' + escapeHTML(avInitial) + '</span>' +
-          '<img src="' + avPrimary + '" alt="" loading="lazy" ' +
-          "onerror=\"if(this.dataset.tried!=='fallback'){this.dataset.tried='fallback';this.src='" +
-          avFallback + "';}else{this.style.display='none';}\">" +
-        '</span>';
+      const avatarHtml = `<span class="sms-av">` +
+        `<span class="sms-av-initial">${escapeHTML(avInitial)}</span>` +
+        `<img src="${avPrimary}" alt="" loading="lazy" ` +
+        `onerror="if(this.dataset.tried!==&#39;fallback&#39;){this.dataset.tried=&#39;fallback&#39;;this.src=&#39;${avFallback}&#39;;}else{this.style.display=&#39;none&#39;;}">` +
+        `</span>`;
       div.innerHTML =
         `<div class="sms-head">${avatarHtml}<span class="sms-from">AI Receptionist</span><span class="sms-ts">just now</span></div>` +
         `<div class="sms-body">${escapeHTML(body)}</div>` +
