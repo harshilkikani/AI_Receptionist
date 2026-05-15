@@ -326,11 +326,15 @@ header.page .head-aside { display: flex; align-items: center;
    Used for the "Recent activity" / "Worth a follow-up" labels above
    flush cards on Today. Reads as a magazine section, not as a card
    header. */
-.section-caption { font-size: 12px; font-weight: 600;
+/* V11.1 — section caption typography refined. Slightly smaller, tighter
+   letter-spacing, less prominent — quiets the eye between content
+   sections instead of competing with them. Vertical rhythm tightened
+   from 28/12 to 24/10 for premium density. */
+.section-caption { font-size: 11.5px; font-weight: 600;
                     color: var(--muted); text-transform: uppercase;
-                    letter-spacing: 0.06em;
-                    margin: 28px 4px 12px; }
-.section-caption:first-child { margin-top: 8px; }
+                    letter-spacing: 0.07em;
+                    margin: 24px 4px 10px; }
+.section-caption:first-child { margin-top: 6px; }
 
 /* V9.4 — Today hero: bare typographic intro, no card chrome. */
 .today-hero { display: flex; align-items: flex-end;
@@ -403,10 +407,14 @@ table.data td.muted { color: var(--muted); }
 /* V9.2 — sentence-case label (not ALL CAPS); slightly bigger numeral.
    V9.3 — dark-mode contrast fix: use --muted (which IS inverted in
    dark mode) instead of --n-600 (which isn't). */
-.stat .label { font-size: 13px; color: var(--muted);
-                font-weight: 500; letter-spacing: 0; }
-.stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
-               margin-top: 6px; line-height: 1.1; color: var(--fg); }
+/* V11.1 — stat-card label refined. Smaller, tighter letter-spacing.
+   The value (big number) is the focal point; the label should read
+   as supporting metadata, not a headline. */
+.stat .label { font-size: 12.5px; color: var(--muted);
+                font-weight: 500; letter-spacing: -0.005em; }
+.stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.022em;
+               margin-top: 6px; line-height: 1.05; color: var(--fg);
+               font-variant-numeric: tabular-nums; }
 .stat .delta { margin-top: 6px; font-size: 12px; font-weight: 500; }
 /* V10.3 — sparkline slot at the bottom of stat cards. */
 .stat .stat-spark { margin-top: 10px; opacity: 0.85;
@@ -885,14 +893,46 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
 }
+/* V11.1 — refined brand mark. SVG glyph (speech bubble + three
+   listening dots) replaces the pre-V11.1 plain accent dot. The
+   wordmark is unchanged but spacing and weight are tightened. */
 .demo-brand {
-  display: inline-flex; align-items: center; gap: 10px;
-  font-weight: 700; font-size: 16px; letter-spacing: -0.01em;
+  display: inline-flex; align-items: center; gap: 9px;
+  font-weight: 600; font-size: 15px; letter-spacing: -0.012em;
   color: var(--fg); text-decoration: none;
+  padding: 4px 6px 4px 4px; margin-left: -6px;
+  border-radius: 8px;
+  transition: background 120ms;
 }
+.demo-brand:hover { background: var(--n-100); }
+.demo-brand .brand-mark {
+  width: 24px; height: 24px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 7px;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.demo-brand:hover .brand-mark { transform: rotate(-3deg) scale(1.04); }
+.demo-brand .brand-mark svg { width: 16px; height: 16px; }
+.demo-brand .brand-word {
+  /* Subtle gradient text — premium-mark treatment without garish color */
+  background: linear-gradient(180deg,
+              var(--fg) 0%,
+              color-mix(in srgb, var(--fg) 80%, var(--muted)) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  .demo-brand .brand-mark { background: rgba(96, 165, 250, 0.12); }
+  .demo-brand:hover { background: rgba(255,255,255,0.04); }
+}
+/* Legacy `.dot` retained as a no-op for any historical markup paths.
+   New markup uses `.brand-mark`; both can coexist. */
 .demo-brand .dot {
   width: 10px; height: 10px; border-radius: 999px;
   background: var(--accent); flex-shrink: 0;
+  display: none;
 }
 .demo-phone-link {
   display: inline-flex; align-items: center; gap: 8px;
@@ -1309,61 +1349,113 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   display: flex; flex-direction: column;
 }
 .demo-drawer.open { transform: translateX(0); }
+/* V11.1 — drawer modernization. Single-icon title row, refined
+   spacing, divider between groups, quieter footer. iMessage-pattern
+   visual restraint applied to settings UI. */
 .demo-drawer-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px;
+  padding: 16px 20px 14px;
   border-bottom: 1px solid var(--border);
 }
-.demo-drawer-title { font-size: 13px; font-weight: 600;
-                      color: var(--fg); letter-spacing: -0.005em; }
+.demo-drawer-title-row {
+  display: inline-flex; align-items: center; gap: 9px;
+}
+.demo-drawer-mark {
+  width: 22px; height: 22px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+.demo-drawer-mark svg { width: 13px; height: 13px; }
+.demo-drawer-title { font-size: 13.5px; font-weight: 600;
+                      color: var(--fg); letter-spacing: -0.008em; }
+@media (prefers-color-scheme: dark) {
+  .demo-drawer-mark { background: rgba(96, 165, 250, 0.12); }
+}
 .demo-drawer-close {
   background: transparent; border: none; cursor: pointer;
-  width: 28px; height: 28px; border-radius: 6px;
+  width: 28px; height: 28px; border-radius: 7px;
   color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center;
+  transition: background 120ms, color 120ms;
 }
 .demo-drawer-close:hover { background: var(--n-100); color: var(--fg); }
-.demo-drawer-body { padding: 20px; display: flex;
-                      flex-direction: column; gap: 16px; }
-.demo-drawer .dd-row { display: flex; flex-direction: column;
-                        gap: 6px; }
+.demo-drawer-body {
+  padding: 20px 20px 18px;
+  display: flex; flex-direction: column; gap: 18px;
+  flex: 1 1 auto; overflow-y: auto;
+}
+.demo-drawer .dd-row { display: flex; flex-direction: column; gap: 8px; }
 .demo-drawer .dd-label {
   font-size: 11px; font-weight: 600;
   color: var(--muted); text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+.demo-drawer .dd-hint {
+  font-size: 12px; color: var(--muted);
+  margin: 0 0 4px; line-height: 1.45;
+}
+.demo-drawer .dd-divider {
+  height: 1px; background: var(--border);
+  margin: 2px -2px;
 }
 .demo-drawer .dd-row .tenant-switcher {
-  margin: 0; padding: 9px 12px;
+  margin: 0; padding: 10px 13px;
   background: var(--n-50); border: 1px solid var(--border);
-  width: 100%;
+  width: 100%; border-radius: 9px;
+  transition: border-color 120ms, background 120ms;
+}
+.demo-drawer .dd-row .tenant-switcher:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+.demo-drawer .dd-row .tenant-switcher::after {
+  right: 14px;
 }
 .demo-drawer .dd-row .tenant-switcher select {
-  width: 100%; padding-right: 16px; font-size: 13px;
+  width: 100%; padding-right: 18px; font-size: 13.5px;
+  font-weight: 500; letter-spacing: -0.005em;
 }
 .demo-drawer .dd-actions { flex-direction: row; gap: 8px; }
 .demo-drawer .dd-btn {
-  flex: 1; padding: 9px 12px; border-radius: 8px;
+  flex: 1; padding: 10px 12px; border-radius: 9px;
   border: 1px solid var(--border); background: var(--card-bg);
   color: var(--fg); font-weight: 500; font-size: 13px;
-  cursor: pointer; transition: background 120ms;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, transform 80ms;
 }
-.demo-drawer .dd-btn:hover { background: var(--n-100); }
+.demo-drawer .dd-btn:hover {
+  background: var(--n-100);
+  border-color: color-mix(in srgb, var(--fg) 18%, var(--border));
+}
+.demo-drawer .dd-btn:active { transform: scale(0.985); }
 .demo-drawer .dd-btn.paused {
   background: var(--accent-soft); color: var(--accent);
-  border-color: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--accent-soft));
 }
 .demo-drawer .dd-btn-danger { color: var(--danger-500); }
-.demo-drawer .dd-btn-danger:hover { background: var(--danger-100); }
+.demo-drawer .dd-btn-danger:hover {
+  background: var(--danger-100);
+  border-color: color-mix(in srgb, var(--danger-500) 35%, var(--border));
+}
 .demo-drawer .dd-foot {
-  margin-top: 8px; padding-top: 14px;
+  margin-top: auto; padding-top: 14px;
   border-top: 1px solid var(--border);
-  font-size: 11px; color: var(--muted); text-align: center;
+  font-size: 11.5px; color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.005em;
+}
+.demo-drawer .dd-foot-line {
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .demo-drawer .dd-foot kbd {
   display: inline-block; padding: 1px 6px;
-  font-family: var(--font-mono); font-size: 11px;
+  font-family: var(--font-mono); font-size: 10.5px;
   background: var(--n-100); border-radius: 4px;
-  color: var(--fg);
+  color: var(--fg); font-weight: 600;
+  line-height: 1.4;
 }
 
 /* V10.5 — V10.4 incoming-call banner + live call timer removed.
@@ -1783,8 +1875,21 @@ def demo_page(*, title: str, body: str,
 <style>{_CSS}</style>
 </head><body data-accent="brand" class="demo-page">
 <header class="demo-top">
-  <a href="/" class="demo-brand">
-    <span class="dot"></span><span>AI Receptionist</span>
+  <a href="/" class="demo-brand" aria-label="AI Receptionist — home">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <!-- V11.1 — speech-bubble with three dots: the receptionist
+             is on the line, listening. Replaces the pre-V11.1 plain
+             accent dot which read as a placeholder. -->
+        <path d="M4 9.5a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v3a5 5 0 0 1-5 5h-4.5l-3.5 2.5v-2.6a5 5 0 0 1-3-4.4z"
+              stroke="currentColor" stroke-width="1.6"
+              stroke-linejoin="round" fill="none"/>
+        <circle cx="9" cy="11" r="1.05" fill="currentColor"/>
+        <circle cx="12" cy="11" r="1.05" fill="currentColor"/>
+        <circle cx="15" cy="11" r="1.05" fill="currentColor"/>
+      </svg>
+    </span>
+    <span class="brand-word">AI Receptionist</span>
   </a>
   <a href="{tel}" class="demo-phone-link" style="margin-left:auto;">
     <svg width="14" height="14" viewBox="0 0 24 24"
@@ -1808,7 +1913,16 @@ def demo_page(*, title: str, body: str,
 </header>
 <aside class="demo-drawer" id="demo-drawer" aria-hidden="true">
   <div class="demo-drawer-head">
-    <span class="demo-drawer-title">Demo settings</span>
+    <div class="demo-drawer-title-row">
+      <span class="demo-drawer-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="6"/>
+          <path d="M8 5v3l2 1.5"/>
+        </svg>
+      </span>
+      <span class="demo-drawer-title">Demo controls</span>
+    </div>
     <button class="demo-drawer-close" id="demo-drawer-close" aria-label="Close">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="2"
@@ -1820,18 +1934,25 @@ def demo_page(*, title: str, body: str,
   <div class="demo-drawer-body">
     <div class="dd-row">
       <label class="dd-label">Industry</label>
+      <p class="dd-hint">Pick the vertical you want the demo tuned to.</p>
       <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
         <select aria-label="Demo industry">
           {switcher_options}
         </select>
       </div>
     </div>
-    <div class="dd-row dd-actions">
-      <button class="dd-btn" id="dd-pause" type="button">Pause refresh</button>
-      <button class="dd-btn dd-btn-danger" id="dd-reset" type="button">Reset demo</button>
+    <div class="dd-divider" aria-hidden="true"></div>
+    <div class="dd-row">
+      <label class="dd-label">Session</label>
+      <div class="dd-actions">
+        <button class="dd-btn" id="dd-pause" type="button">Pause refresh</button>
+        <button class="dd-btn dd-btn-danger" id="dd-reset" type="button">Reset demo</button>
+      </div>
     </div>
     <div class="dd-foot">
-      Press <kbd>?</kbd> for keyboard shortcuts.
+      <span class="dd-foot-line">
+        Press <kbd>?</kbd> for keyboard shortcuts
+      </span>
     </div>
   </div>
 </aside>
