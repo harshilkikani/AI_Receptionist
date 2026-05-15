@@ -326,13 +326,23 @@ header.page .head-aside { display: flex; align-items: center;
   padding: 24px;
   margin-bottom: 20px;
 }
+/* V12.0 — soft cards (e.g. "Worth a follow-up") read as secondary
+   attention. Slightly more muted, less contrast against the page bg,
+   so they don't compete with the primary "Recent activity" card.
+   The names inside get a soft opacity dim too. */
 .card.soft {
-  background: var(--n-50);
+  background: color-mix(in srgb, var(--muted) 6%, var(--card-bg));
   border: 1px solid transparent;
   box-shadow: none;
 }
+.card.soft .call .body .who { color: color-mix(in srgb, var(--fg) 88%, var(--muted)); }
+.card.soft .call .body .sum {
+  color: color-mix(in srgb, var(--n-700) 80%, var(--muted));
+}
 @media (prefers-color-scheme: dark) {
   .card.soft { background: #0c1628; border-color: #1a2541; }
+  .card.soft .call .body .who { color: #b8c5d8; }
+  .card.soft .call .body .sum { color: #8ea3c1; }
 }
 .card.flush { padding: 0; }
 .card h2 {
@@ -359,20 +369,23 @@ header.page .head-aside { display: flex; align-items: center;
                     margin: 24px 4px 10px; }
 .section-caption:first-child { margin-top: 6px; }
 
-/* V9.4 — Today hero: bare typographic intro, no card chrome. */
+/* V9.4 — Today hero: bare typographic intro, no card chrome.
+   V12.0 — headline 28px → 26px, sub 15px → 14.5px. The hero should
+   set context, not dominate the page. Tighter letter-spacing on the
+   headline + slightly more breathing in the sub line-height. */
 .today-hero { display: flex; align-items: flex-end;
                justify-content: space-between; gap: 24px;
                margin: 0 0 8px; flex-wrap: wrap; }
 .today-hero-text { min-width: 0; max-width: 720px; }
-.today-headline { font-size: 28px; font-weight: 700;
-                   letter-spacing: -0.02em; line-height: 1.2;
+.today-headline { font-size: 26px; font-weight: 700;
+                   letter-spacing: -0.022em; line-height: 1.2;
                    color: var(--fg); margin: 0; }
-.today-sub { color: var(--muted); font-size: 15px;
+.today-sub { color: var(--muted); font-size: 14.5px;
               margin: 8px 0 0; max-width: 560px;
-              line-height: 1.5; }
+              line-height: 1.52; }
 @media (max-width: 640px) {
   .today-hero { gap: 14px; }
-  .today-headline { font-size: 24px; }
+  .today-headline { font-size: 22px; }
   .today-sub { font-size: 14px; }
 }
 
@@ -531,12 +544,16 @@ table.data td.muted { color: var(--muted); }
 .icon svg { display: block; }
 
 /* ── Call card (communications-as-primary-object) ──────────────────── */
+/* V9.2 / V12.0 — call card row. V12.0 tightens vertical padding
+   18px → 15px for premium density. The card is the workhorse of
+   the activity feed; tighter rows let more callers fit without
+   feeling cramped. */
 .call { display: grid;
          grid-template-columns: 44px 1fr auto;
          gap: var(--s-4); align-items: start;
-         padding: 18px var(--s-5);
-         border-bottom: 1px solid var(--border);
-         transition: background 120ms ease, box-shadow 120ms ease;
+         padding: 15px var(--s-5);
+         border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+         transition: background 140ms ease;
          position: relative; }
 .call:last-child { border-bottom: none; }
 /* V9.2 — stronger hover: subtle wash + accent edge so the row feels
