@@ -104,11 +104,14 @@ def test_customer_pane_chat_widget_targets_septic_pro(app_client):
 # ── operator pane (portal shell) ─────────────────────────────────────
 
 def test_operator_pane_has_portal_shell(app_client):
+    """V10.5 — the V9.5 .window-bar (red/amber/green fake browser
+    dots) was removed for restraint. The portal-shell now opens
+    straight into the body content."""
     r = app_client.get("/")
     body = r.text
     assert 'class="portal-shell"' in body
-    assert 'class="window-bar"' in body
     assert 'class="portal-shell-body"' in body
+    assert 'class="window-bar"' not in body
 
 
 def test_operator_pane_renders_seeded_portal_content(app_client):

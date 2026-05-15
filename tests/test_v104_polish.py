@@ -203,36 +203,41 @@ def test_demo_page_persists_conversation_state(app_client):
     assert "aircept_chat_state" in body
 
 
-# ── 6. Incoming-call banner ────────────────────────────────────────
+# ── 6. Incoming-call banner — RETIRED in V10.5 ─────────────────────
 
-def test_demo_page_has_incoming_call_banner(app_client):
+def test_v105_incoming_call_banner_removed(app_client):
+    """V10.5 — the V10.4 sliding 'Marcus is calling' banner was demo
+    theater. Caller-select now populates the chat directly. The
+    banner markup must not appear on the page."""
     r = app_client.get("/")
     body = r.text
-    assert 'class="call-banner"' in body
-    assert 'id="call-banner"' in body
-    assert "showIncomingCallBanner" in body
+    assert 'class="call-banner"' not in body
+    assert 'id="call-banner"' not in body
+    assert "showIncomingCallBanner" not in body
 
 
-def test_call_banner_css_present():
+def test_v105_call_banner_css_gone():
     css = design.css()
-    assert ".call-banner" in css
-    assert "@keyframes cb-pulse" in css
+    assert ".call-banner" not in css
 
 
-# ── 7. Live call timer ─────────────────────────────────────────────
+# ── 7. Live call timer — RETIRED in V10.5 ──────────────────────────
 
-def test_demo_page_has_call_timer_markup(app_client):
+def test_v105_call_timer_markup_removed(app_client):
+    """V10.5 — the V10.4 ticking call timer was an attention-grabber.
+    Thread duration is still surfaced once on the end-of-call summary
+    card via the new `_threadStart` variable."""
     r = app_client.get("/")
     body = r.text
-    assert 'class="call-timer"' in body
-    assert 'id="call-timer"' in body
-    assert "startCallTimer" in body
-    assert "stopCallTimer" in body
+    assert 'class="call-timer"' not in body
+    assert 'id="call-timer"' not in body
+    assert "startCallTimer" not in body
+    assert "_threadStart" in body   # the V10.5 replacement
 
 
-def test_call_timer_css_present():
+def test_v105_call_timer_css_gone():
     css = design.css()
-    assert ".phone-bar .call-timer" in css
+    assert ".phone-bar .call-timer" not in css
 
 
 # ── 8. End-of-call summary card ────────────────────────────────────
@@ -343,17 +348,28 @@ def test_shortcut_modal_css_present():
 
 # ── 14. Floating demo control + /demo/reset endpoint ───────────────
 
-def test_demo_control_bar_in_markup(app_client):
+def test_demo_control_moved_to_drawer(app_client):
+    """V10.5 — the V10.4 always-visible floating demo control bar
+    was collapsed into a single ⋯ drawer toggle in the top bar.
+    Pause + reset live in the drawer body now."""
     r = app_client.get("/")
     body = r.text
-    assert "demo-control" in body
-    assert "dc-pause" in body
-    assert "dc-reset" in body
+    # The drawer markup
+    assert 'class="demo-drawer"' in body
+    assert 'id="demo-drawer"' in body
+    assert 'id="demo-drawer-toggle"' in body
+    # Reset + pause are now drawer buttons
+    assert 'id="dd-reset"' in body
+    assert 'id="dd-pause"' in body
+    # The V10.4 free-floating control bar must not appear anymore
+    assert 'class="demo-control"' not in body
 
 
-def test_demo_control_css_present():
+def test_demo_drawer_css_present():
     css = design.css()
-    assert ".demo-control" in css
+    assert ".demo-drawer" in css
+    assert ".demo-drawer-toggle" in css
+    assert ".demo-control" not in css  # old class retired
 
 
 def test_demo_reset_endpoint_exists(app_client):

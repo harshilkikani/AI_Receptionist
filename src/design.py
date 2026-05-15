@@ -679,33 +679,27 @@ details.call.call-expandable[open] > summary .call-chevron {
   margin-left: 0;
   border-radius: 1px;
 }
+/* V10.5 — calmer waveform: 5 static bars. The progress bar carries
+   the playback signal; bars get a steady accent-color fill on play
+   but don't pulse. Reserves motion for things that matter. */
 .rec-waveform {
-  display: inline-flex; gap: 2px;
-  align-items: center; height: 24px; flex: 1;
+  display: inline-flex; gap: 3px;
+  align-items: center; height: 18px; flex: 1;
 }
 .rec-waveform span {
   display: inline-block;
-  width: 3px; height: 6px;
-  background: var(--muted);
+  width: 3px; background: var(--n-300);
   border-radius: 1px;
-  transition: height 200ms ease, background 200ms;
+  transition: background 200ms;
 }
-.rec-player.playing .rec-waveform span {
-  background: var(--accent);
-  animation: wave-pulse 0.9s ease-in-out infinite;
-}
-.rec-player.playing .rec-waveform span:nth-child(2)  { animation-delay: 0.05s; }
-.rec-player.playing .rec-waveform span:nth-child(3)  { animation-delay: 0.10s; }
-.rec-player.playing .rec-waveform span:nth-child(4)  { animation-delay: 0.15s; }
-.rec-player.playing .rec-waveform span:nth-child(5)  { animation-delay: 0.20s; }
-.rec-player.playing .rec-waveform span:nth-child(6)  { animation-delay: 0.25s; }
-.rec-player.playing .rec-waveform span:nth-child(7)  { animation-delay: 0.30s; }
-.rec-player.playing .rec-waveform span:nth-child(8)  { animation-delay: 0.35s; }
-.rec-player.playing .rec-waveform span:nth-child(9)  { animation-delay: 0.40s; }
-.rec-player.playing .rec-waveform span:nth-child(10) { animation-delay: 0.45s; }
-@keyframes wave-pulse {
-  0%, 100% { height: 4px; }
-  50%      { height: 18px; }
+.rec-waveform span:nth-child(1) { height: 6px; }
+.rec-waveform span:nth-child(2) { height: 12px; }
+.rec-waveform span:nth-child(3) { height: 16px; }
+.rec-waveform span:nth-child(4) { height: 10px; }
+.rec-waveform span:nth-child(5) { height: 7px; }
+.rec-player.playing .rec-waveform span { background: var(--accent); }
+@media (prefers-color-scheme: dark) {
+  .rec-waveform span { background: #2a3658; }
 }
 .rec-meta { font-size: 12px; color: var(--muted);
              font-variant-numeric: tabular-nums;
@@ -768,8 +762,10 @@ details.call.call-expandable[open] > summary .call-chevron {
   .call-preview .preview-bubble { font-size: 14px; max-width: 88%; }
 }
 
-/* V10.2 — "Now" pulsing micro-badge for partners with activity in
-   the last ~60s. Same green palette as the operator-pane Live pulse. */
+/* V10.2 — "Now" micro-badge for partners with activity in the last
+   ~60s. V10.5 — dot is static (no breathing). The pulse was one of
+   eight simultaneous animations on the page; reserving motion for
+   the ONE canonical operator-pane Live indicator. */
 .live-mini { display: inline-flex; align-items: center; gap: 5px;
               padding: 1px 7px; border-radius: 999px;
               background: var(--success-100); color: var(--success-500);
@@ -777,9 +773,7 @@ details.call.call-expandable[open] > summary .call-chevron {
               text-transform: uppercase; letter-spacing: .04em;
               margin-left: 8px; vertical-align: 1px; }
 .live-mini-dot { width: 5px; height: 5px; border-radius: 999px;
-                  background: var(--success-500);
-                  box-shadow: 0 0 0 0 rgba(22,163,74,0.45);
-                  animation: live-breathe 2.2s ease-in-out infinite; }
+                  background: var(--success-500); }
 @media (prefers-color-scheme: dark) {
   .live-mini { background: #06291f; color: #4ade80; }
   .live-mini-dot { background: #4ade80; }
@@ -1160,6 +1154,21 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
 .owner-sms .sms-ts { font-size: 10px; color: var(--muted);
                       margin-top: 4px; }
 .owner-sms.urgent .sms-ts { color: rgba(251,113,133,0.7); }
+/* V10.5 — owner read-receipt continuity. ~3-4s after an SMS lands
+   in Bob's phone, a small "✓ Read" line appears below it. No
+   animation; just appears. Communicates that the owner saw the
+   brief without ever showing the mechanism. */
+.owner-sms .sms-read {
+  font-size: 9.5px; color: var(--muted);
+  margin-top: 3px; letter-spacing: 0.01em;
+  display: inline-flex; align-items: center; gap: 4px;
+  opacity: 0; transition: opacity 280ms ease;
+}
+.owner-sms .sms-read.shown { opacity: 1; }
+.owner-sms .sms-read svg { width: 9px; height: 9px;
+                            stroke: currentColor; fill: none;
+                            stroke-width: 2.2; stroke-linecap: round;
+                            stroke-linejoin: round; }
 /* New-arrival animation when an SMS slides in. */
 .owner-sms.just-arrived {
   animation: sms-arrive 360ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -1169,8 +1178,11 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* V10.4 — "Updated Xs ago" indicator inside the operator pane label.
-   Subtle temporal anchor so the prospect sees the portal IS live. */
+/* V10.4 / V10.5 — "Updated Xs ago" indicator. Pre-V10.5 it was
+   always visible and updated every second — that's another always-on
+   ticker. Now hidden by default and only revealed when the pane
+   label is hovered, so the prospect can ANSWER the question "is this
+   live?" without it constantly demanding attention. */
 .refresh-indicator {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 1px 8px; border-radius: 999px;
@@ -1179,6 +1191,11 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   text-transform: none; letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   margin-left: 8px;
+  opacity: 0; transition: opacity 160ms ease;
+}
+.demo-pane-operator .pane-label:hover .refresh-indicator,
+.demo-pane-operator .pane-label:focus-within .refresh-indicator {
+  opacity: 1;
 }
 @media (prefers-color-scheme: dark) {
   .refresh-indicator { background: #182338; color: #b2c2db; }
@@ -1224,79 +1241,90 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   text-align: center; font-size: 11px; color: var(--muted);
 }
 
-/* V10.4 — floating demo control. Bottom-right, low-key. */
-.demo-control {
-  position: fixed; right: 20px; bottom: 20px; z-index: 50;
-  display: flex; gap: 8px; align-items: center;
-  background: var(--card-bg); border: 1px solid var(--border);
-  border-radius: 999px; padding: 6px 10px 6px 14px;
-  box-shadow: 0 8px 20px rgba(15,23,42,0.08);
-  font-size: 12px; color: var(--muted);
-}
-.demo-control button {
-  border: none; cursor: pointer; padding: 5px 10px;
-  border-radius: 999px; font-size: 12px; font-weight: 500;
-  background: transparent; color: var(--fg);
-  transition: background 120ms;
-}
-.demo-control button:hover { background: var(--n-100); }
-.demo-control .dc-divider { width: 1px; height: 14px;
-                             background: var(--border); }
-.demo-control .dc-pause.paused { background: var(--accent-soft);
-                                  color: var(--accent); }
-@media (max-width: 480px) {
-  .demo-control { bottom: 12px; right: 12px;
-                   padding: 4px 8px 4px 12px; }
-}
-
-/* V10.4 — incoming-call banner. Slides down from the top of the
-   customer phone when a caller is picked. Auto-accepts after 700ms.
-   Sets up the "they're calling, the AI is about to pick up" beat. */
-.call-banner {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
-  background: var(--accent); color: var(--accent-fg);
-  padding: 12px 16px;
-  display: flex; align-items: center; gap: 12px;
-  font-size: 13px; font-weight: 600;
-  transform: translateY(-100%);
-  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
-  border-radius: 28px 28px 0 0;
-}
-.call-banner.shown { transform: translateY(0); }
-.call-banner .cb-glyph {
-  width: 28px; height: 28px; border-radius: 999px;
-  background: rgba(255,255,255,0.18);
+/* V10.5 — demo drawer. Replaces V10.4's floating control bar +
+   inline tenant switcher. Single ⋯ button in the top bar opens an
+   aside panel from the right with industry switcher, pause-refresh,
+   and reset. Keeps demo-mechanic UI out of the operational view. */
+.demo-drawer-toggle {
+  margin-left: 10px;
+  width: 32px; height: 32px;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: var(--card-bg); color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  animation: cb-pulse 1.1s ease-in-out infinite;
+  cursor: pointer; padding: 0;
+  transition: background 120ms, color 120ms;
 }
-.call-banner .cb-text { flex: 1; line-height: 1.25; }
-.call-banner .cb-name { font-weight: 700; }
-.call-banner .cb-sub  { font-size: 11px; opacity: 0.8;
-                          font-weight: 500; margin-top: 1px; }
-@keyframes cb-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.4); }
-  60%      { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
+.demo-drawer-toggle:hover { background: var(--n-100); color: var(--fg); }
+.demo-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 60;
+  width: 320px; max-width: calc(100vw - 32px);
+  background: var(--card-bg); border-left: 1px solid var(--border);
+  box-shadow: -16px 0 32px rgba(15,23,42,0.10);
+  transform: translateX(100%);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex; flex-direction: column;
+}
+.demo-drawer.open { transform: translateX(0); }
+.demo-drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.demo-drawer-title { font-size: 13px; font-weight: 600;
+                      color: var(--fg); letter-spacing: -0.005em; }
+.demo-drawer-close {
+  background: transparent; border: none; cursor: pointer;
+  width: 28px; height: 28px; border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.demo-drawer-close:hover { background: var(--n-100); color: var(--fg); }
+.demo-drawer-body { padding: 20px; display: flex;
+                      flex-direction: column; gap: 16px; }
+.demo-drawer .dd-row { display: flex; flex-direction: column;
+                        gap: 6px; }
+.demo-drawer .dd-label {
+  font-size: 11px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.demo-drawer .dd-row .tenant-switcher {
+  margin: 0; padding: 9px 12px;
+  background: var(--n-50); border: 1px solid var(--border);
+  width: 100%;
+}
+.demo-drawer .dd-row .tenant-switcher select {
+  width: 100%; padding-right: 16px; font-size: 13px;
+}
+.demo-drawer .dd-actions { flex-direction: row; gap: 8px; }
+.demo-drawer .dd-btn {
+  flex: 1; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card-bg);
+  color: var(--fg); font-weight: 500; font-size: 13px;
+  cursor: pointer; transition: background 120ms;
+}
+.demo-drawer .dd-btn:hover { background: var(--n-100); }
+.demo-drawer .dd-btn.paused {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent-soft);
+}
+.demo-drawer .dd-btn-danger { color: var(--danger-500); }
+.demo-drawer .dd-btn-danger:hover { background: var(--danger-100); }
+.demo-drawer .dd-foot {
+  margin-top: 8px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted); text-align: center;
+}
+.demo-drawer .dd-foot kbd {
+  display: inline-block; padding: 1px 6px;
+  font-family: var(--font-mono); font-size: 11px;
+  background: var(--n-100); border-radius: 4px;
+  color: var(--fg);
 }
 
-/* V10.4 — live call timer in the phone bar. Ticks while a "call" is
-   active (after the prospect accepts the incoming banner). */
-.phone-bar .call-timer {
-  margin-left: auto;
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  opacity: 0; transition: opacity 200ms;
-}
-.phone-bar .call-timer.active { opacity: 1; }
-.phone-bar .call-timer .ct-dot {
-  width: 5px; height: 5px; border-radius: 999px;
-  background: var(--success-500);
-  animation: live-breathe 2.2s ease-in-out infinite;
-}
-@media (prefers-color-scheme: dark) {
-  .phone-bar .call-timer .ct-dot { background: #4ade80; }
-}
+/* V10.5 — V10.4 incoming-call banner + live call timer removed.
+   They were demo theater; restraint phase keeps the call experience
+   quiet and lets the chat populate naturally on caller-select. */
 
 /* V10.4 — end-of-call summary card slides into the chat after the
    conversation reaches a closing signal. Different visual register
@@ -1362,28 +1390,20 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   transition: width 3500ms linear;
 }
 
-/* V10.3 — first-visit onboarding pointer. Pulses over the first
-   caller chip until the prospect clicks any chip. localStorage-gated
-   so it doesn't reappear after dismissal. */
-.onboard-pointer {
-  position: absolute; left: 14px; top: 56px;
-  background: var(--fg); color: var(--bg);
-  padding: 8px 12px; border-radius: 8px;
-  font-size: 12px; font-weight: 500;
-  box-shadow: 0 6px 14px rgba(15,23,42,0.18);
-  pointer-events: none; z-index: 5;
-  white-space: nowrap;
-  animation: pointer-bob 1.8s ease-in-out infinite;
+/* V10.5 — quiet onboarding hint. Pre-V10.5 this was a bobbing
+   arrow tooltip with a pulse animation; that was demo theater.
+   Now it's a small inline caption in the customer pane label that
+   fades away on first chip click. */
+.onboard-hint {
+  display: inline-flex; align-items: center;
+  margin-left: 10px;
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 10.5px; font-weight: 500;
+  text-transform: none; letter-spacing: 0;
+  transition: opacity 220ms ease;
 }
-.onboard-pointer::after {
-  content: ""; position: absolute; top: -5px; left: 18px;
-  width: 10px; height: 10px; background: var(--fg);
-  transform: rotate(45deg);
-}
-@keyframes pointer-bob {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-3px); }
-}
+.onboard-hint.dismissed { opacity: 0; pointer-events: none; }
 
 /* V10.3 — read receipts under the customer's outbound bubbles.
    "Delivered" appears instantly; "Read" replaces it after ~200ms
@@ -1416,26 +1436,9 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
               0 2px 4px rgba(15,23,42,0.03);
   overflow: hidden;
 }
-.window-bar {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border);
-  display: flex; gap: 7px; align-items: center;
-  background: var(--card-bg);
-}
-.window-bar .dot {
-  width: 11px; height: 11px; border-radius: 999px;
-  display: inline-block;
-}
-.window-bar .dot.red { background: #ff5f57; }
-.window-bar .dot.amber { background: #febc2e; }
-.window-bar .dot.green { background: #28c840; }
-.window-bar .url-pill {
-  margin-left: auto;
-  font-size: 11px; color: var(--muted);
-  background: var(--n-100); padding: 3px 10px;
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-}
+/* V10.5 — V10.3 .window-bar fake browser-window dots removed.
+   They were skeuomorphic chrome that added no signal. The portal
+   shell now opens straight into the body content. */
 .portal-shell-body {
   padding: 28px 32px 32px;
   max-height: 820px; overflow-y: auto;
@@ -1682,22 +1685,6 @@ def demo_page(*, title: str, body: str,
   <a href="/" class="demo-brand">
     <span class="dot"></span><span>AI Receptionist</span>
   </a>
-  <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
-    <select aria-label="Demo industry">
-      <option value="septic"      data-brand="Septic Pro" data-owner="Bob"
-              data-emergency="My toilets are backing up and there's sewage in the basement!"
-              data-book="Hey, I need to schedule a routine pumping."
-              data-price="How much does a pump-out cost?">Septic Pro</option>
-      <option value="hvac"        data-brand="Sunrise HVAC" data-owner="Mike"
-              data-emergency="My furnace died overnight and it's 12 degrees inside."
-              data-book="Need someone to look at my AC — not cooling well."
-              data-price="What does a tune-up cost?">Sunrise HVAC</option>
-      <option value="real-estate" data-brand="Lawrence Realty" data-owner="Lauren"
-              data-emergency="I lost my keys, I'm locked out of the showing!"
-              data-book="I saw the Birch Road listing — can I tour Saturday?"
-              data-price="What's the asking price on 1100 Birch?">Lawrence Realty</option>
-    </select>
-  </div>
   <a href="{tel}" class="demo-phone-link" style="margin-left:auto;">
     <svg width="14" height="14" viewBox="0 0 24 24"
          stroke="currentColor" fill="none" stroke-width="1.75"
@@ -1706,7 +1693,58 @@ def demo_page(*, title: str, body: str,
     </svg>
     <span>{phone_label}</span>
   </a>
+  <!-- V10.5 — demo drawer toggle. Hides the tenant switcher, reset,
+       pause-refresh, and shortcut hint behind a single discreet
+       ⋯ button so the top bar reads as "brand · phone number" only. -->
+  <button class="demo-drawer-toggle" id="demo-drawer-toggle"
+          aria-label="Demo settings" title="Demo settings">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="6" cy="12" r="1.6"/>
+      <circle cx="12" cy="12" r="1.6"/>
+      <circle cx="18" cy="12" r="1.6"/>
+    </svg>
+  </button>
 </header>
+<aside class="demo-drawer" id="demo-drawer" aria-hidden="true">
+  <div class="demo-drawer-head">
+    <span class="demo-drawer-title">Demo settings</span>
+    <button class="demo-drawer-close" id="demo-drawer-close" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2"
+           stroke-linecap="round">
+        <path d="M5 5l14 14M19 5L5 19"/>
+      </svg>
+    </button>
+  </div>
+  <div class="demo-drawer-body">
+    <div class="dd-row">
+      <label class="dd-label">Industry</label>
+      <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
+        <select aria-label="Demo industry">
+          <option value="septic"      data-brand="Septic Pro" data-owner="Bob"
+                  data-emergency="My toilets are backing up and there's sewage in the basement!"
+                  data-book="Hey, I need to schedule a routine pumping."
+                  data-price="How much does a pump-out cost?">Septic Pro</option>
+          <option value="hvac"        data-brand="Sunrise HVAC" data-owner="Mike"
+                  data-emergency="My furnace died overnight and it's 12 degrees inside."
+                  data-book="Need someone to look at my AC — not cooling well."
+                  data-price="What does a tune-up cost?">Sunrise HVAC</option>
+          <option value="real-estate" data-brand="Lawrence Realty" data-owner="Lauren"
+                  data-emergency="I lost my keys, I'm locked out of the showing!"
+                  data-book="I saw the Birch Road listing — can I tour Saturday?"
+                  data-price="What's the asking price on 1100 Birch?">Lawrence Realty</option>
+        </select>
+      </div>
+    </div>
+    <div class="dd-row dd-actions">
+      <button class="dd-btn" id="dd-pause" type="button">Pause refresh</button>
+      <button class="dd-btn dd-btn-danger" id="dd-reset" type="button">Reset demo</button>
+    </div>
+    <div class="dd-foot">
+      Press <kbd>?</kbd> for keyboard shortcuts.
+    </div>
+  </div>
+</aside>
 {body}
 <script>
 /* V10.3 — recording-mock play button. Toggles .playing for 3.5s. */
@@ -1722,10 +1760,40 @@ document.addEventListener("click", function(e){{
   player.classList.add("playing");
   setTimeout(function(){{ player.classList.remove("playing"); }}, 3500);
 }});
-/* V10.3 / V10.4 — tenant switcher: swap brand label + suggestion
-   buttons + owner-phone label + chat industry context propagated to
-   /chat. Genuine end-to-end industry switch even though the DB stays
-   on septic_pro (the demo's marketing tenant). */
+/* V10.5 — demo drawer wiring. Toggle button opens/closes the
+   right-side aside. Click outside or Esc to close. Holds the
+   tenant switcher + reset + pause-refresh out of the main view. */
+(function(){{
+  const $toggle = document.getElementById("demo-drawer-toggle");
+  const $drawer = document.getElementById("demo-drawer");
+  const $close  = document.getElementById("demo-drawer-close");
+  if (!$toggle || !$drawer) return;
+  function open(){{
+    $drawer.classList.add("open");
+    $drawer.setAttribute("aria-hidden", "false");
+  }}
+  function close(){{
+    $drawer.classList.remove("open");
+    $drawer.setAttribute("aria-hidden", "true");
+  }}
+  $toggle.addEventListener("click", function(e){{
+    e.stopPropagation();
+    $drawer.classList.contains("open") ? close() : open();
+  }});
+  $close.addEventListener("click", close);
+  document.addEventListener("click", function(e){{
+    if (!$drawer.classList.contains("open")) return;
+    if ($drawer.contains(e.target) || $toggle.contains(e.target)) return;
+    close();
+  }});
+  document.addEventListener("keydown", function(e){{
+    if (e.key === "Escape") close();
+  }});
+}})();
+/* V10.3 / V10.4 / V10.5 — tenant switcher: real industry context.
+   Lives inside the demo drawer. Swaps brand label, owner-phone
+   label, suggestion buttons, and propagates the industry context
+   to /chat so the LLM responds with the matching business persona. */
 (function(){{
   const $sw = document.getElementById("tenant-switcher");
   if (!$sw) return;
@@ -1736,23 +1804,17 @@ document.addEventListener("click", function(e){{
     const e = opt.getAttribute("data-emergency");
     const b = opt.getAttribute("data-book");
     const p = opt.getAttribute("data-price");
-    /* Customer phone .biz label */
     const custBiz = document.querySelector(
       ".demo-pane-customer .phone-shell:not(.owner-shell) .phone-bar .biz");
     if (custBiz && brand) custBiz.textContent = brand;
-    /* Owner phone .biz label */
     const ownerBiz = document.querySelector(
       ".owner-shell .phone-bar .biz");
-    if (ownerBiz && owner) ownerBiz.textContent = owner + "'s phone";
-    /* Suggestion buttons */
+    if (ownerBiz && owner) ownerBiz.firstChild.textContent = owner + "'s phone";
     document.querySelectorAll(".phone-suggestion").forEach((btn, i)=>{{
       if (i === 0 && e) btn.dataset.msg = e;
       if (i === 1 && b) btn.dataset.msg = b;
       if (i === 2 && p) btn.dataset.msg = p;
     }});
-    /* Propagate the industry + owner name to the chat JS so the
-       next /chat call sends the right context. Window-level globals
-       written into the demo page's main script. */
     if (typeof window !== "undefined"){{
       window.currentIndustry = opt.value;
       window.currentOwnerName = owner || window.currentOwnerName;
@@ -1761,8 +1823,6 @@ document.addEventListener("click", function(e){{
   $sel.addEventListener("change", function(){{
     applyIndustry($sel.options[$sel.selectedIndex]);
   }});
-  /* Apply the initial selection so currentIndustry is in sync with
-     whatever localStorage / URL state restored. */
   applyIndustry($sel.options[$sel.selectedIndex]);
 }})();
 </script>

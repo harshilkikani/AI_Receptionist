@@ -150,16 +150,18 @@ def test_owner_sms_css_classes_present():
 # ── 6. Onboarding pointer ───────────────────────────────────────────
 
 def test_demo_page_has_onboarding_function(app_client):
+    """V10.3 added a bobbing arrow tooltip. V10.5 replaced it with a
+    quiet inline caption (.onboard-hint) — no animation, no arrow."""
     r = app_client.get("/")
     body = r.text
     assert "maybeShowOnboarding" in body
-    assert "onboard-pointer" in body
+    assert "onboard-hint" in body
     assert "aircept_onboarded" in body  # localStorage key
 
 
-def test_onboard_pointer_css_present():
+def test_onboard_hint_css_present():
     css = design.css()
-    assert ".onboard-pointer" in css
+    assert ".onboard-hint" in css
 
 
 # ── 7. Sparklines on Today stats ────────────────────────────────────
@@ -253,10 +255,14 @@ def test_recording_mock_play_button_wiring_in_page_shell():
     assert "playing" in out
 
 
-def test_recording_player_css_animates_waveform():
+def test_recording_player_css_signals_playback():
+    """V10.5 — the V10.3 wave-pulse keyframe was retired (one of
+    eight simultaneous animations on the page). The waveform now
+    statically signals playback via background-color swap; the
+    progress bar carries the playback animation."""
     css = design.css()
     assert ".rec-player.playing" in css
-    assert "@keyframes wave-pulse" in css
+    assert ".rec-player.playing .rec-waveform span" in css
 
 
 # ── 9. Conversations-list search ────────────────────────────────────

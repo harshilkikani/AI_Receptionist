@@ -474,12 +474,6 @@ def index():
         </span>
       </div>
       <div class="portal-shell">
-        <div class="window-bar">
-          <span class="dot red"></span>
-          <span class="dot amber"></span>
-          <span class="dot green"></span>
-          <span class="url-pill">your-business.ai/today</span>
-        </div>
         <div class="portal-shell-body" id="portal-body">{operator_inner}</div>
       </div>
     </section>
@@ -500,28 +494,10 @@ def index():
           </span>
         </div>
         <div class="phone-bar">
-          <div>
-            <div class="biz">Septic Pro</div>
-            <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
-          </div>
-          <div class="call-timer" id="call-timer">
-            <span class="ct-dot"></span><span id="ct-display">00:00</span>
-          </div>
+          <div class="biz">Septic Pro</div>
+          <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
         </div>
         <div class="phone-screen">
-          <div class="call-banner" id="call-banner" aria-hidden="true">
-            <div class="cb-glyph">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="1.75"
-                   stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6.6 10.8a13 13 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11 11 0 0 0 3.5.55 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11 11 0 0 0 .55 3.5 1 1 0 0 1-.25 1Z"/>
-              </svg>
-            </div>
-            <div class="cb-text">
-              <div class="cb-name" id="cb-name">Incoming call</div>
-              <div class="cb-sub">mobile · just now</div>
-            </div>
-          </div>
           <div class="chat-chips" id="callers"></div>
           <div class="phone-conv" id="conv-body">
             <div class="psys">Pick a caller above to start.</div>
@@ -546,18 +522,6 @@ def index():
     # so the prospect immediately sees what Bob receives. Updates
     # dynamically when the prospect triggers an emergency or booking.
     owner_phone_inner = """
-        <div class="phone-status">
-          <span class="ps-time">9:41</span>
-          <span class="ps-right">
-            <span class="ps-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 10"><path d="M1 9h2V6H1zM5 9h2V4H5zM9 9h2V2H9zM13 9h2V0h-2z"/></svg>
-            </span>
-            <span class="ps-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 12"><path d="M8 12L0 4a11 11 0 0 1 16 0Z" fill="currentColor" stroke="none"/></svg>
-            </span>
-            <span class="ps-battery"><span class="ps-bat-fill"></span></span>
-          </span>
-        </div>
         <div class="phone-bar">
           <div>
             <div class="biz">Bob's phone<span class="biz-badge" id="owner-badge" style="display:none">0</span></div>
@@ -570,11 +534,19 @@ def index():
               <div class="sms-from">AI Receptionist</div>
               <div>Emergency · Marcus Reilly · 412 Maple Lane, Lancaster · sewage backup · about to bridge.</div>
               <div class="sms-ts">6h ago</div>
+              <div class="sms-read shown">
+                <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
+                Read
+              </div>
             </div>
             <div class="owner-sms">
               <div class="sms-from">AI Receptionist</div>
               <div>Booking · Sarah Wong · Tuesday 1pm pump-out · 412 Oak Street.</div>
               <div class="sms-ts">yesterday</div>
+              <div class="sms-read shown">
+                <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
+                Read
+              </div>
             </div>
           </div>
         </div>
@@ -698,10 +670,25 @@ def index():
       div.innerHTML =
         `<div class="sms-from">AI Receptionist</div>` +
         `<div>${escapeHTML(body)}</div>` +
-        `<div class="sms-ts">just now</div>`;
+        `<div class="sms-ts">just now</div>` +
+        `<div class="sms-read">` +
+          `<svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>` +
+          `Read` +
+        `</div>`;
       $ownerConv.insertBefore(div, $ownerConv.firstChild);
       setTimeout(()=>div.classList.remove("just-arrived"), 600);
       bumpOwnerBadge();
+      /* V10.5 — subtle owner read-receipt continuity. ~3.4s after
+         the SMS lands, mark it as Read. Believable timing offset
+         (the owner needed a moment to glance). No flashy reveal —
+         the receipt just appears below the bubble. Slightly faster
+         for emergencies, a touch slower for bookings. */
+      const readDelay = isEmerg ? 2200 + Math.random() * 600
+                                 : 3500 + Math.random() * 1200;
+      setTimeout(function(){
+        const r = div.querySelector(".sms-read");
+        if (r) r.classList.add("shown");
+      }, readDelay);
     }
 
     /* V10.4 — end-of-call summary card. Slides into the chat after
@@ -717,8 +704,7 @@ def index():
       const closingDetected = _closeRegex.test(reply);
       if (!closingDetected && aiTurns < 4) return;
       _summaryShown = true;
-      stopCallTimer();
-      const sec = _ctStart ? Math.floor((Date.now() - _ctStart) / 1000) : 0;
+      const sec = _threadStart ? Math.floor((Date.now() - _threadStart) / 1000) : 0;
       const m = String(Math.floor(sec / 60)).padStart(2, "0");
       const s = String(sec % 60).padStart(2, "0");
       const intent = (data && data.intent) || "General";
@@ -740,19 +726,23 @@ def index():
       $body.scrollTop = $body.scrollHeight;
     }
 
-    /* V10.3 — first-visit onboarding pointer over the first caller
-       chip. Dismissed via localStorage on first chip-click. */
+    /* V10.5 — quiet onboarding hint. Pre-V10.5 this was a bobbing
+       arrow overlay; that was demo theater. Now it's a static caption
+       under the customer pane label, fading away on first chip click. */
     function maybeShowOnboarding(){
       try {
         if (localStorage.getItem("aircept_onboarded")) return;
       } catch (_) { /* private mode etc. — show anyway */ }
-      const ptr = document.createElement("div");
-      ptr.className = "onboard-pointer";
-      ptr.textContent = "Pick a caller to start →";
-      const shell = document.querySelector(".phone-shell");
-      if (shell) shell.appendChild(ptr);
+      const paneLabel = document.querySelector(
+        ".demo-pane-customer .pane-label");
+      if (!paneLabel) return;
+      const hint = document.createElement("span");
+      hint.className = "onboard-hint";
+      hint.textContent = "Pick a caller to start";
+      paneLabel.appendChild(hint);
       const dismiss = () => {
-        ptr.remove();
+        hint.classList.add("dismissed");
+        setTimeout(()=>hint.remove(), 300);
         try { localStorage.setItem("aircept_onboarded", "1"); } catch(_){}
         $chips.removeEventListener("click", dismiss);
       };
@@ -835,64 +825,30 @@ def index():
 
     function selectCaller(id){
       activeCaller = id;
-      _summaryShown = false;   /* V10.4 — fresh thread, allow summary again */
+      _summaryShown = false;   /* fresh thread, allow summary again */
+      _threadStart = Date.now();  /* V10.5 — track start for summary duration */
       document.querySelectorAll(".chat-chip").forEach(el => el.classList.toggle("active", el.dataset.id === id));
       const c = callersById[id];
       $body.innerHTML = "";
-      /* V10.4 — incoming-call banner. Slides down from the phone top,
-         auto-dismisses after 700ms, then the chat populates. */
-      showIncomingCallBanner(c, () => {
-        const intro = c.name ? `You're ${c.name} — ${c.phone}` : `New caller — ${c.phone}`;
-        appendSystem(intro);
-        if (c.scenario_hint || c.preview) {
-          appendSystem(c.scenario_hint || c.preview);
-        }
-        if(c.type === "return" && c.address){
-          appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
-        }
-        startCallTimer();
-        $input.disabled = false;
-        $send.disabled = false;
-        $input.focus();
-      });
-    }
-
-    /* V10.4 — sliding "Marcus is calling" banner. Sets the demo stage. */
-    function showIncomingCallBanner(c, onAccept){
-      const $banner = document.getElementById("call-banner");
-      const $name   = document.getElementById("cb-name");
-      if (!$banner){ if (onAccept) onAccept(); return; }
-      $name.textContent = (c.name || "Unknown caller") + " is calling";
-      $banner.classList.add("shown");
-      setTimeout(() => {
-        $banner.classList.remove("shown");
-        setTimeout(() => { if (onAccept) onAccept(); }, 220);
-      }, 700);
-    }
-
-    /* V10.4 — live call timer in the phone bar. */
-    let _ctStart = 0, _ctTick = null;
-    function startCallTimer(){
-      stopCallTimer();
-      const $t = document.getElementById("call-timer");
-      const $d = document.getElementById("ct-display");
-      if (!$t || !$d) return;
-      _ctStart = Date.now();
-      $t.classList.add("active");
-      function tick(){
-        const sec = Math.floor((Date.now() - _ctStart) / 1000);
-        const m = String(Math.floor(sec / 60)).padStart(2, "0");
-        const s = String(sec % 60).padStart(2, "0");
-        $d.textContent = m + ":" + s;
+      /* V10.5 — populate the chat immediately. The V10.4 sliding
+         banner + 700ms ceremony was demo theater; real receptionists
+         don't see that. A quiet system-line intro is enough. */
+      const intro = c.name ? `${c.name} · ${c.phone}` : `New caller · ${c.phone}`;
+      appendSystem(intro);
+      if (c.scenario_hint || c.preview) {
+        appendSystem(c.scenario_hint || c.preview);
       }
-      tick();
-      _ctTick = setInterval(tick, 1000);
+      if(c.type === "return" && c.address){
+        appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
+      }
+      $input.disabled = false;
+      $send.disabled = false;
+      $input.focus();
     }
-    function stopCallTimer(){
-      const $t = document.getElementById("call-timer");
-      if (_ctTick){ clearInterval(_ctTick); _ctTick = null; }
-      if ($t) $t.classList.remove("active");
-    }
+    /* V10.5 — replaces the V10.4 ticking call-timer attention-grab.
+       Just record when the thread started so the end-of-call summary
+       can show the elapsed time once on close. */
+    let _threadStart = 0;
 
     /* V9.6 — live-refresh the operator portal pane after each chat
        turn so prospects see the message they just typed appear in the
@@ -1160,18 +1116,13 @@ def index():
       }
     });
 
-    /* V10.4 — floating demo control: Reset state + Pause auto-refresh. */
-    function _buildDemoControl(){
-      const wrap = document.createElement("div");
-      wrap.className = "demo-control";
-      wrap.innerHTML =
-        '<span>Demo</span>' +
-        '<span class="dc-divider"></span>' +
-        '<button class="dc-pause" id="dc-pause" type="button">Pause refresh</button>' +
-        '<button class="dc-reset" id="dc-reset" type="button">Reset</button>';
-      document.body.appendChild(wrap);
-      const $pause = document.getElementById("dc-pause");
-      const $reset = document.getElementById("dc-reset");
+    /* V10.5 — wire the demo-drawer controls (pause + reset). The
+       drawer markup is rendered by demo_page(); JS here just
+       attaches the behaviors. */
+    function _wireDemoDrawerControls(){
+      const $pause = document.getElementById("dd-pause");
+      const $reset = document.getElementById("dd-reset");
+      if (!$pause || !$reset) return;
       $pause.addEventListener("click", function(){
         _pollPaused = !_pollPaused;
         $pause.classList.toggle("paused", _pollPaused);
@@ -1182,16 +1133,14 @@ def index():
         $reset.textContent = "Resetting…";
         try {
           await fetch("/demo/reset", {method:"POST"});
-          /* Wipe chat state too. */
           try { sessionStorage.removeItem(SESSION_KEY); } catch(_){}
           $body.innerHTML = '<div class="psys">Pick a caller above to start.</div>';
-          /* Reset the owner phone notifications. */
           _ownerBadgeCount = 0;
           if ($ownerBadge){ $ownerBadge.style.display = "none"; $ownerBadge.textContent = "0"; }
           _summaryShown = false;
-          stopCallTimer();
+          _threadStart = 0;
           refreshPortal();
-          $reset.textContent = "Reset";
+          $reset.textContent = "Reset demo";
         } catch(_){
           $reset.textContent = "Reset failed";
         } finally {
@@ -1199,7 +1148,7 @@ def index():
         }
       });
     }
-    _buildDemoControl();
+    _wireDemoDrawerControls();
 
     loadCallers();
     maybeShowOnboarding();

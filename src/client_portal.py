@@ -799,12 +799,15 @@ def _render_partner_preview(client_id: str, phone: str,
                 duration = f"{m}:{s:02d}"
         except Exception:
             pass
+        # V10.5 — calmer waveform: 5 bars (was 10), no staggered
+        # animation. The bars stay static; only the progress bar
+        # below animates during playback. Less attention-grabbing.
         rec_player = (
             f'<div class="rec-player">'
             f'<button class="rec-play-btn" type="button" '
             f'aria-label="Play recording"></button>'
             f'<div class="rec-waveform" aria-hidden="true">'
-            + ('<span></span>' * 10) +
+            + ('<span></span>' * 5) +
             f'</div>'
             f'<div class="rec-meta">Recording · {html.escape(duration)}</div>'
             f'<div class="rec-progress"><div class="rec-progress-fill"></div></div>'
