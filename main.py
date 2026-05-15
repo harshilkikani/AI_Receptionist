@@ -311,6 +311,13 @@ class ChatIn(BaseModel):
     # demo a specific tenant (e.g. septic_pro) regardless of what the
     # sole-real-tenant fallback would pick.
     client_id: str | None = None
+    # V10.4 — combined-demo industry-context override. When the
+    # prospect picks "HVAC" or "Real estate" in the demo's tenant
+    # switcher, the chat is sent with industry="hvac" or
+    # "real-estate" so the LLM responds with the matching business
+    # context. The DB write still scopes to septic_pro (the demo's
+    # marketing tenant) but the LLM persona honors the switcher.
+    industry: str | None = None
 
 
 def _run_pipeline(caller: dict, user_message: str, client: dict = None,
@@ -493,10 +500,28 @@ def index():
           </span>
         </div>
         <div class="phone-bar">
-          <div class="biz">Septic Pro</div>
-          <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
+          <div>
+            <div class="biz">Septic Pro</div>
+            <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
+          </div>
+          <div class="call-timer" id="call-timer">
+            <span class="ct-dot"></span><span id="ct-display">00:00</span>
+          </div>
         </div>
         <div class="phone-screen">
+          <div class="call-banner" id="call-banner" aria-hidden="true">
+            <div class="cb-glyph">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.75"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6.6 10.8a13 13 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11 11 0 0 0 3.5.55 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11 11 0 0 0 .55 3.5 1 1 0 0 1-.25 1Z"/>
+              </svg>
+            </div>
+            <div class="cb-text">
+              <div class="cb-name" id="cb-name">Incoming call</div>
+              <div class="cb-sub">mobile · just now</div>
+            </div>
+          </div>
           <div class="chat-chips" id="callers"></div>
           <div class="phone-conv" id="conv-body">
             <div class="psys">Pick a caller above to start.</div>
@@ -534,8 +559,10 @@ def index():
           </span>
         </div>
         <div class="phone-bar">
-          <div class="biz">Bob's phone</div>
-          <div class="biz-sub">Texts from your receptionist</div>
+          <div>
+            <div class="biz">Bob's phone<span class="biz-badge" id="owner-badge" style="display:none">0</span></div>
+            <div class="biz-sub">Texts from your receptionist</div>
+          </div>
         </div>
         <div class="phone-screen">
           <div class="owner-conv" id="owner-conv">
@@ -567,6 +594,17 @@ def index():
     chat_js = """
     <script>
     const DEMO_CLIENT_ID = "septic_pro";
+    /* V10.4 — selected industry from the top-bar switcher. Sent with
+       every /chat call so the LLM responds with matching business
+       context. "septic" = current behavior (no override).
+       Attached to window so the tenant-switcher script (which runs
+       in a separate <script> block) can write to it. */
+    if (typeof window.currentIndustry === "undefined") {
+      window.currentIndustry = "septic";
+    }
+    if (typeof window.currentOwnerName === "undefined") {
+      window.currentOwnerName = "Bob";
+    }
     /* V10.1 — sort order now comes from /demo/callers (seeded
        persona order is the canonical demo flow). PREFERRED_ORDER
        retired with /missed-calls as the chat source. */
@@ -585,6 +623,23 @@ def index():
       return Math.abs(h) % 360;
     }
 
+    /* V10.4 — smooth autoscroll. Animated scroll-to-bottom when new
+     * content arrives; instant on first paint to avoid a load-time
+     * scroll animation. */
+    let _firstPaint = true;
+    function _smoothScrollToBottom(){
+      const target = $body.scrollHeight;
+      if (_firstPaint){
+        $body.scrollTop = target;
+        _firstPaint = false;
+        return;
+      }
+      try {
+        $body.scrollTo({top: target, behavior: "smooth"});
+      } catch(_) {
+        $body.scrollTop = target;
+      }
+    }
     function appendMsg(role, text, opts){
       opts = opts || {};
       const div = document.createElement("div");
@@ -603,15 +658,24 @@ def index():
         div.appendChild(m);
       }
       $body.appendChild(div);
-      $body.scrollTop = $body.scrollHeight;
+      _smoothScrollToBottom();
       return div;
     }
     function appendSystem(t){ appendMsg("sys", t); }
 
     /* V10.3 — push a new SMS bubble into the owner phone preview
-       when the AI flags the call. Pulls intent + priority from the
-       /chat response and the partner's name/address from callersById. */
-    const $ownerConv = document.getElementById("owner-conv");
+       when the AI flags the call. V10.4 — also increments the iOS-
+       style red badge on the owner phone bar so the prospect sees
+       the new-notification count. */
+    const $ownerConv  = document.getElementById("owner-conv");
+    const $ownerBadge = document.getElementById("owner-badge");
+    let _ownerBadgeCount = 0;
+    function bumpOwnerBadge(){
+      if (!$ownerBadge) return;
+      _ownerBadgeCount += 1;
+      $ownerBadge.textContent = String(_ownerBadgeCount);
+      $ownerBadge.style.display = "inline-flex";
+    }
     function pushOwnerSMS(caller, data){
       if (!$ownerConv) return;
       const intent   = (data && data.intent) || "";
@@ -635,9 +699,45 @@ def index():
         `<div class="sms-from">AI Receptionist</div>` +
         `<div>${escapeHTML(body)}</div>` +
         `<div class="sms-ts">just now</div>`;
-      /* Newest on top so the prospect sees it immediately. */
       $ownerConv.insertBefore(div, $ownerConv.firstChild);
       setTimeout(()=>div.classList.remove("just-arrived"), 600);
+      bumpOwnerBadge();
+    }
+
+    /* V10.4 — end-of-call summary card. Slides into the chat after
+       the conversation reaches a closing signal: explicit close
+       phrases from the AI ("talk soon", "we'll be in touch") OR
+       after 4+ assistant turns. One card per session. */
+    let _summaryShown = false;
+    const _closeRegex = /\b(talk soon|talk later|we'?ll be in touch|we'?ll call you back|booked|sounds good — we'?re set|goodbye|have a good one)\b/i;
+    function maybeShowCallSummary(caller, data){
+      if (_summaryShown) return;
+      const reply = (data && data.reply) || "";
+      const aiTurns = $body.querySelectorAll(".pmsg.ai:not(.typing)").length;
+      const closingDetected = _closeRegex.test(reply);
+      if (!closingDetected && aiTurns < 4) return;
+      _summaryShown = true;
+      stopCallTimer();
+      const sec = _ctStart ? Math.floor((Date.now() - _ctStart) / 1000) : 0;
+      const m = String(Math.floor(sec / 60)).padStart(2, "0");
+      const s = String(sec % 60).padStart(2, "0");
+      const intent = (data && data.intent) || "General";
+      const priority = (data && data.priority) || "low";
+      const next = (priority === "high" || /emergency/i.test(intent))
+        ? "Owner contacted — about to bridge"
+        : (/scheduling|book/i.test(intent)
+            ? "Booking captured — confirmation pending"
+            : "Voicemail logged — follow-up by EOD");
+      const card = document.createElement("div");
+      card.className = "call-summary-card";
+      card.innerHTML =
+        `<div class="cs-title">Call summary</div>` +
+        `<div class="cs-row"><b>Caller</b><span>${escapeHTML(caller.name || "Unknown")}</span></div>` +
+        `<div class="cs-row"><b>Duration</b><span>${m}:${s}</span></div>` +
+        `<div class="cs-row"><b>Intent</b><span>${escapeHTML(intent)}</span></div>` +
+        `<div class="cs-row"><b>Next action</b><span>${escapeHTML(next)}</span></div>`;
+      $body.appendChild(card);
+      $body.scrollTop = $body.scrollHeight;
     }
 
     /* V10.3 — first-visit onboarding pointer over the first caller
@@ -720,8 +820,14 @@ def index():
         $chips.querySelectorAll(".chat-chip").forEach(el=>{
           el.addEventListener("click", e=>{ e.preventDefault(); selectCaller(el.dataset.id); });
         });
-        const first = list[0];
-        if(first) selectCaller(first.id);
+        /* V10.4 — try to restore the prior chat state before
+           auto-selecting the first caller. If a recent session was
+           interrupted by F5, the prospect picks back up where they
+           left off. */
+        if (!restoreChatState()){
+          const first = list[0];
+          if(first) selectCaller(first.id);
+        }
       } catch(e){
         $chips.innerHTML = `<div style="padding:10px;color:var(--muted);font-size:12px;">Demo offline. Try again in a moment.</div>`;
       }
@@ -729,22 +835,63 @@ def index():
 
     function selectCaller(id){
       activeCaller = id;
+      _summaryShown = false;   /* V10.4 — fresh thread, allow summary again */
       document.querySelectorAll(".chat-chip").forEach(el => el.classList.toggle("active", el.dataset.id === id));
       const c = callersById[id];
       $body.innerHTML = "";
-      /* V10.1 — show the scenario hint so the prospect knows what
-         the persona's situation is before they start typing. */
-      const intro = c.name ? `You're ${c.name} — ${c.phone}` : `New caller — ${c.phone}`;
-      appendSystem(intro);
-      if (c.scenario_hint || c.preview) {
-        appendSystem(c.scenario_hint || c.preview);
+      /* V10.4 — incoming-call banner. Slides down from the phone top,
+         auto-dismisses after 700ms, then the chat populates. */
+      showIncomingCallBanner(c, () => {
+        const intro = c.name ? `You're ${c.name} — ${c.phone}` : `New caller — ${c.phone}`;
+        appendSystem(intro);
+        if (c.scenario_hint || c.preview) {
+          appendSystem(c.scenario_hint || c.preview);
+        }
+        if(c.type === "return" && c.address){
+          appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
+        }
+        startCallTimer();
+        $input.disabled = false;
+        $send.disabled = false;
+        $input.focus();
+      });
+    }
+
+    /* V10.4 — sliding "Marcus is calling" banner. Sets the demo stage. */
+    function showIncomingCallBanner(c, onAccept){
+      const $banner = document.getElementById("call-banner");
+      const $name   = document.getElementById("cb-name");
+      if (!$banner){ if (onAccept) onAccept(); return; }
+      $name.textContent = (c.name || "Unknown caller") + " is calling";
+      $banner.classList.add("shown");
+      setTimeout(() => {
+        $banner.classList.remove("shown");
+        setTimeout(() => { if (onAccept) onAccept(); }, 220);
+      }, 700);
+    }
+
+    /* V10.4 — live call timer in the phone bar. */
+    let _ctStart = 0, _ctTick = null;
+    function startCallTimer(){
+      stopCallTimer();
+      const $t = document.getElementById("call-timer");
+      const $d = document.getElementById("ct-display");
+      if (!$t || !$d) return;
+      _ctStart = Date.now();
+      $t.classList.add("active");
+      function tick(){
+        const sec = Math.floor((Date.now() - _ctStart) / 1000);
+        const m = String(Math.floor(sec / 60)).padStart(2, "0");
+        const s = String(sec % 60).padStart(2, "0");
+        $d.textContent = m + ":" + s;
       }
-      if(c.type === "return" && c.address){
-        appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
-      }
-      $input.disabled = false;
-      $send.disabled = false;
-      $input.focus();
+      tick();
+      _ctTick = setInterval(tick, 1000);
+    }
+    function stopCallTimer(){
+      const $t = document.getElementById("call-timer");
+      if (_ctTick){ clearInterval(_ctTick); _ctTick = null; }
+      if ($t) $t.classList.remove("active");
     }
 
     /* V9.6 — live-refresh the operator portal pane after each chat
@@ -797,6 +944,7 @@ def index():
             $pulse.classList.add("live-pulse-flash");
             setTimeout(()=>$pulse.classList.remove("live-pulse-flash"), 1200);
           }
+          _markRefreshed();
         }
         $portal.style.opacity = "1";
       } catch(_) {
@@ -809,8 +957,47 @@ def index():
       if (_portalRefreshScheduled) clearTimeout(_portalRefreshScheduled);
       _portalRefreshScheduled = setTimeout(refreshPortal, delayMs);
     }
-    /* Background poll — natural data movement when no one is chatting. */
-    setInterval(refreshPortal, 10000);
+    /* V10.4 — smart polling cadence. After a chat turn we burst-poll
+       at 1.5s for ~30s so the prospect sees data update fluidly;
+       then settle back to 10s when idle. Pausable via the floating
+       demo control. */
+    let _pollInterval = null;
+    let _pollPaused = false;
+    let _fastUntilTs = 0;
+    function _pollTick(){
+      if (_pollPaused) return;
+      refreshPortal();
+    }
+    function _restartPoll(ms){
+      if (_pollInterval) clearInterval(_pollInterval);
+      _pollInterval = setInterval(_pollTick, ms);
+    }
+    function enterFastPoll(){
+      _fastUntilTs = Date.now() + 30000;   /* 30s of fast cadence */
+      _restartPoll(1500);
+      /* Schedule a settle-back when the window expires. */
+      setTimeout(()=>{
+        if (Date.now() >= _fastUntilTs) _restartPoll(10000);
+      }, 30000);
+    }
+    _restartPoll(10000);   /* baseline idle cadence */
+
+    /* V10.4 — "Updated Xs ago" refresh indicator. Pinned next to the
+       operator-pane label. Refreshed every second. */
+    const $refreshLabel = document.createElement("span");
+    $refreshLabel.className = "refresh-indicator";
+    $refreshLabel.textContent = "Updated just now";
+    const $opLabel = document.querySelector(".demo-pane-operator .pane-label");
+    if ($opLabel) $opLabel.appendChild($refreshLabel);
+    let _lastRefreshTs = Date.now();
+    function _markRefreshed(){ _lastRefreshTs = Date.now(); }
+    function _updateRefreshLabel(){
+      const sec = Math.floor((Date.now() - _lastRefreshTs) / 1000);
+      if (sec < 5) $refreshLabel.textContent = "Updated just now";
+      else if (sec < 60) $refreshLabel.textContent = "Updated " + sec + "s ago";
+      else $refreshLabel.textContent = "Updated " + Math.floor(sec/60) + "m ago";
+    }
+    setInterval(_updateRefreshLabel, 1000);
 
     async function send(text){
       if(!activeCaller || !text.trim()) return;
@@ -826,7 +1013,12 @@ def index():
         const r = await fetch("/chat", {
           method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({caller_id: activeCaller, message: text, client_id: DEMO_CLIENT_ID}),
+          body: JSON.stringify({
+            caller_id: activeCaller,
+            message: text,
+            client_id: DEMO_CLIENT_ID,
+            industry: window.currentIndustry || "septic",
+          }),
         });
         if(!r.ok){
           const detail = await r.text();
@@ -852,11 +1044,17 @@ def index():
            the prospect sees the third-actor loop close in real time. */
         if (c){
           pushOwnerSMS(c, data);
+          /* V10.4 — show the end-of-call summary card if the
+             conversation has reached a closing signal. */
+          maybeShowCallSummary(c, data);
         }
         /* Schedule the portal refresh ~600ms after the reply lands so
            the prospect sees the chat update first, then the portal
            catches up. */
         scheduleRefresh(600);
+        /* V10.4 — enter fast-poll mode so subsequent refreshes are
+           snappy while there's active conversation. */
+        enterFastPoll();
       } catch(e){
         loading.remove();
         appendSystem("Network error.");
@@ -871,6 +1069,138 @@ def index():
       const btn = e.target.closest(".phone-suggestion");
       if(btn && !$input.disabled){ send(btn.dataset.msg); }
     });
+    /* V10.4 — conversation persistence. After every appended bubble
+       (user/ai/sys), snapshot the chat body to sessionStorage with
+       the active caller. Restored on page load so a refresh mid-demo
+       doesn't wipe the prospect's context. */
+    const SESSION_KEY = "aircept_chat_state";
+    function saveChatState(){
+      try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+          caller: activeCaller,
+          html: $body.innerHTML,
+          industry: window.currentIndustry || "septic",
+          ts: Date.now(),
+        }));
+      } catch(_) {}
+    }
+    function restoreChatState(){
+      try {
+        const raw = sessionStorage.getItem(SESSION_KEY);
+        if (!raw) return false;
+        const state = JSON.parse(raw);
+        if (!state || !state.caller || !state.html) return false;
+        /* Sessions older than 30 min are stale — drop them. */
+        if (Date.now() - (state.ts || 0) > 30 * 60 * 1000) return false;
+        if (!callersById[state.caller]) return false;
+        activeCaller = state.caller;
+        $body.innerHTML = state.html;
+        document.querySelectorAll(".chat-chip").forEach(el =>
+          el.classList.toggle("active", el.dataset.id === activeCaller));
+        if (state.industry) window.currentIndustry = state.industry;
+        $input.disabled = false;
+        $send.disabled  = false;
+        $body.scrollTop = $body.scrollHeight;
+        return true;
+      } catch(_) { return false; }
+    }
+    /* Wrap appendMsg + appendSystem so every write hits sessionStorage. */
+    const _origAppendMsg = appendMsg;
+    appendMsg = function(role, text, opts){
+      const r = _origAppendMsg(role, text, opts);
+      saveChatState();
+      return r;
+    };
+
+    /* V10.4 — keyboard-shortcut overlay. `?` opens, `Esc` closes,
+       `1`–`7` select corresponding caller chip, `Cmd/Ctrl+K` focuses
+       the chat input. Small modal, very lightweight. */
+    function _buildShortcutOverlay(){
+      const overlay = document.createElement("div");
+      overlay.className = "shortcut-overlay";
+      overlay.innerHTML =
+        '<div class="shortcut-modal" role="dialog" aria-modal="true">' +
+        '<h3>Keyboard shortcuts</h3>' +
+        '<ul>' +
+        '<li><span>Focus chat input</span><span>⌘/Ctrl + K</span></li>' +
+        '<li><span>Pick caller 1–7</span><span>1 – 7</span></li>' +
+        '<li><span>Send message</span><span>Enter</span></li>' +
+        '<li><span>Close this overlay</span><span>Esc</span></li>' +
+        '</ul>' +
+        '<div class="sm-foot">Press <b>?</b> to reopen this anytime.</div>' +
+        '</div>';
+      overlay.addEventListener("click", e => {
+        if (e.target === overlay) overlay.classList.remove("shown");
+      });
+      document.body.appendChild(overlay);
+      return overlay;
+    }
+    const $shortcutOverlay = _buildShortcutOverlay();
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape"){
+        $shortcutOverlay.classList.remove("shown"); return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k"){
+        e.preventDefault();
+        if (!$input.disabled) $input.focus();
+        return;
+      }
+      const inField = ["INPUT","TEXTAREA"].indexOf(
+        (document.activeElement && document.activeElement.tagName) || "") >= 0;
+      if (inField) return;
+      if (e.key === "?" || (e.shiftKey && e.key === "/")){
+        e.preventDefault();
+        $shortcutOverlay.classList.toggle("shown");
+        return;
+      }
+      if (/^[1-7]$/.test(e.key)){
+        const chips = document.querySelectorAll(".chat-chip");
+        const idx = parseInt(e.key, 10) - 1;
+        if (chips[idx]) chips[idx].click();
+      }
+    });
+
+    /* V10.4 — floating demo control: Reset state + Pause auto-refresh. */
+    function _buildDemoControl(){
+      const wrap = document.createElement("div");
+      wrap.className = "demo-control";
+      wrap.innerHTML =
+        '<span>Demo</span>' +
+        '<span class="dc-divider"></span>' +
+        '<button class="dc-pause" id="dc-pause" type="button">Pause refresh</button>' +
+        '<button class="dc-reset" id="dc-reset" type="button">Reset</button>';
+      document.body.appendChild(wrap);
+      const $pause = document.getElementById("dc-pause");
+      const $reset = document.getElementById("dc-reset");
+      $pause.addEventListener("click", function(){
+        _pollPaused = !_pollPaused;
+        $pause.classList.toggle("paused", _pollPaused);
+        $pause.textContent = _pollPaused ? "Resume refresh" : "Pause refresh";
+      });
+      $reset.addEventListener("click", async function(){
+        $reset.disabled = true;
+        $reset.textContent = "Resetting…";
+        try {
+          await fetch("/demo/reset", {method:"POST"});
+          /* Wipe chat state too. */
+          try { sessionStorage.removeItem(SESSION_KEY); } catch(_){}
+          $body.innerHTML = '<div class="psys">Pick a caller above to start.</div>';
+          /* Reset the owner phone notifications. */
+          _ownerBadgeCount = 0;
+          if ($ownerBadge){ $ownerBadge.style.display = "none"; $ownerBadge.textContent = "0"; }
+          _summaryShown = false;
+          stopCallTimer();
+          refreshPortal();
+          $reset.textContent = "Reset";
+        } catch(_){
+          $reset.textContent = "Reset failed";
+        } finally {
+          $reset.disabled = false;
+        }
+      });
+    }
+    _buildDemoControl();
+
     loadCallers();
     maybeShowOnboarding();
     </script>
@@ -900,6 +1230,25 @@ def demo_callers():
     except Exception as e:
         log.warning("demo personas registration in /demo/callers: %s", e)
     return _demo_seed.list_personas()
+
+
+@app.post("/demo/reset")
+def demo_reset():
+    """V10.4 — purge accumulated web-chat exchanges from septic_pro
+    + reseed. The demo accumulates SMS_<digits> rows on every chat
+    turn; over a long demo session this clutters the portal feed.
+    The "Reset demo" button in the floating control hits this and
+    the operator gets a clean slate.
+
+    Only touches the marketing-demo tenant (septic_pro). Real tenant
+    data is never touched."""
+    from src import demo_seed as _demo_seed
+    try:
+        result = _demo_seed.purge_then_seed()
+        return {"ok": True, **result}
+    except Exception as e:
+        log.error("demo reset failed: %s", e)
+        raise HTTPException(500, "demo reset failed")
 
 
 @app.get("/demo/today")
@@ -957,11 +1306,7 @@ def chat(body: ChatIn):
 
     # V9.6 — when the web chat targets a marketing-demo tenant, persist
     # each exchange to the SMS-style storage so the operator portal pane
-    # in the combined demo surfaces it live. The call_sid uses the same
-    # `SMS_<digits>` pattern that /sms/incoming uses — web chat IS
-    # functionally an SMS exchange, so the data layer treats them
-    # identically. That keeps list_by_phone / list_conversation_partners
-    # happy without special-casing.
+    # in the combined demo surfaces it live.
     caller_phone = (caller.get("phone") or "").strip()
     sid = ""
     if caller_phone and (client.get("id") or "").startswith(("septic_pro",
@@ -975,7 +1320,32 @@ def chat(body: ChatIn):
             except Exception as e:
                 log.warning("demo log_sms inbound failed: %s", e)
 
-    result = _run_pipeline(caller, body.message, client=client,
+    # V10.4 — combined-demo industry context. When the tenant switcher
+    # is set to HVAC or real-estate, prepend a small context cue to the
+    # user message so the LLM responds with the matching business
+    # persona. The cue is bracketed so Claude treats it as context, not
+    # caller speech (the prompt forbids meta-narration, so it won't
+    # echo the brackets). The DB still writes under septic_pro.
+    effective_message = body.message
+    industry = (body.industry or "").strip().lower()
+    if industry == "hvac":
+        effective_message = (
+            "[Context: you're the receptionist for an HVAC company. "
+            "Replace pump-out / septic references with furnace, AC, "
+            "ducts, heat pump etc. as appropriate. Do NOT mention "
+            "this context in your reply.] "
+            + body.message
+        )
+    elif industry in ("real-estate", "realty", "real_estate"):
+        effective_message = (
+            "[Context: you're the receptionist for a real-estate "
+            "agency. Replace pump-out / septic references with "
+            "listings, showings, offers, disclosures. The owner is "
+            "the agent. Do NOT mention this context in your reply.] "
+            + body.message
+        )
+
+    result = _run_pipeline(caller, effective_message, client=client,
                             call_sid=sid)
 
     # V9.6 — also log the AI reply on the way out so the operator

@@ -89,15 +89,23 @@ def test_status_pill_empty_input():
     assert "Unknown" in out
 
 
-def test_status_pill_includes_dot_by_default():
-    """The colored dot is the V9.0 visual marker — present unless
-    explicitly suppressed."""
-    out = design.status_pill("answered")
-    assert '<span class="dot">' in out
+def test_status_pill_has_visual_marker_by_default():
+    """V9.0 — every status pill renders a leading visual marker
+    (color dot or, in V10.4+, a glyph) for at-a-glance scanning.
+    V10.4 — status_pill('answered') now uses the SVG check glyph;
+    statuses without a dedicated glyph still fall back to the dot."""
+    answered = design.status_pill("answered")
+    # Glyph variant (V10.4) — check icon
+    assert '<span class="pill-glyph"' in answered or '<span class="dot">' in answered
+
+    # An unknown status has no glyph, so it gets the dot
+    unknown = design.status_pill("totally_unknown_state")
+    assert '<span class="dot">' in unknown
 
 
 def test_status_pill_dot_suppressible():
-    out = design.status_pill("answered", with_dot=False)
+    """`with_dot=False` removes the dot for the no-glyph path."""
+    out = design.status_pill("totally_unknown_state", with_dot=False)
     assert '<span class="dot">' not in out
 
 

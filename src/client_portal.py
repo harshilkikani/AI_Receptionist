@@ -807,6 +807,7 @@ def _render_partner_preview(client_id: str, phone: str,
             + ('<span></span>' * 10) +
             f'</div>'
             f'<div class="rec-meta">Recording · {html.escape(duration)}</div>'
+            f'<div class="rec-progress"><div class="rec-progress-fill"></div></div>'
             f'</div>'
         )
         bubble_html = rec_player + bubble_html

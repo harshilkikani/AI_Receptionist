@@ -301,10 +301,16 @@ def test_demo_page_js_fetches_demo_today_after_send(app_client):
 
 
 def test_demo_page_has_background_poll(app_client):
-    """Even without chat input, the portal should refresh periodically."""
+    """Even without chat input, the portal should refresh periodically.
+    V10.4 — the V9.6 single setInterval call was replaced by smart
+    cadence (_restartPoll). Check the function exists and the idle
+    cadence is set up at startup."""
     client, _ = app_client
     r = client.get("/")
-    assert "setInterval(refreshPortal" in r.text
+    body = r.text
+    assert ("setInterval(refreshPortal" in body
+            or "_restartPoll(10000)" in body
+            or "setInterval(_pollTick" in body)
 
 
 # ── No regression on real portal ────────────────────────────────────

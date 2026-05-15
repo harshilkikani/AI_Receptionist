@@ -527,10 +527,14 @@ def purge_then_seed() -> dict:
         block (NANP fictional reserve; matches the seeded scenarios)
     """
     from src import usage
+    from src.transcripts import _init_transcripts_schema
     demo_phone_prefix = "+155501010%"   # SQL LIKE — covers 555-01010X-555-01010X
     with usage._db_lock:
         conn = usage._connect()
         usage._init_schema(conn)
+        # V10.4 — ensure transcripts table exists before delete so a
+        # fresh DB (e.g. test environment) doesn't 500 on purge.
+        _init_transcripts_schema(conn)
         conn.execute(
             """DELETE FROM calls WHERE client_id = ?
                 AND (call_sid LIKE 'DEMO_%' OR from_number LIKE ?)""",

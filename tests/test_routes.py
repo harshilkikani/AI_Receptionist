@@ -82,6 +82,9 @@ EXPECTED_ROUTES: Set[tuple] = {
     # V10.1 — seeded demo personas (unified-identity source for the combined demo)
     ("GET",  "/demo/callers"),
 
+    # V10.4 — demo control: purge web-chat exchanges + reseed
+    ("POST", "/demo/reset"),
+
     # V9.1 — unified per-partner conversations
     ("GET",  "/client/{client_id}/conversations"),
     ("GET",  "/client/{client_id}/conversations/{phone_slug}"),

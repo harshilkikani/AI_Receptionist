@@ -425,6 +425,10 @@ table.data td.muted { color: var(--muted); }
         line-height: 1.4; white-space: nowrap; }
 .pill .dot { width: 6px; height: 6px; border-radius: 999px;
              background: currentColor; display: inline-block; }
+/* V10.4 — SVG glyph slot inside status pills. Matches dot sizing
+   so a status_pill with a glyph reads at the same height. */
+.pill .pill-glyph { display: inline-flex; align-items: center;
+                     color: currentColor; line-height: 0; }
 .pill.good { background: var(--success-100); color: var(--success-500); }
 .pill.warn { background: var(--warn-100); color: var(--warn-500); }
 .pill.bad  { background: var(--danger-100); color: var(--danger-500); }
@@ -1165,6 +1169,199 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* V10.4 — "Updated Xs ago" indicator inside the operator pane label.
+   Subtle temporal anchor so the prospect sees the portal IS live. */
+.refresh-indicator {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--n-100); color: var(--muted);
+  font-size: 10.5px; font-weight: 500;
+  text-transform: none; letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  .refresh-indicator { background: #182338; color: #b2c2db; }
+}
+
+/* V10.4 — keyboard shortcuts overlay. Modal opens on `?` key. */
+.shortcut-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 160ms ease;
+}
+.shortcut-overlay.shown { opacity: 1; pointer-events: auto; }
+.shortcut-modal {
+  background: var(--card-bg); color: var(--fg);
+  border-radius: 16px; padding: 24px 26px;
+  max-width: 360px; width: calc(100% - 48px);
+  box-shadow: 0 28px 56px rgba(15,23,42,0.24);
+  transform: translateY(8px); transition: transform 200ms ease;
+}
+.shortcut-overlay.shown .shortcut-modal { transform: translateY(0); }
+.shortcut-modal h3 {
+  font-size: 15px; font-weight: 600; margin: 0 0 14px;
+}
+.shortcut-modal ul { list-style: none; padding: 0; margin: 0;
+                      display: flex; flex-direction: column; gap: 10px; }
+.shortcut-modal li {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px;
+}
+.shortcut-modal li span:last-child {
+  font-family: var(--font-mono); font-size: 11px;
+  background: var(--n-100); padding: 3px 7px;
+  border-radius: 5px; color: var(--muted);
+}
+@media (prefers-color-scheme: dark) {
+  .shortcut-modal li span:last-child { background: #182338; }
+}
+.shortcut-modal .sm-foot {
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  text-align: center; font-size: 11px; color: var(--muted);
+}
+
+/* V10.4 — floating demo control. Bottom-right, low-key. */
+.demo-control {
+  position: fixed; right: 20px; bottom: 20px; z-index: 50;
+  display: flex; gap: 8px; align-items: center;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 10px 6px 14px;
+  box-shadow: 0 8px 20px rgba(15,23,42,0.08);
+  font-size: 12px; color: var(--muted);
+}
+.demo-control button {
+  border: none; cursor: pointer; padding: 5px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 500;
+  background: transparent; color: var(--fg);
+  transition: background 120ms;
+}
+.demo-control button:hover { background: var(--n-100); }
+.demo-control .dc-divider { width: 1px; height: 14px;
+                             background: var(--border); }
+.demo-control .dc-pause.paused { background: var(--accent-soft);
+                                  color: var(--accent); }
+@media (max-width: 480px) {
+  .demo-control { bottom: 12px; right: 12px;
+                   padding: 4px 8px 4px 12px; }
+}
+
+/* V10.4 — incoming-call banner. Slides down from the top of the
+   customer phone when a caller is picked. Auto-accepts after 700ms.
+   Sets up the "they're calling, the AI is about to pick up" beat. */
+.call-banner {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  background: var(--accent); color: var(--accent-fg);
+  padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px; font-weight: 600;
+  transform: translateY(-100%);
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 28px 28px 0 0;
+}
+.call-banner.shown { transform: translateY(0); }
+.call-banner .cb-glyph {
+  width: 28px; height: 28px; border-radius: 999px;
+  background: rgba(255,255,255,0.18);
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  animation: cb-pulse 1.1s ease-in-out infinite;
+}
+.call-banner .cb-text { flex: 1; line-height: 1.25; }
+.call-banner .cb-name { font-weight: 700; }
+.call-banner .cb-sub  { font-size: 11px; opacity: 0.8;
+                          font-weight: 500; margin-top: 1px; }
+@keyframes cb-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.4); }
+  60%      { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
+}
+
+/* V10.4 — live call timer in the phone bar. Ticks while a "call" is
+   active (after the prospect accepts the incoming banner). */
+.phone-bar .call-timer {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  opacity: 0; transition: opacity 200ms;
+}
+.phone-bar .call-timer.active { opacity: 1; }
+.phone-bar .call-timer .ct-dot {
+  width: 5px; height: 5px; border-radius: 999px;
+  background: var(--success-500);
+  animation: live-breathe 2.2s ease-in-out infinite;
+}
+@media (prefers-color-scheme: dark) {
+  .phone-bar .call-timer .ct-dot { background: #4ade80; }
+}
+
+/* V10.4 — end-of-call summary card slides into the chat after the
+   conversation reaches a closing signal. Different visual register
+   than a normal bubble — calmer, framed, signals "this thread is
+   wrapping up." */
+.phone-conv .call-summary-card {
+  align-self: stretch; margin: 12px 0 4px;
+  padding: 14px 16px; border-radius: 14px;
+  background: var(--accent-soft); border: 1px solid var(--border);
+  font-size: 13px; line-height: 1.45; color: var(--fg);
+  animation: cs-slide 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.phone-conv .call-summary-card .cs-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--accent);
+  margin-bottom: 8px;
+}
+.phone-conv .call-summary-card .cs-row {
+  display: flex; gap: 8px; padding: 3px 0;
+}
+.phone-conv .call-summary-card .cs-row b {
+  min-width: 78px; font-weight: 600; color: var(--muted);
+  font-size: 12px; padding-top: 1px;
+}
+.phone-conv .call-summary-card .cs-row span { color: var(--fg); flex: 1; }
+@keyframes cs-slide {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* V10.4 — iOS-style red notification badge on the owner phone bar.
+   Shows the count of unread SMS briefings. */
+.owner-shell .phone-bar { position: relative; }
+.owner-shell .biz-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 999px; background: var(--danger-500);
+  color: white; font-size: 10.5px; font-weight: 700;
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+
+/* V10.4 — recording progress bar under the waveform. Animates
+   0:00 → end-of-clip during the 3.5s mock playback. */
+.rec-player { flex-wrap: wrap; }
+.rec-progress {
+  width: 100%; height: 3px; margin-top: 8px;
+  background: var(--n-200); border-radius: 999px;
+  position: relative; overflow: hidden;
+  flex-basis: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  .rec-progress { background: #1e2a44; }
+}
+.rec-progress-fill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 0; background: var(--accent);
+  border-radius: 999px;
+  transition: width 100ms linear;
+}
+.rec-player.playing .rec-progress-fill {
+  width: 100%;
+  transition: width 3500ms linear;
+}
+
 /* V10.3 — first-visit onboarding pointer. Pulses over the first
    caller chip until the prospect clicks any chip. localStorage-gated
    so it doesn't reappear after dismissal. */
@@ -1255,9 +1452,21 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   .phone-shell { max-width: 440px; margin: 0 auto; width: 100%; }
   .portal-shell-body { padding: 20px 18px; max-height: none; }
 }
+/* V10.4 — under 480 the phone-shells are full width and stacked
+   tighter. The owner-shell collapses its tall min-height so two
+   phones + portal fit in a reasonable scroll. */
 @media (max-width: 480px) {
   .demo-phone-link span:last-child { display: none; }
   .demo-phone-link { padding: 8px; }
+  .demo-stage { padding: 16px 12px 40px; gap: 16px; }
+  .demo-pane-customer .pane-label { margin-bottom: 8px; }
+  .phone-shell { border-radius: 22px; }
+  .phone-screen { min-height: 460px; max-height: 560px; }
+  .owner-shell .phone-screen { min-height: 180px; max-height: 240px; }
+  .pane-label { font-size: 11px; gap: 6px; }
+  .live-pulse { font-size: 9.5px; padding: 1px 6px; }
+  .tenant-switcher { margin-left: 8px; }
+  .tenant-switcher select { font-size: 11px; }
 }
 
 /* ── Print ─────────────────────────────────────────────────────────── */
@@ -1475,15 +1684,15 @@ def demo_page(*, title: str, body: str,
   </a>
   <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
     <select aria-label="Demo industry">
-      <option value="septic"      data-brand="Septic Pro"
+      <option value="septic"      data-brand="Septic Pro" data-owner="Bob"
               data-emergency="My toilets are backing up and there's sewage in the basement!"
               data-book="Hey, I need to schedule a routine pumping."
               data-price="How much does a pump-out cost?">Septic Pro</option>
-      <option value="hvac"        data-brand="Sunrise HVAC"
+      <option value="hvac"        data-brand="Sunrise HVAC" data-owner="Mike"
               data-emergency="My furnace died overnight and it's 12 degrees inside."
               data-book="Need someone to look at my AC — not cooling well."
               data-price="What does a tune-up cost?">Sunrise HVAC</option>
-      <option value="real-estate" data-brand="Lawrence Realty"
+      <option value="real-estate" data-brand="Lawrence Realty" data-owner="Lauren"
               data-emergency="I lost my keys, I'm locked out of the showing!"
               data-book="I saw the Birch Road listing — can I tour Saturday?"
               data-price="What's the asking price on 1100 Birch?">Lawrence Realty</option>
@@ -1513,29 +1722,48 @@ document.addEventListener("click", function(e){{
   player.classList.add("playing");
   setTimeout(function(){{ player.classList.remove("playing"); }}, 3500);
 }});
-/* V10.3 — tenant switcher: swap brand label + chat suggestions on
-   the demo page. Pure clientside; no backend tenant switch. */
+/* V10.3 / V10.4 — tenant switcher: swap brand label + suggestion
+   buttons + owner-phone label + chat industry context propagated to
+   /chat. Genuine end-to-end industry switch even though the DB stays
+   on septic_pro (the demo's marketing tenant). */
 (function(){{
   const $sw = document.getElementById("tenant-switcher");
   if (!$sw) return;
   const $sel = $sw.querySelector("select");
-  $sel.addEventListener("change", function(){{
-    const opt = $sel.options[$sel.selectedIndex];
+  function applyIndustry(opt){{
     const brand = opt.getAttribute("data-brand");
+    const owner = opt.getAttribute("data-owner");
     const e = opt.getAttribute("data-emergency");
     const b = opt.getAttribute("data-book");
     const p = opt.getAttribute("data-price");
-    document.querySelectorAll(".phone-bar .biz").forEach(el=>{{
-      // Only swap the customer phone's biz label (not the owner phone)
-      if (el.textContent === "Bob's phone") return;
-      el.textContent = brand;
-    }});
+    /* Customer phone .biz label */
+    const custBiz = document.querySelector(
+      ".demo-pane-customer .phone-shell:not(.owner-shell) .phone-bar .biz");
+    if (custBiz && brand) custBiz.textContent = brand;
+    /* Owner phone .biz label */
+    const ownerBiz = document.querySelector(
+      ".owner-shell .phone-bar .biz");
+    if (ownerBiz && owner) ownerBiz.textContent = owner + "'s phone";
+    /* Suggestion buttons */
     document.querySelectorAll(".phone-suggestion").forEach((btn, i)=>{{
       if (i === 0 && e) btn.dataset.msg = e;
       if (i === 1 && b) btn.dataset.msg = b;
       if (i === 2 && p) btn.dataset.msg = p;
     }});
+    /* Propagate the industry + owner name to the chat JS so the
+       next /chat call sends the right context. Window-level globals
+       written into the demo page's main script. */
+    if (typeof window !== "undefined"){{
+      window.currentIndustry = opt.value;
+      window.currentOwnerName = owner || window.currentOwnerName;
+    }}
+  }}
+  $sel.addEventListener("change", function(){{
+    applyIndustry($sel.options[$sel.selectedIndex]);
   }});
+  /* Apply the initial selection so currentIndustry is in sync with
+     whatever localStorage / URL state restored. */
+  applyIndustry($sel.options[$sel.selectedIndex]);
 }})();
 </script>
 </body></html>"""
@@ -1696,14 +1924,40 @@ _STATUS_MAP = {
 }
 
 
+# V10.4 — small SVG glyphs per status. Helps at-a-glance scanning so
+# the prospect doesn't have to read the label to know what happened.
+# Stroke-based, currentColor-aware, 12px viewbox so they fit inside
+# the pill height. Falls back to the colored dot if the status doesn't
+# have a dedicated glyph.
+_STATUS_GLYPH = {
+    "answered":      '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5l2 2L9 4"/></svg>',
+    "transferred":   '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6M6 2l2 2-2 2M10 8H4M6 10l-2-2 2-2"/></svg>',
+    "emergency":     '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L1 10h10L6 2zM6 5v2M6 8.5v.01"/></svg>',
+    "missed":        '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l6 6M9 3l-6 6"/></svg>',
+    "voicemail":     '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="6" r="1.5"/><circle cx="8.5" cy="6" r="1.5"/><path d="M3.5 7.5h5"/></svg>',
+    "callback":      '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5a6 6 0 0 1 6.5-3M3 3.5v2.5h2.5M9 9.5a3 3 0 0 1-3 0M7 8.5l1 1 1.5-1.5"/></svg>',
+    "follow_up":     '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h7M6 3l3 3-3 3"/></svg>',
+    "no_answer":     '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="4.5"/><path d="M6 4v2.5l1.5 1"/></svg>',
+}
+
+
 def status_pill(status: str, *, with_dot: bool = True) -> str:
     """Plain-English status pill. Unknown statuses fall back to a
-    neutral pill with the raw (title-cased) string."""
+    neutral pill with the raw (title-cased) string.
+
+    V10.4 — when the status has a dedicated glyph, the SVG is shown
+    in place of the colored dot for at-a-glance scanning."""
     s = (status or "").strip().lower()
     label, variant = _STATUS_MAP.get(
         s, (s.replace("_", " ").title() or "Unknown", "ghost"))
-    dot = '<span class="dot"></span>' if with_dot else ""
-    return f'<span class="pill {variant}">{dot}{html.escape(label)}</span>'
+    glyph = _STATUS_GLYPH.get(s, "")
+    if glyph:
+        marker = f'<span class="pill-glyph" aria-hidden="true">{glyph}</span>'
+    elif with_dot:
+        marker = '<span class="dot"></span>'
+    else:
+        marker = ""
+    return f'<span class="pill {variant}">{marker}{html.escape(label)}</span>'
 
 
 def _avatar_hue(seed: str) -> int:
