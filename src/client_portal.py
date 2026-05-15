@@ -965,16 +965,25 @@ def _human_when(ts: int, now_ts: int) -> str:
 
 def _partner_label(phone: str) -> str:
     """Look up a name from memory for this phone number; fall back to
-    the formatted phone. Customer-facing — never shows internal IDs."""
+    the formatted phone. Customer-facing — never shows internal IDs.
+
+    V11.1 — the pre-V11.1 lookup did `get_caller(normalize_phone(phone))`
+    which assumed memory.json was keyed by phone digits. It isn't —
+    entries are keyed by caller_id (e.g., "re_caleb", "hvac_marcus").
+    So portal cards rendered "(555) 010-3001" even when Caleb Morrison
+    existed in memory. Fix: scan all callers and match by their phone
+    field. O(n) but n is small (51 personas + organic callers)."""
     if not phone:
         return "Unknown caller"
     try:
-        from memory import normalize_phone, get_caller
-        digits = normalize_phone(phone)
-        if digits:
-            rec = get_caller(digits)
-            if rec and rec.get("name"):
-                return rec["name"]
+        from memory import normalize_phone, list_callers
+        target = normalize_phone(phone)
+        if target:
+            for rec in list_callers():
+                if normalize_phone(rec.get("phone", "")) == target:
+                    name = (rec.get("name") or "").strip()
+                    if name and name != "Unknown caller":
+                        return name
     except Exception:
         pass
     return _format_phone(phone)

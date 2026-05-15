@@ -886,14 +886,20 @@ def index():
         $chips.innerHTML = list.map(c=>{
           const initial = (c.name||"?").charAt(0).toUpperCase();
           const hue = hashHue(c.phone||c.id);
-          /* Same DiceBear seed as the portal-side call_card. */
+          /* V11.1 — unified Pravatar URL across chat chip + portal
+             card + owner-phone bubble avatar. Same seed everywhere,
+             same face. Pre-V11.1 chat used DiceBear notionists
+             (cartoonish) while the portal used Pravatar (real
+             photos) — the same person looked different across
+             surfaces and broke identity continuity. */
           const seed = (c.phone||c.id||"").replace(/\\D/g,"") || (c.id||"x");
-          const photo = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}`;
+          const photoPrimary = `https://i.pravatar.cc/150?u=${encodeURIComponent(seed)}`;
+          const photoFallback = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}`;
           return `<a class="chat-chip" data-id="${escapeHTML(c.id)}" href="#" style="--av-h:${hue}">
             <span class="av">
               <span class="av-initial">${escapeHTML(initial)}</span>
-              <img class="av-img" src="${photo}" alt="" loading="lazy"
-                   onerror="this.style.display='none'">
+              <img class="av-img" src="${photoPrimary}" alt="" loading="lazy"
+                   onerror="if(this.dataset.tried!=='fallback'){this.dataset.tried='fallback';this.src='${photoFallback}';}else{this.style.display='none';}">
             </span>
             <span>${escapeHTML(c.name)}</span>
           </a>`;
