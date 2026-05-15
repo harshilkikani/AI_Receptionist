@@ -369,15 +369,20 @@ def test_chat_every_known_industry_prepends_fragment(app_client, monkeypatch):
 
 
 def test_owner_phone_initial_render_uses_default_industry(app_client):
-    """V11.0 — first paint shows HVAC seeded bubbles (Marcus + AC,
-    Wendy + tune-up), not the pre-V11.0 septic boilerplate."""
+    """V11.0 / V11.1 — first paint shows HVAC seeded bubbles (Marcus
+    + AC, Wendy + tune-up), not the pre-V11.0 septic boilerplate.
+
+    V11.1 — the owner phone label is now "Owner notifications"
+    (operational, scalable) instead of "Mike's phone" (personal-demo).
+    The HVAC seed personas are still rendered."""
     r = app_client.get("/")
     body = r.text
     # HVAC's seeded emergency: Marcus + 4729 Maple + AC out
     assert "Marcus Reilly" in body
     assert "4729 Maple" in body
-    # HVAC's owner label
-    assert "Mike's phone" in body
+    # V11.1 — operational label, not "Mike's phone"
+    assert "Owner notifications" in body
+    assert "Mike's phone" not in body
 
 
 def test_owner_phone_dynamic_bubble_data_attr(app_client):

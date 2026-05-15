@@ -1154,10 +1154,11 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
 .owner-sms .sms-ts { font-size: 10px; color: var(--muted);
                       margin-top: 4px; }
 .owner-sms.urgent .sms-ts { color: rgba(251,113,133,0.7); }
-/* V10.5 — owner read-receipt continuity. ~3-4s after an SMS lands
-   in Bob's phone, a small "✓ Read" line appears below it. No
-   animation; just appears. Communicates that the owner saw the
-   brief without ever showing the mechanism. */
+/* V10.5 / V11.1 — owner read-receipt continuity. ~3-4s after an
+   SMS lands in the owner-notifications view, a small "Read"
+   indicator appears below it. No animation; just appears.
+   Communicates that the owner saw the brief without ever showing
+   the mechanism. */
 .owner-sms .sms-read {
   font-size: 9.5px; color: var(--muted);
   margin-top: 3px; letter-spacing: 0.01em;
@@ -1695,10 +1696,12 @@ def _tenant_switcher_options() -> str:
             "partner_term":     portal_stats.get("partner_term", "customer"),
         })
         seeded_sms_json = _json.dumps(ind.get("seeded_owner_sms") or [])
+        notif_label = ind.get("notification_label", "Owner")
         parts.append(
             f'<option value="{html.escape(slug)}"{selected}'
             f' data-brand="{html.escape(ind["name"])}"'
             f' data-owner="{html.escape(ind["owner_label"])}"'
+            f' data-notif-label="{html.escape(notif_label)}"'
             f' data-suggestions="{html.escape(suggestions_json)}"'
             f' data-labels="{html.escape(labels_json)}"'
             f' data-emergency-ind="{html.escape(ind.get("emergency_indicator", "Emergency"))}"'
@@ -1930,10 +1933,19 @@ document.addEventListener("click", function(e){{
       ".demo-pane-customer .phone-shell:not(.owner-shell) .phone-bar .biz");
     if (custBiz && brand) custBiz.textContent = brand;
 
-    /* Owner-phone label */
+    /* V11.1 — Owner-phone label uses the operational notification
+       label ("Owner notifications" / "Manager notifications") instead
+       of the pre-V11.1 personal "{{name}}'s phone" pattern. Falls back
+       to owner+"'s phone" if data-notif-label isn't on the option. */
+    const notifLabel = opt.getAttribute("data-notif-label");
     const ownerBiz = document.querySelector(
       ".owner-shell .phone-bar .biz");
-    if (ownerBiz && owner) ownerBiz.firstChild.textContent = owner + "'s phone";
+    if (ownerBiz){{
+      const labelText = notifLabel
+        ? notifLabel + " notifications"
+        : (owner ? owner + "'s phone" : "");
+      if (labelText) ownerBiz.firstChild.textContent = labelText;
+    }}
 
     /* Rebuild suggestion chips */
     rebuildSuggestions(suggestions, labels);

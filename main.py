@@ -555,13 +555,12 @@ def index():
           </form>
         </div>
     """
-    # V10.3 / V11.0 — owner-SMS preview phone (the third actor in the
-    # demo: customer / AI / owner). Pre-seeded with the default
-    # industry's `seeded_owner_sms` from the registry so the prospect
-    # immediately sees what the OWNER of that vertical receives.
-    # Updates dynamically when the prospect triggers an emergency or
-    # booking via the switcher.
-    default_owner_label = default_industry.get("owner_label", "Owner")
+    # V10.3 / V11.0 / V11.1 — owner-SMS preview phone (the third
+    # actor: customer / AI / owner). V11.1 — the phone bar reads
+    # "Owner notifications" or "Manager notifications" — operational,
+    # scalable, no longer the personal "{Name}'s phone" of pre-V11.1.
+    default_notif_label = default_industry.get(
+        "notification_label", "Owner")
     seeded_sms = default_industry.get("seeded_owner_sms") or []
     seeded_sms_html_parts = []
     for entry in seeded_sms:
@@ -581,7 +580,7 @@ def index():
     owner_phone_inner = f"""
         <div class="phone-bar">
           <div>
-            <div class="biz">{_html.escape(default_owner_label)}'s phone<span class="biz-badge" id="owner-badge" style="display:none">0</span></div>
+            <div class="biz">{_html.escape(default_notif_label)} notifications<span class="biz-badge" id="owner-badge" style="display:none">0</span></div>
             <div class="biz-sub">Texts from your receptionist</div>
           </div>
         </div>
@@ -689,6 +688,36 @@ def index():
       $ownerBadge.textContent = String(_ownerBadgeCount);
       $ownerBadge.style.display = "inline-flex";
     }
+    /* V11.1 — dedup state for owner-phone alerts. A single chat
+       thread typically has multiple turns that all classify the same
+       way (booking confirms turn after turn). Pre-V11.1 each turn
+       pushed a new SMS — three identical bookings stacked, exposing
+       a demo-system artifact. The dedup tracks
+       (caller_id, intent_category) keys already pushed and skips
+       repeats. Same caller new intent — fires. New caller — fires.
+       Persisted in sessionStorage so a page reload mid-demo doesn't
+       reset and re-spam. */
+    const OWNER_DEDUP_KEY = "aircept_owner_alerts_v1";
+    function _ownerDedupSet(){
+      try {
+        const raw = sessionStorage.getItem(OWNER_DEDUP_KEY);
+        if (!raw) return new Set();
+        return new Set(JSON.parse(raw));
+      } catch(_) { return new Set(); }
+    }
+    function _ownerDedupAdd(key){
+      const s = _ownerDedupSet();
+      s.add(key);
+      try {
+        sessionStorage.setItem(OWNER_DEDUP_KEY,
+                                JSON.stringify(Array.from(s)));
+      } catch(_) {}
+    }
+    /* Exposed for /demo/reset and industry switches that should clear
+       the dedup state. */
+    window.clearOwnerAlertDedup = function(){
+      try { sessionStorage.removeItem(OWNER_DEDUP_KEY); } catch(_) {}
+    };
     function pushOwnerSMS(caller, data){
       if (!$ownerConv) return;
       const intent   = (data && data.intent) || "";
@@ -696,16 +725,26 @@ def index():
       const isEmerg  = priority === "high" || /emergency/i.test(intent);
       const isBook   = /scheduling|book/i.test(intent);
       let body = "";
+      let intentCategory = "";
       if (isEmerg){
         body = `Emergency · ${caller.name}` +
                 (caller.address ? ` · ${caller.address}` : "") +
                 ` · about to bridge.`;
+        intentCategory = "emergency";
       } else if (isBook){
         body = `Booking · ${caller.name}` +
                 (caller.address ? ` · ${caller.address}` : "");
+        intentCategory = "booking";
       } else {
         return;   /* low-priority chatter doesn't ping the owner */
       }
+      /* V11.1 — dedup. Same caller, same intent-category → already
+         alerted. Don't re-spam. */
+      const dedupKey = (caller.id || caller.phone || "_") + ":" + intentCategory;
+      const dedup = _ownerDedupSet();
+      if (dedup.has(dedupKey)) return;
+      _ownerDedupAdd(dedupKey);
+
       const div = document.createElement("div");
       div.className = "owner-sms just-arrived" + (isEmerg ? " urgent" : "");
       /* V11.0 — mark as dynamically-pushed so the switcher's
@@ -888,6 +927,14 @@ def index():
     window.reloadDemoCallers = function(industrySlug){
       window.currentIndustry = industrySlug;
       try { sessionStorage.removeItem("aircept_chat_v1"); } catch(_) {}
+      /* V11.1 — clear owner-alert dedup on industry switch so the
+         new vertical's personas can each fire their own alerts
+         cleanly. (Previous industry's dedup keys are scoped to
+         caller_id which won't collide, but clearing keeps the
+         state minimal.) */
+      if (typeof window.clearOwnerAlertDedup === "function"){
+        window.clearOwnerAlertDedup();
+      }
       loadCallers(industrySlug, {industrySwitch: true});
       /* Refetch the operator-portal pane with the new industry filter
          so "Recent activity" matches the chat caller list. */
@@ -1207,6 +1254,11 @@ def index():
         try {
           await fetch("/demo/reset", {method:"POST"});
           try { sessionStorage.removeItem(SESSION_KEY); } catch(_){}
+          /* V11.1 — clear the owner-alert dedup state so a fresh
+             demo session starts with no prior alerts suppressed. */
+          if (typeof window.clearOwnerAlertDedup === "function"){
+            window.clearOwnerAlertDedup();
+          }
           $body.innerHTML = '<div class="psys">Pick a caller above to start.</div>';
           _ownerBadgeCount = 0;
           if ($ownerBadge){ $ownerBadge.style.display = "none"; $ownerBadge.textContent = "0"; }

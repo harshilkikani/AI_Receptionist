@@ -54,6 +54,11 @@ _HVAC = {
     "name":               "Sunrise HVAC",
     "owner_label":        "Mike",
     "owner_role":         "owner",
+    # V11.1 — operational notification label on the owner phone, replacing
+    # the pre-V11.1 "{owner_label}'s phone" pattern (felt too personal-
+    # demo, broke scalability illusion). Defaults to "Owner"; property
+    # management uses "Manager".
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "service call",
     "business_noun_plural": "service calls",
@@ -134,6 +139,7 @@ _REAL_ESTATE = {
     "name":               "Lawrence Realty",
     "owner_label":        "Lauren",
     "owner_role":         "agent",
+    "notification_label": "Owner",
     "customer_term":      "buyer",
     "business_noun":      "showing",
     "business_noun_plural": "showings",
@@ -212,6 +218,7 @@ _SEPTIC = {
     "name":               "Septic Pro",
     "owner_label":        "Bob",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "service call",
     "business_noun_plural": "service calls",
@@ -290,6 +297,7 @@ _PLUMBING = {
     "name":               "Riverside Plumbing",
     "owner_label":        "Dave",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "service call",
     "business_noun_plural": "service calls",
@@ -364,6 +372,7 @@ _ROOFING = {
     "name":               "Northstar Roofing",
     "owner_label":        "Ryan",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "estimate",
     "business_noun_plural": "estimates",
@@ -438,6 +447,7 @@ _CONSTRUCTION = {
     "name":               "Cornerstone Builders",
     "owner_label":        "Carlos",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "estimate",
     "business_noun_plural": "estimates",
@@ -511,6 +521,7 @@ _PROPERTY_MANAGEMENT = {
     "name":               "Hudson Property Management",
     "owner_label":        "Karen",
     "owner_role":         "manager",
+    "notification_label": "Manager",
     "customer_term":      "resident",
     "business_noun":      "request",
     "business_noun_plural": "requests",
@@ -587,6 +598,7 @@ _ELECTRICAL = {
     "name":               "Bright Path Electric",
     "owner_label":        "Steve",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "service call",
     "business_noun_plural": "service calls",
@@ -665,6 +677,7 @@ _LANDSCAPING = {
     "name":               "Greenleaf Landscaping",
     "owner_label":        "Jen",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "estimate",
     "business_noun_plural": "estimates",
@@ -737,6 +750,7 @@ _RESTORATION = {
     "name":               "Restore One",
     "owner_label":        "Tom",
     "owner_role":         "owner",
+    "notification_label": "Owner",
     "customer_term":      "homeowner",
     "business_noun":      "mitigation",
     "business_noun_plural": "mitigations",
@@ -810,6 +824,7 @@ _MED_SPA = {
     "name":               "Aurora Medical Spa",
     "owner_label":        "Dr. Patel",
     "owner_role":         "doctor",
+    "notification_label": "Owner",
     "customer_term":      "client",
     "business_noun":      "appointment",
     "business_noun_plural": "appointments",
@@ -886,6 +901,7 @@ _LEGAL_INTAKE = {
     "name":               "Lawler & Associates",
     "owner_label":        "David",
     "owner_role":         "attorney",
+    "notification_label": "Owner",
     "customer_term":      "caller",
     "business_noun":      "consultation",
     "business_noun_plural": "consultations",
@@ -1160,6 +1176,16 @@ def owner_label(slug: str, default: str = "the owner") -> str:
     """Owner first name for this industry's demo brand."""
     ind = get(slug)
     return ind.get("owner_label", default) if ind else default
+
+
+def notification_label(slug: str, default: str = "Owner") -> str:
+    """V11.1 — operational notification label shown on the owner phone
+    bar (e.g., 'Owner', 'Manager'). Replaces the pre-V11.1 pattern of
+    `{owner_label}'s phone` which felt too personal-demo and broke the
+    illusion of a scalable product. Defaults to 'Owner' for unknown
+    slugs."""
+    ind = get(slug)
+    return ind.get("notification_label", default) if ind else default
 
 
 def brand_name(slug: str, default: str = "this service") -> str:
