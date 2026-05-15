@@ -144,6 +144,9 @@ def _today_body(client_id: str, t: str = "", *,
         cards = []
         for p in partners_today:
             when = _human_when(p["last_ts"], now_ts)
+            preview = _render_partner_preview(client_id, p["phone"], t,
+                                                p.get("last_call_sid", ""))
+            is_live = (now_ts - int(p["last_ts"] or 0)) <= 60
             cards.append(call_card(
                 caller=_partner_label(p["phone"]),
                 from_number=p["phone"],
@@ -157,10 +160,8 @@ def _today_body(client_id: str, t: str = "", *,
                                    and (p.get("last_summary") or "")
                                        .lower().find("emergency") >= 0
                                    else "answered",
-                href=(
-                    f"/client/{html.escape(client_id)}/conversations/"
-                    f"{html.escape(_phone_slug(p['phone']))}{tq}"
-                ) if t else "",
+                preview_html=preview,
+                live=is_live,
             ))
         activity_html = (
             section_caption("Recent activity")
@@ -298,6 +299,9 @@ def conversations_list(client_id: str, t: str = "", limit: int = 50):
             summary = p.get("last_summary") or (
                 f"{channel_marker}" + (f" — {count_line}" if count_line else "")
             )
+            preview = _render_partner_preview(
+                client_id, p["phone"], t, p.get("last_call_sid", ""))
+            is_live = (now_ts - int(p["last_ts"] or 0)) <= 60
             cards.append(call_card(
                 caller=_partner_label(p["phone"]),
                 from_number=p["phone"],
@@ -305,10 +309,8 @@ def conversations_list(client_id: str, t: str = "", limit: int = 50):
                 photo_url=partner_photo_url(p["phone"]),
                 summary=summary,
                 status="answered",
-                href=(
-                    f"/client/{html.escape(client_id)}/conversations/"
-                    f"{html.escape(_phone_slug(p['phone']))}{tq}"
-                ),
+                preview_html=preview,
+                live=is_live,
             ))
         # V9.4 — the page header already says "Conversations". No
         # redundant card title; the list IS the page. Bare typographic
@@ -709,6 +711,58 @@ def _fmt_duration(seconds: int) -> str:
         return f"{seconds}s"
     m, s = divmod(seconds, 60)
     return f"{m}m {s:02d}s"
+
+
+def _render_partner_preview(client_id: str, phone: str,
+                              t: str = "",
+                              last_call_sid: str = "",
+                              n_turns: int = 3) -> str:
+    """V10.2 — last N turns + a "View full thread" link, for inline
+    expansion in the partner call card. Empty string if no turns
+    found (caller can skip the expandable variant)."""
+    if not phone:
+        return ""
+    try:
+        from src import transcripts as _t
+        turns = _t.list_by_phone(client_id, phone, limit=50)
+    except Exception:
+        return ""
+    if not turns:
+        return ""
+    # Last N chronologically. list_by_phone returns ASC.
+    tail = turns[-n_turns:]
+    bubbles = []
+    for tn in tail:
+        side = "in" if tn["role"] == "user" else "out"
+        bubbles.append(
+            f'<div class="preview-bubble {side}">'
+            f'{html.escape(tn["text"])}'
+            f'</div>'
+        )
+    bubble_html = (
+        '<div class="preview-bubbles">' + "".join(bubbles) + '</div>'
+    )
+
+    # Foot: "View full thread" link if we have a token (real portal).
+    tq = f"?t={html.escape(t)}" if t else ""
+    foot_link = ""
+    if t:
+        foot_link = (
+            f'<a href="/client/{html.escape(client_id)}/conversations/'
+            f'{html.escape(_phone_slug(phone))}{tq}">View full thread →</a>'
+        )
+    elif last_call_sid:
+        # On the demo pane (no token) the call_sid is still useful as
+        # a label for the prospect.
+        foot_link = (
+            f'<span class="muted">'
+            f'Showing last {len(tail)} message{"s" if len(tail) != 1 else ""}'
+            f'</span>'
+        )
+
+    if foot_link:
+        return bubble_html + f'<div class="preview-foot">{foot_link}</div>'
+    return bubble_html
 
 
 def month_label_short(month: str) -> str:

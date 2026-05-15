@@ -620,20 +620,54 @@ def index():
     const $pulse  = document.getElementById("live-pulse");
     let _portalRefreshing = false;
     let _portalRefreshScheduled = null;
+    /* V10.2 — remember the partner phone whose card should briefly
+       flash after the next refresh (the partner the prospect just
+       chatted as). Cleared once the flash is applied. */
+    let _highlightPartnerDigits = null;
+
+    function _normalizeForHighlight(s){
+      const d = (s||"").replace(/\\D/g,"");
+      if (d.length === 11 && d.startsWith("1")) return d.slice(1);
+      return d;
+    }
+
     async function refreshPortal(){
       if (!$portal || _portalRefreshing) return;
       _portalRefreshing = true;
       try {
+        /* Subtle opacity fade so the swap reads as a deliberate
+           update, not a flicker. ~140ms total. */
+        $portal.style.transition = "opacity 140ms ease";
+        $portal.style.opacity = "0.7";
         const r = await fetch("/demo/today", {cache:"no-store"});
         if (r.ok){
           const html = await r.text();
           $portal.innerHTML = html;
+          /* Highlight the just-active partner's card (if any). */
+          if (_highlightPartnerDigits){
+            const sel =
+              `details.call[data-partner="${_highlightPartnerDigits}"], ` +
+              `.call[data-partner="${_highlightPartnerDigits}"]`;
+            const target = $portal.querySelector(sel);
+            if (target){
+              target.classList.add("just-updated");
+              /* Scroll into view if it's not visible. */
+              try { target.scrollIntoView({behavior:"smooth", block:"nearest"}); }
+              catch(_) { target.scrollIntoView(); }
+              setTimeout(()=>target.classList.remove("just-updated"), 1700);
+            }
+            _highlightPartnerDigits = null;
+          }
           if ($pulse){
             $pulse.classList.add("live-pulse-flash");
             setTimeout(()=>$pulse.classList.remove("live-pulse-flash"), 1200);
           }
         }
-      } catch(_) { /* silent — next poll will retry */ }
+        $portal.style.opacity = "1";
+      } catch(_) {
+        $portal.style.opacity = "1";
+        /* silent — next poll will retry */
+      }
       finally { _portalRefreshing = false; }
     }
     function scheduleRefresh(delayMs){
@@ -668,10 +702,16 @@ def index():
         if(data.intent) meta.push(data.intent);
         if(data.priority === "high") meta.push("priority: high");
         appendMsg("ai", data.reply, {meta});
+        /* V10.2 — arm the continuity highlight so the next refresh
+           briefly flashes the partner card the prospect just messaged.
+           Makes the chat-→-portal cause-and-effect spatially obvious. */
+        const c = callersById[activeCaller];
+        if (c && c.phone){
+          _highlightPartnerDigits = _normalizeForHighlight(c.phone);
+        }
         /* Schedule the portal refresh ~600ms after the reply lands so
            the prospect sees the chat update first, then the portal
-           catches up. That sequencing makes the cause-and-effect
-           visceral instead of jarring. */
+           catches up. */
         scheduleRefresh(600);
       } catch(e){
         loading.remove();

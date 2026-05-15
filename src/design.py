@@ -577,6 +577,95 @@ table.data td.muted { color: var(--muted); }
               font-size: 12px; color: var(--muted); font-weight: 500; }
 .back-link:hover { color: var(--accent); text-decoration: none; }
 
+/* ── V10.2 — expandable call cards ────────────────────────────────── */
+/* Native <details>/<summary> for inline expansion. No JS dependency
+   in the real portal; the demo pane's JS still works the same. */
+details.call.call-expandable { display: block; padding: 0; }
+details.call.call-expandable > summary.call-summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: var(--s-4); align-items: start;
+  padding: 18px var(--s-5);
+}
+details.call.call-expandable > summary.call-summary::-webkit-details-marker {
+  display: none;
+}
+details.call.call-expandable[open] > summary.call-summary {
+  border-bottom: 1px solid var(--border);
+}
+.call-chevron { display: inline-block; margin-left: 8px;
+                 color: var(--muted); font-size: 18px; line-height: 1;
+                 transition: transform 160ms ease, color 160ms; }
+details.call.call-expandable[open] > summary .call-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.call-preview { padding: 18px 24px 20px;
+                 background: var(--n-50);
+                 font-size: 14px; line-height: 1.5; }
+@media (prefers-color-scheme: dark) {
+  .call-preview { background: #0c1628; }
+}
+.call-preview .preview-empty { color: var(--muted); font-style: italic; }
+.call-preview .preview-bubbles {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;
+}
+.call-preview .preview-bubble { max-width: 80%; padding: 8px 12px;
+                                 border-radius: 14px; font-size: 13.5px;
+                                 line-height: 1.45;
+                                 white-space: pre-wrap; word-wrap: break-word; }
+.call-preview .preview-bubble.in {
+  background: #eef0f3; color: #0b1220; align-self: flex-start;
+}
+.call-preview .preview-bubble.out {
+  background: var(--accent); color: var(--accent-fg);
+  align-self: flex-end;
+}
+@media (prefers-color-scheme: dark) {
+  .call-preview .preview-bubble.in { background: #1a2541; color: #e6edf7; }
+}
+.call-preview .preview-foot {
+  display: flex; align-items: center; gap: 12px; margin-top: 12px;
+  padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--muted);
+}
+.call-preview .preview-foot a { color: var(--accent); font-weight: 500; }
+@media (max-width: 640px) {
+  .call-preview { padding: 14px 16px 16px; }
+  .call-preview .preview-bubble { font-size: 14px; max-width: 88%; }
+}
+
+/* V10.2 — "Now" pulsing micro-badge for partners with activity in
+   the last ~60s. Same green palette as the operator-pane Live pulse. */
+.live-mini { display: inline-flex; align-items: center; gap: 5px;
+              padding: 1px 7px; border-radius: 999px;
+              background: var(--success-100); color: var(--success-500);
+              font-size: 10.5px; font-weight: 600;
+              text-transform: uppercase; letter-spacing: .04em;
+              margin-left: 8px; vertical-align: 1px; }
+.live-mini-dot { width: 5px; height: 5px; border-radius: 999px;
+                  background: var(--success-500);
+                  box-shadow: 0 0 0 0 rgba(22,163,74,0.45);
+                  animation: live-breathe 2.2s ease-in-out infinite; }
+@media (prefers-color-scheme: dark) {
+  .live-mini { background: #06291f; color: #4ade80; }
+  .live-mini-dot { background: #4ade80; }
+}
+
+/* V10.2 — brief flash on a card that just got new activity (set by
+   the demo pane's JS after a /demo/today refresh that included it). */
+.call.just-updated, details.call.just-updated {
+  animation: just-updated 1.6s ease-out;
+}
+@keyframes just-updated {
+  0%   { background: var(--card-bg); }
+  20%  { background: var(--accent-soft); }
+  100% { background: var(--card-bg); }
+}
+
 /* ── V9.2 — communication thread bubbles ──────────────────────────── */
 /* Design notes:
    - 2px gap WITHIN a sender series, 14px between role switches.
@@ -1317,16 +1406,31 @@ def call_card(*, caller: str, from_number: str = "",
               when: str = "", summary: str = "",
               status: str = "answered", duration: Optional[str] = None,
               href: Optional[str] = None,
-              photo_url: Optional[str] = None) -> str:
-    """Single-call row, communications-as-primary-object pattern.
-    Used on portal Today / Calls / admin recent-calls.
-    `href` makes the whole card a link; omit for static rendering.
-    `photo_url` renders an <img> avatar; on load error JS falls back
-    to the initial-letter disc (handled by .av-img onerror)."""
+              photo_url: Optional[str] = None,
+              preview_html: str = "",
+              live: bool = False) -> str:
+    """Single-call row. Communications-as-primary-object pattern.
+
+    V10.2 — when `preview_html` is non-empty, the card becomes a
+    native `<details>` element. Click expands inline showing the
+    preview (typically the last 3 turns + a "View thread" link).
+    No JS needed. `live=True` adds a pulsing "Now" badge for partners
+    with activity in the last ~60s.
+
+    `href` is preserved for legacy callers, but new code should pass
+    `preview_html` instead — inline expansion beats a full-page
+    navigation for quick triage."""
     initial = html.escape((caller or "?")[:1].upper())
     who = html.escape(caller or "Unknown caller")
     seed = from_number or caller
     hue = _avatar_hue(seed)
+    # V10.2 — partner_slug uses the normalized digits (no leading "1"
+    # country code) so the demo-pane JS can match by data-partner
+    # against the chat caller's normalized phone consistently.
+    _digits = "".join(c for c in (from_number or "") if c.isdigit())
+    if len(_digits) == 11 and _digits.startswith("1"):
+        _digits = _digits[1:]
+    partner_slug = _digits
     fromn_html = (
         f'<div class="from">{html.escape(from_number)}</div>'
         if from_number else ""
@@ -1343,9 +1447,11 @@ def call_card(*, caller: str, from_number: str = "",
         f'<div class="sum">{html.escape(summary)}</div>'
         if summary else ""
     )
-    # V9.6.1 — avatar prefers a photo when one is provided; falls back
-    # to the V9.3 initial+color disc on image-load error (the onerror
-    # attribute hides the broken <img> so the initial behind it shows).
+    live_badge = (
+        '<span class="live-mini" aria-label="recently active">'
+        '<span class="live-mini-dot"></span>Now</span>'
+        if live else ""
+    )
     if photo_url:
         avatar = (
             f'<div class="av" style="--av-h:{hue}">'
@@ -1357,21 +1463,37 @@ def call_card(*, caller: str, from_number: str = "",
     else:
         avatar = f'<div class="av" style="--av-h:{hue}">{initial}</div>'
 
-    inner = (
+    row_inner = (
         f'{avatar}'
         f'<div class="body">'
-        f'<div class="who">{who}</div>'
+        f'<div class="who">{who}{live_badge}</div>'
         f'{fromn_html}'
         f'{sum_html}'
         f'</div>'
-        f'<div class="right">{status_pill(status)}{when_html}{dur_html}</div>'
+        f'<div class="right">{status_pill(status)}{when_html}{dur_html}'
+        + ('<span class="call-chevron" aria-hidden="true">›</span>'
+            if preview_html else '')
+        + '</div>'
     )
+
+    # V10.2 — three modes:
+    #   1) preview_html provided → <details> with inline expansion
+    #   2) href provided           → <a> as a navigation card
+    #   3) plain                   → <div> static display
+    if preview_html:
+        return (
+            f'<details class="call call-expandable" '
+            f'data-partner="{html.escape(partner_slug)}">'
+            f'<summary class="call-summary">{row_inner}</summary>'
+            f'<div class="call-preview">{preview_html}</div>'
+            f'</details>'
+        )
     if href:
         return (
             f'<a class="call" href="{html.escape(href)}" '
-            f'style="color:inherit;text-decoration:none;">{inner}</a>'
+            f'style="color:inherit;text-decoration:none;">{row_inner}</a>'
         )
-    return f'<div class="call">{inner}</div>'
+    return f'<div class="call">{row_inner}</div>'
 
 
 def tabs(items: list, *, active: Optional[str] = None) -> str:
