@@ -64,6 +64,13 @@ _HVAC = {
         "Thermostat isn't talking to the system",
         "What does an estimate cost?",
     ],
+    "suggestion_labels": [
+        "AC out",
+        "No heat",
+        "Tune-up",
+        "Thermostat",
+        "Estimate",
+    ],
     "emergency_keywords": [
         "no heat", "no ac", "no a/c", "no air", "no cooling",
         "freezing", "furnace died", "ac died", "ac stopped",
@@ -103,6 +110,21 @@ _HVAC = {
         "stat_calls":      "Service calls",
         "stat_emergencies": "Emergencies",
     },
+    # V11.0 — pre-baked owner-phone SMS bubbles. The combined demo's
+    # initial render uses these so the owner-phone shows vertical-
+    # appropriate "already happened" notifications, not the septic-
+    # themed boilerplate from before V11.0. Two entries per industry —
+    # one urgent (or near-urgent), one routine.
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Emergency · Marcus Reilly · 4729 Maple · "
+                 "AC out, baby in house · Call about to bridge.",
+         "ts_label": "6h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Service · Wendy Larsen · 218 Linden · "
+                 "Thursday 1pm furnace tune-up.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -122,6 +144,14 @@ _REAL_ESTATE = {
         "What's the asking price on Birch Road?",
         "I'm at a showing and the lockbox isn't working",
         "Can you send me the disclosure?",
+    ],
+    "suggestion_labels": [
+        "Listing inquiry",
+        "Tour Saturday",
+        "List my house",
+        "Asking price",
+        "Lockbox stuck",
+        "Disclosure",
     ],
     "emergency_keywords": [
         "locked out", "lockbox", "stuck at the showing",
@@ -163,6 +193,16 @@ _REAL_ESTATE = {
         "stat_calls":      "Inquiries",
         "stat_emergencies": "Active showings",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Lockbox issue · Jordan Bailey · 1100 Birch · "
+                 "Buyer on-site now. Paging you.",
+         "ts_label": "15m ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Showing requested · Caleb Morrison · 1100 Birch · "
+                 "Saturday 1pm.",
+         "ts_label": "1h ago"},
+    ],
 }
 
 
@@ -181,6 +221,13 @@ _SEPTIC = {
         "How much does a pump-out cost?",
         "Looking for a quote on a new drain field",
         "Septic alarm is beeping",
+    ],
+    "suggestion_labels": [
+        "Sewage backup",
+        "Pump-out",
+        "Pricing",
+        "Drain field",
+        "Tank alarm",
     ],
     "emergency_keywords": [
         "backing up", "backup", "sewage", "overflow", "overflowing",
@@ -219,6 +266,16 @@ _SEPTIC = {
         "stat_calls":      "Service calls",
         "stat_emergencies": "Emergencies",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Emergency · Marcus Reilly · 412 Maple · "
+                 "sewage backup · Call about to bridge.",
+         "ts_label": "6h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Booking · Sarah Wong · Tuesday 1pm pump-out · "
+                 "412 Oak Street.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -242,6 +299,13 @@ _PLUMBING = {
         "Drain is completely backed up",
         "Need a quote to replace a toilet",
         "Outdoor spigot is broken",
+    ],
+    "suggestion_labels": [
+        "Leak",
+        "Water heater",
+        "Drain clog",
+        "Toilet swap",
+        "Spigot",
     ],
     "emergency_keywords": [
         "burst pipe", "pipe burst", "flooding", "water everywhere",
@@ -281,6 +345,16 @@ _PLUMBING = {
         "stat_calls":      "Service calls",
         "stat_emergencies": "Active leaks",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Emergency · Anita Brooks · 319 Cedar · "
+                 "pipe burst behind wall · Tech dispatched.",
+         "ts_label": "2h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Service · Tony Russo · 1428 Oak Hollow · "
+                 "Tuesday 10am water heater.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -299,6 +373,13 @@ _ROOFING = {
         "Quote for a tear-off and replacement?",
         "Hail damage — working with my insurance",
         "Missing shingles from the wind",
+    ],
+    "suggestion_labels": [
+        "Active leak",
+        "Inspection",
+        "Replace quote",
+        "Hail damage",
+        "Missing shingles",
     ],
     "emergency_keywords": [
         "active leak", "leaking now", "water coming through ceiling",
@@ -338,6 +419,16 @@ _ROOFING = {
         "stat_calls":      "Estimate requests",
         "stat_emergencies": "Active leaks",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Active roof leak · Brad Mitchell · 623 Hillcrest · "
+                 "Tarp crew dispatched.",
+         "ts_label": "1h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Inspection · Lisa Yoon · 388 Magnolia · "
+                 "Wednesday 9am.",
+         "ts_label": "6h ago"},
+    ],
 }
 
 
@@ -356,6 +447,13 @@ _CONSTRUCTION = {
         "Timeline on a basement finish?",
         "Question about permits for a deck",
         "Got drawings ready — when can someone come look?",
+    ],
+    "suggestion_labels": [
+        "Kitchen remodel",
+        "Addition",
+        "Basement",
+        "Permits",
+        "Drawings ready",
     ],
     "emergency_keywords": [
         "structural collapse", "site emergency",
@@ -394,6 +492,16 @@ _CONSTRUCTION = {
         "stat_calls":      "Estimate requests",
         "stat_emergencies": "Site issues",
     },
+    "seeded_owner_sms": [
+        {"kind": "booking", "urgent": True,
+         "body": "Estimate visit · Paul Anderson · 927 Crestview · "
+                 "Friday 10am kitchen remodel.",
+         "ts_label": "5h ago"},
+        {"kind": "quote", "urgent": False,
+         "body": "Estimate · Julia Sanchez · 1503 Beverly · "
+                 "Thursday 2pm addition.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -412,6 +520,13 @@ _PROPERTY_MANAGEMENT = {
         "Need to renew my lease — what are my options?",
         "Status on my application?",
         "I locked myself out of the unit",
+    ],
+    "suggestion_labels": [
+        "Tenant: no heat",
+        "Unit tour",
+        "Lease renewal",
+        "Application",
+        "Lockout",
     ],
     "emergency_keywords": [
         "no heat", "no water", "no electricity", "active leak",
@@ -452,6 +567,17 @@ _PROPERTY_MANAGEMENT = {
         "stat_calls":      "Requests",
         "stat_emergencies": "Tenant emergencies",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Tenant emergency · Jasmine Lee · Unit 4B / "
+                 "218 Fifth · no heat, baby in unit · "
+                 "Maintenance dispatched.",
+         "ts_label": "3h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Tour · Alex Pham · 218 Fifth · "
+                 "Saturday 11am 2BR.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -470,6 +596,13 @@ _ELECTRICAL = {
         "Need a quote on a panel upgrade",
         "Question about installing an EV charger",
         "Generator install — what's the price range?",
+    ],
+    "suggestion_labels": [
+        "Partial outage",
+        "Sparking outlet",
+        "Panel upgrade",
+        "EV charger",
+        "Generator",
     ],
     "emergency_keywords": [
         "sparking", "smoke", "burning smell", "panel hot",
@@ -508,6 +641,16 @@ _ELECTRICAL = {
         "stat_calls":      "Service calls",
         "stat_emergencies": "Emergencies",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Electrical emergency · Nina Castro · 682 Willowbrook · "
+                 "Sparking outlet · Tech dispatched.",
+         "ts_label": "30m ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Estimate · Steve Whitman · 2218 Walnut Hollow · "
+                 "Friday 10am panel upgrade.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -531,6 +674,13 @@ _LANDSCAPING = {
         "Snow removal contract for winter?",
         "Tree came down — can someone clear it?",
         "Spring cleanup — what's it cost?",
+    ],
+    "suggestion_labels": [
+        "Weekly lawn",
+        "Patio quote",
+        "Snow removal",
+        "Tree down",
+        "Spring cleanup",
     ],
     "emergency_keywords": [
         "tree down", "tree on house", "tree on car",
@@ -568,6 +718,16 @@ _LANDSCAPING = {
         "stat_calls":      "Estimate requests",
         "stat_emergencies": "Storm calls",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Tree down · Chris Boyd · 1840 Forest Edge · "
+                 "Driveway blocked · Crew dispatched.",
+         "ts_label": "2h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Service walk · Helen Vargas · 412 Garden View · "
+                 "Saturday 10am weekly lawn quote.",
+         "ts_label": "5h ago"},
+    ],
 }
 
 
@@ -586,6 +746,13 @@ _RESTORATION = {
         "Water damage from the storm",
         "Insurance is asking for an estimate",
         "Smoke damage from a small fire",
+    ],
+    "suggestion_labels": [
+        "Basement flood",
+        "Pipe burst",
+        "Storm damage",
+        "Insurance",
+        "Smoke damage",
     ],
     "emergency_keywords": [
         "flooded", "flooding", "water everywhere", "burst pipe",
@@ -624,6 +791,16 @@ _RESTORATION = {
         "stat_calls":      "Mitigations",
         "stat_emergencies": "Active losses",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Mitigation · Jacob Cole · 344 Brookside · "
+                 "Active flooding · Crew within the hour.",
+         "ts_label": "30m ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Mitigation · Naomi Reyes · 1207 Maple Ridge · "
+                 "This afternoon · Allstate claim.",
+         "ts_label": "6h ago"},
+    ],
 }
 
 
@@ -642,6 +819,13 @@ _MED_SPA = {
         "Need to reschedule my appointment Thursday",
         "Do you do lip filler?",
         "Following up on my treatment last week",
+    ],
+    "suggestion_labels": [
+        "Botox consult",
+        "Laser pricing",
+        "Reschedule",
+        "Filler",
+        "Follow-up",
     ],
     "emergency_keywords": [
         "adverse reaction", "swelling won't stop", "severe pain",
@@ -683,6 +867,16 @@ _MED_SPA = {
         "stat_calls":      "Appointments",
         "stat_emergencies": "Clinical concerns",
     },
+    "seeded_owner_sms": [
+        {"kind": "booking", "urgent": False,
+         "body": "Consultation · Olivia Bennett · "
+                 "Saturday 2pm Botox.",
+         "ts_label": "4h ago"},
+        {"kind": "followup", "urgent": False,
+         "body": "Reschedule · Chen Liu · "
+                 "Friday 11am filler.",
+         "ts_label": "yesterday"},
+    ],
 }
 
 
@@ -701,6 +895,13 @@ _LEGAL_INTAKE = {
         "Question about my landlord",
         "I was in a car accident",
         "Following up on a matter from last month",
+    ],
+    "suggestion_labels": [
+        "Workplace",
+        "Contract",
+        "Landlord",
+        "Car accident",
+        "Existing matter",
     ],
     "emergency_keywords": [
         "court tomorrow", "court today", "arrested",
@@ -744,6 +945,16 @@ _LEGAL_INTAKE = {
         "stat_calls":      "Intakes",
         "stat_emergencies": "Time-sensitive",
     },
+    "seeded_owner_sms": [
+        {"kind": "emergency", "urgent": True,
+         "body": "Time-sensitive intake · Renata Cruz · "
+                 "Eviction · court in 6 days · Callback today.",
+         "ts_label": "2h ago"},
+        {"kind": "booking", "urgent": False,
+         "body": "Consultation · Anita Powell · "
+                 "Friday 3pm workplace matter.",
+         "ts_label": "6h ago"},
+    ],
 }
 
 
@@ -893,6 +1104,24 @@ def suggestions(slug: str) -> list[str]:
     for unknown slugs."""
     ind = get(slug)
     return list(ind.get("suggestions") or []) if ind else []
+
+
+def suggestion_labels(slug: str) -> list[str]:
+    """Short chip-button labels parallel to `suggestions(slug)`. Same
+    length, same order. The label shows on the button face; the
+    matching suggestion is sent on click."""
+    ind = get(slug)
+    return list(ind.get("suggestion_labels") or []) if ind else []
+
+
+def seeded_owner_sms(slug: str) -> list[dict]:
+    """Pre-baked owner-phone SMS bubbles for this industry — two
+    entries each (emergency/urgent + routine), shown as the initial
+    state of the owner phone in the combined demo. Each entry has
+    keys: kind, urgent (bool), body, ts_label. Returns [] for unknown
+    slugs (which falls back to whatever the demo shipped with)."""
+    ind = get(slug)
+    return list(ind.get("seeded_owner_sms") or []) if ind else []
 
 
 def emergency_keywords(slug: str) -> list[str]:

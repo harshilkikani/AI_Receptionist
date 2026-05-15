@@ -115,21 +115,38 @@ def test_receipt_css_class_present():
 # ── 5. Owner-SMS preview phone ──────────────────────────────────────
 
 def test_demo_page_renders_owner_phone(app_client):
+    """V10.3: owner-phone preview shell exists.
+    V11.0: default render is HVAC (Mike), but the shell is industry-
+    agnostic. We assert on the shell + dynamic owner label rather than
+    a specific name — switching industry changes the owner."""
     r = app_client.get("/")
     body = r.text
     assert 'class="phone-shell owner-shell"' in body
-    assert "Bob's phone" in body
+    # V11.0 — default industry is HVAC; owner label is "Mike". Pre-V11.0
+    # was septic ("Bob"). Either acceptable while the platform supports
+    # both; we just need *some* owner's-phone label.
+    assert ("'s phone" in body), "owner-phone label not rendered"
     assert 'id="owner-conv"' in body
 
 
 def test_owner_phone_seeded_with_emergency_and_booking(app_client):
-    """First-render state: two pre-baked SMS bubbles so the prospect
-    sees what the owner phone looks like populated."""
+    """V10.3: first-render state has two pre-baked SMS bubbles so the
+    prospect sees what the owner phone looks like populated.
+
+    V11.0: bubbles now come from the default industry's
+    `seeded_owner_sms` registry entry. HVAC's default ships an
+    emergency (Marcus Reilly, AC out) and a routine service booking
+    (Wendy Larsen). We assert on the shell + count + the urgent
+    variant — not the specific text — since the seed varies by
+    industry."""
     r = app_client.get("/")
     body = r.text
+    # Urgent variant present (the emergency seed)
     assert "owner-sms urgent" in body
+    # At least one non-urgent bubble alongside
+    assert body.count('class="owner-sms') >= 2
+    # The HVAC default seeds Marcus Reilly's emergency
     assert "Marcus Reilly" in body
-    assert "Booking" in body
 
 
 def test_demo_page_has_push_owner_sms_function(app_client):
@@ -305,13 +322,17 @@ def test_tenant_switcher_offers_multiple_industries(app_client):
 
 
 def test_tenant_switcher_swaps_suggestions(app_client):
-    """The select options carry data-emergency/book/price strings that
-    the JS uses to swap the chat suggestion buttons clientside."""
+    """V10.3: the select options carry suggestion data that the JS uses
+    to swap the chat suggestion buttons clientside.
+
+    V11.0: the three legacy data-emergency/book/price attributes were
+    replaced by a single data-suggestions JSON-encoded list (each
+    industry now ships 4-6 suggestions, not a fixed three), parallel
+    with data-labels for the short chip text. Validate the new shape."""
     r = app_client.get("/")
     body = r.text
-    assert "data-emergency=" in body
-    assert "data-book=" in body
-    assert "data-price=" in body
+    assert "data-suggestions=" in body
+    assert "data-labels=" in body
 
 
 def test_tenant_switcher_css_present():

@@ -264,6 +264,7 @@ def refresh_timestamps() -> dict:
     Idempotent. Safe to call on every /demo/today request. Returns
     the number of rows refreshed for observability."""
     from src import usage, transcripts
+    from src.transcripts import _init_transcripts_schema
     now_ts = int(time.time())
     voice_n = 0
     sms_n = 0
@@ -277,6 +278,10 @@ def refresh_timestamps() -> dict:
     with usage._db_lock:
         conn = usage._connect()
         usage._init_schema(conn)
+        # V11.0 — make sure transcripts table exists before UPDATEs;
+        # without this, a fresh test-environment DB logs warnings for
+        # every per-industry refresh attempt.
+        _init_transcripts_schema(conn)
         for sc in all_scenarios:
             phone = sc["phone"]
             # ── Voice scenarios: shift start_ts/end_ts so the call

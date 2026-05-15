@@ -1660,19 +1660,74 @@ def section_caption(text: str) -> str:
     return f'<div class="section-caption">{html.escape(text)}</div>'
 
 
+def _tenant_switcher_options() -> str:
+    """V11.0 — render the tenant switcher's <option> tags dynamically
+    from `src.industries.list_all()`. Each option carries data
+    attributes the switcher JS reads when industry changes:
+      - data-brand        : demo brand name
+      - data-owner        : owner first name (for the owner phone label)
+      - data-suggestions  : JSON array of full suggestion sentences
+      - data-labels       : JSON array of short chip labels (parallel)
+      - data-emergency-ind: vertical-appropriate urgency label
+      - data-business-noun: singular business noun (showing, service call)
+      - data-portal-stats : JSON object of portal stat labels per vertical
+    """
+    import json as _json
+    from src import industries
+
+    parts: list[str] = []
+    for ind in industries.list_all():
+        slug = ind["slug"]
+        # Default-select septic so the pre-V11.0 demo state is
+        # preserved on first load.
+        # V11.0 — default opens on HVAC per the V11.0 plan (the
+        # emergency moment demos strongest). Real estate is one
+        # click away.
+        is_default = (slug == "hvac")
+        selected = " selected" if is_default else ""
+        suggestions_json = _json.dumps(ind.get("suggestions") or [])
+        labels_json = _json.dumps(ind.get("suggestion_labels") or [])
+        portal_stats = ind.get("portal_copy") or {}
+        portal_json = _json.dumps({
+            "today_headline":   portal_stats.get("today_headline", "Today's calls"),
+            "stat_calls":       portal_stats.get("stat_calls", "Service calls"),
+            "stat_emergencies": portal_stats.get("stat_emergencies", "Emergencies"),
+            "partner_term":     portal_stats.get("partner_term", "customer"),
+        })
+        seeded_sms_json = _json.dumps(ind.get("seeded_owner_sms") or [])
+        parts.append(
+            f'<option value="{html.escape(slug)}"{selected}'
+            f' data-brand="{html.escape(ind["name"])}"'
+            f' data-owner="{html.escape(ind["owner_label"])}"'
+            f' data-suggestions="{html.escape(suggestions_json)}"'
+            f' data-labels="{html.escape(labels_json)}"'
+            f' data-emergency-ind="{html.escape(ind.get("emergency_indicator", "Emergency"))}"'
+            f' data-business-noun="{html.escape(ind.get("business_noun", "call"))}"'
+            f' data-portal-stats="{html.escape(portal_json)}"'
+            f' data-seeded-sms="{html.escape(seeded_sms_json)}"'
+            f'>{html.escape(ind["name"])}</option>'
+        )
+    return "\n          ".join(parts)
+
+
 def demo_page(*, title: str, body: str,
               phone_number: str = "+1 (844) 940-3274",
               tel_href: str = "tel:+18449403274") -> str:
-    """V9.5 — public-facing combined demo shell.
+    """V9.5 / V11.0 — public-facing combined demo shell.
 
     Differs from `page()`: no sidebar nav, no per-tenant brand, just a
     minimal top bar with the product mark and the live demo phone
     number. The body is expected to be a split-screen of two panes.
     Uses the same `_CSS` design tokens so the demo and the real portal
     share one visual system.
+
+    V11.0 — the tenant switcher renders 12 industries from the registry,
+    not 3 hardcoded options. Switching industry rebuilds the chat
+    suggestion chips and triggers a /demo/callers?industry=X refetch.
     """
     phone_label = html.escape(phone_number)
     tel = html.escape(tel_href)
+    switcher_options = _tenant_switcher_options()
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -1721,18 +1776,7 @@ def demo_page(*, title: str, body: str,
       <label class="dd-label">Industry</label>
       <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
         <select aria-label="Demo industry">
-          <option value="septic"      data-brand="Septic Pro" data-owner="Bob"
-                  data-emergency="My toilets are backing up and there's sewage in the basement!"
-                  data-book="Hey, I need to schedule a routine pumping."
-                  data-price="How much does a pump-out cost?">Septic Pro</option>
-          <option value="hvac"        data-brand="Sunrise HVAC" data-owner="Mike"
-                  data-emergency="My furnace died overnight and it's 12 degrees inside."
-                  data-book="Need someone to look at my AC — not cooling well."
-                  data-price="What does a tune-up cost?">Sunrise HVAC</option>
-          <option value="real-estate" data-brand="Lawrence Realty" data-owner="Lauren"
-                  data-emergency="I lost my keys, I'm locked out of the showing!"
-                  data-book="I saw the Birch Road listing — can I tour Saturday?"
-                  data-price="What's the asking price on 1100 Birch?">Lawrence Realty</option>
+          {switcher_options}
         </select>
       </div>
     </div>
@@ -1790,40 +1834,138 @@ document.addEventListener("click", function(e){{
     if (e.key === "Escape") close();
   }});
 }})();
-/* V10.3 / V10.4 / V10.5 — tenant switcher: real industry context.
-   Lives inside the demo drawer. Swaps brand label, owner-phone
-   label, suggestion buttons, and propagates the industry context
-   to /chat so the LLM responds with the matching business persona. */
+/* V10.3 / V10.4 / V10.5 / V11.0 — tenant switcher: real industry
+   context. Lives inside the demo drawer. Renders 12 industries from
+   the registry. Switching industry rebuilds the chat suggestion
+   chips dynamically (4-6 per industry, parsed from data-suggestions
+   JSON), updates the brand label, owner-phone label, portal stat
+   labels, and re-fetches the chat caller list for that industry. */
 (function(){{
   const $sw = document.getElementById("tenant-switcher");
   if (!$sw) return;
   const $sel = $sw.querySelector("select");
-  function applyIndustry(opt){{
+
+  function safeJSON(str, fallback){{
+    if (!str) return fallback;
+    try {{ return JSON.parse(str); }} catch(_) {{ return fallback; }}
+  }}
+
+  function rebuildSuggestions(suggestions, labels){{
+    const $box = document.getElementById("suggestions");
+    if (!$box) return;
+    /* Keep the trailing "Wrong number" generic chip — it's industry-
+       agnostic and reads as a calm-filter demo in every vertical. */
+    const wrongMsg = "Sorry, wrong number.";
+    const wrongLabel = "Wrong number";
+    /* Cap visible chips at 4 so the row doesn't wrap on smaller phones.
+       Suggestions list orders matter: the most demonstrative scenarios
+       come first per industry. */
+    const visible = Math.min(suggestions.length, 3);
+    const out = [];
+    for (let i = 0; i < visible; i++){{
+      const label = labels[i] || suggestions[i].slice(0, 20);
+      const msg = suggestions[i];
+      out.push('<button class="phone-suggestion" data-msg="'
+        + msg.replace(/"/g, "&quot;") + '">'
+        + label.replace(/</g, "&lt;") + '</button>');
+    }}
+    out.push('<button class="phone-suggestion" data-msg="'
+      + wrongMsg + '">' + wrongLabel + '</button>');
+    $box.innerHTML = out.join("");
+  }}
+
+  function applyPortalStats(portalStats){{
+    if (!portalStats) return;
+    /* The portal pane's "Today's calls" headline becomes "Today's
+       leads" for real estate, "Today's intakes" for legal, etc. */
+    const $headline = document.querySelector(".pane-portal .pane-label");
+    if ($headline && portalStats.today_headline){{
+      const labelSpan = $headline.querySelector("span:first-child");
+      if (labelSpan) labelSpan.textContent = portalStats.today_headline;
+    }}
+  }}
+
+  function rebuildOwnerSeed(seededSms){{
+    const $conv = document.getElementById("owner-conv");
+    if (!$conv) return;
+    /* Wipe the seeded entries but keep any dynamically-pushed ones
+       (added via pushOwnerSMS during the demo session). Dynamically-
+       pushed bubbles carry the .just-arrived class on entry; we keep
+       those. */
+    const dynamicBubbles = Array.from(
+      $conv.querySelectorAll(".owner-sms"))
+      .filter(el => el.dataset.dynamic === "1");
+    const seedHTML = (seededSms || []).map(function(s){{
+      const urgentClass = s.urgent ? " urgent" : "";
+      const body = (s.body || "").replace(/</g, "&lt;");
+      const ts = (s.ts_label || "").replace(/</g, "&lt;");
+      return '<div class="owner-sms' + urgentClass + '">'
+        + '<div class="sms-from">AI Receptionist</div>'
+        + '<div>' + body + '</div>'
+        + '<div class="sms-ts">' + ts + '</div>'
+        + '<div class="sms-read shown">'
+        + '<svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>'
+        + ' Read</div>'
+        + '</div>';
+    }}).join("");
+    $conv.innerHTML = seedHTML;
+    /* Re-append any dynamically-arrived bubbles after the new seed. */
+    dynamicBubbles.forEach(function(el){{ $conv.appendChild(el); }});
+  }}
+
+  function applyIndustry(opt, opts){{
+    opts = opts || {{}};
     const brand = opt.getAttribute("data-brand");
     const owner = opt.getAttribute("data-owner");
-    const e = opt.getAttribute("data-emergency");
-    const b = opt.getAttribute("data-book");
-    const p = opt.getAttribute("data-price");
+    const suggestions = safeJSON(
+      opt.getAttribute("data-suggestions"), []);
+    const labels = safeJSON(opt.getAttribute("data-labels"), []);
+    const portalStats = safeJSON(
+      opt.getAttribute("data-portal-stats"), {{}});
+    const seededSms = safeJSON(
+      opt.getAttribute("data-seeded-sms"), []);
+
+    /* Brand on customer phone */
     const custBiz = document.querySelector(
       ".demo-pane-customer .phone-shell:not(.owner-shell) .phone-bar .biz");
     if (custBiz && brand) custBiz.textContent = brand;
+
+    /* Owner-phone label */
     const ownerBiz = document.querySelector(
       ".owner-shell .phone-bar .biz");
     if (ownerBiz && owner) ownerBiz.firstChild.textContent = owner + "'s phone";
-    document.querySelectorAll(".phone-suggestion").forEach((btn, i)=>{{
-      if (i === 0 && e) btn.dataset.msg = e;
-      if (i === 1 && b) btn.dataset.msg = b;
-      if (i === 2 && p) btn.dataset.msg = p;
-    }});
+
+    /* Rebuild suggestion chips */
+    rebuildSuggestions(suggestions, labels);
+
+    /* Rebuild owner-phone seeded SMS bubbles. On initial load this is
+       a no-op (the server-rendered seed already matches), but on
+       industry switch this swaps to the new vertical's seed. */
+    if (!opts.initial) rebuildOwnerSeed(seededSms);
+
+    /* Portal stat labels */
+    applyPortalStats(portalStats);
+
+    /* Globals consumed by /chat and /demo/callers fetches */
     if (typeof window !== "undefined"){{
       window.currentIndustry = opt.value;
       window.currentOwnerName = owner || window.currentOwnerName;
     }}
+
+    /* V11.0 — re-fetch the chat caller list for this industry.
+       Skip on initial load (the loader runs separately at boot)
+       so we don't double-fetch. */
+    if (!opts.initial
+        && typeof window !== "undefined"
+        && typeof window.reloadDemoCallers === "function"){{
+      window.reloadDemoCallers(opt.value);
+    }}
   }}
+
   $sel.addEventListener("change", function(){{
     applyIndustry($sel.options[$sel.selectedIndex]);
   }});
-  applyIndustry($sel.options[$sel.selectedIndex]);
+  applyIndustry($sel.options[$sel.selectedIndex], {{initial: true}});
 }})();
 </script>
 </body></html>"""

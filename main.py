@@ -438,12 +438,45 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
 
 @app.get("/")
 def index():
-    """V9.5 — combined demo at /. Two panes (customer chat + operator
-    portal) using the same V9.4 design system as the real portal.
-    No marketing copy — the product IS the demo."""
+    """V9.5 / V11.0 — combined demo at /. Two panes (customer chat +
+    operator portal) using the same V9.4 design system as the real
+    portal. No marketing copy — the product IS the demo.
+
+    V11.0 — initial render uses the default industry from the registry
+    (HVAC). The customer phone bar shows the HVAC brand, the chat
+    suggestion chips show HVAC-specific scenarios. Switching industry
+    in the demo drawer rebuilds these client-side via the tenant
+    switcher JS in src/design.py."""
     from src.design import demo_page, icon
     from src.client_portal import _today_body
+    from src import industries as _industries
     from fastapi.responses import HTMLResponse
+    import html as _html
+
+    # V11.0 — default industry for first render. Matches the switcher's
+    # default-selected option (hvac), per the V11.0 plan.
+    default_industry = _industries.get("hvac") or {}
+    default_brand = default_industry.get("name", "AI Receptionist")
+    default_suggestions = default_industry.get("suggestions") or []
+    default_labels = default_industry.get("suggestion_labels") or []
+
+    # Render the initial chip buttons from the registry. Limit to first
+    # 3 industry-specific + a generic Wrong-number chip.
+    suggestion_chips: list[str] = []
+    for idx in range(min(3, len(default_suggestions))):
+        msg = default_suggestions[idx].replace('"', '&quot;')
+        label = (default_labels[idx] if idx < len(default_labels)
+                 else default_suggestions[idx][:20])
+        suggestion_chips.append(
+            f'<button class="phone-suggestion" '
+            f'data-msg="{msg}">'
+            f'{_html.escape(label)}</button>'
+        )
+    suggestion_chips.append(
+        '<button class="phone-suggestion" '
+        'data-msg="Sorry, wrong number.">Wrong number</button>'
+    )
+    suggestion_chips_html = "\n            ".join(suggestion_chips)
 
     # ── Operator pane: real portal Today body for septic_pro ──────
     # V9.6.1 — refresh the seeded timestamps each render so "Recent
@@ -480,7 +513,10 @@ def index():
     """
 
     # ── Customer pane: phone-shell wrapping the chat widget ───────
-    chat_inner = """
+    # V11.0 — initial brand + suggestion chips come from the registry
+    # default industry (HVAC). The switcher rebuilds these on industry
+    # change, so this is just the first-paint state.
+    chat_inner = f"""
         <div class="phone-status">
           <span class="ps-time">9:41</span>
           <span class="ps-right">
@@ -494,7 +530,7 @@ def index():
           </span>
         </div>
         <div class="phone-bar">
-          <div class="biz">Septic Pro</div>
+          <div class="biz">{_html.escape(default_brand)}</div>
           <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
         </div>
         <div class="phone-screen">
@@ -503,10 +539,7 @@ def index():
             <div class="psys">Pick a caller above to start.</div>
           </div>
           <div class="phone-suggestions" id="suggestions">
-            <button class="phone-suggestion" data-msg="My toilets are backing up and there's sewage in the basement!">Emergency</button>
-            <button class="phone-suggestion" data-msg="Hey, I need to schedule a routine pumping.">Book a pump-out</button>
-            <button class="phone-suggestion" data-msg="How much does a pump-out cost?">Price check</button>
-            <button class="phone-suggestion" data-msg="Sorry, wrong number.">Wrong number</button>
+            {suggestion_chips_html}
           </div>
           <form class="phone-input" id="conv-form" autocomplete="off">
             <input id="conv-input" type="text"
@@ -517,37 +550,39 @@ def index():
           </form>
         </div>
     """
-    # V10.3 — owner-SMS preview phone (the third actor in the demo:
-    # customer / AI / owner). Pre-seeded with Marcus's emergency brief
-    # so the prospect immediately sees what Bob receives. Updates
-    # dynamically when the prospect triggers an emergency or booking.
-    owner_phone_inner = """
+    # V10.3 / V11.0 — owner-SMS preview phone (the third actor in the
+    # demo: customer / AI / owner). Pre-seeded with the default
+    # industry's `seeded_owner_sms` from the registry so the prospect
+    # immediately sees what the OWNER of that vertical receives.
+    # Updates dynamically when the prospect triggers an emergency or
+    # booking via the switcher.
+    default_owner_label = default_industry.get("owner_label", "Owner")
+    seeded_sms = default_industry.get("seeded_owner_sms") or []
+    seeded_sms_html_parts = []
+    for entry in seeded_sms:
+        urgent_class = " urgent" if entry.get("urgent") else ""
+        seeded_sms_html_parts.append(
+            f'''<div class="owner-sms{urgent_class}">
+              <div class="sms-from">AI Receptionist</div>
+              <div>{_html.escape(entry.get("body", ""))}</div>
+              <div class="sms-ts">{_html.escape(entry.get("ts_label", ""))}</div>
+              <div class="sms-read shown">
+                <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
+                Read
+              </div>
+            </div>'''
+        )
+    seeded_sms_html = "\n            ".join(seeded_sms_html_parts)
+    owner_phone_inner = f"""
         <div class="phone-bar">
           <div>
-            <div class="biz">Bob's phone<span class="biz-badge" id="owner-badge" style="display:none">0</span></div>
+            <div class="biz">{_html.escape(default_owner_label)}'s phone<span class="biz-badge" id="owner-badge" style="display:none">0</span></div>
             <div class="biz-sub">Texts from your receptionist</div>
           </div>
         </div>
         <div class="phone-screen">
           <div class="owner-conv" id="owner-conv">
-            <div class="owner-sms urgent">
-              <div class="sms-from">AI Receptionist</div>
-              <div>Emergency · Marcus Reilly · 412 Maple Lane, Lancaster · sewage backup · about to bridge.</div>
-              <div class="sms-ts">6h ago</div>
-              <div class="sms-read shown">
-                <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
-                Read
-              </div>
-            </div>
-            <div class="owner-sms">
-              <div class="sms-from">AI Receptionist</div>
-              <div>Booking · Sarah Wong · Tuesday 1pm pump-out · 412 Oak Street.</div>
-              <div class="sms-ts">yesterday</div>
-              <div class="sms-read shown">
-                <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
-                Read
-              </div>
-            </div>
+            {seeded_sms_html}
           </div>
         </div>
     """
@@ -566,16 +601,17 @@ def index():
     chat_js = """
     <script>
     const DEMO_CLIENT_ID = "septic_pro";
-    /* V10.4 — selected industry from the top-bar switcher. Sent with
-       every /chat call so the LLM responds with matching business
-       context. "septic" = current behavior (no override).
+    /* V10.4 / V11.0 — selected industry from the top-bar switcher.
+       Sent with every /chat call so the LLM responds with matching
+       business context. V11.0 default is "hvac" (the switcher's
+       default selected option — emergency moments demo strongest).
        Attached to window so the tenant-switcher script (which runs
        in a separate <script> block) can write to it. */
     if (typeof window.currentIndustry === "undefined") {
-      window.currentIndustry = "septic";
+      window.currentIndustry = "hvac";
     }
     if (typeof window.currentOwnerName === "undefined") {
-      window.currentOwnerName = "Bob";
+      window.currentOwnerName = "Mike";
     }
     /* V10.1 — sort order now comes from /demo/callers (seeded
        persona order is the canonical demo flow). PREFERRED_ORDER
@@ -667,6 +703,10 @@ def index():
       }
       const div = document.createElement("div");
       div.className = "owner-sms just-arrived" + (isEmerg ? " urgent" : "");
+      /* V11.0 — mark as dynamically-pushed so the switcher's
+         rebuildOwnerSeed() preserves this bubble across industry
+         switches (only the pre-baked seed swaps). */
+      div.dataset.dynamic = "1";
       div.innerHTML =
         `<div class="sms-from">AI Receptionist</div>` +
         `<div>${escapeHTML(body)}</div>` +
@@ -783,14 +823,21 @@ def index():
       return r;
     }
 
-    /* V10.1 — /demo/callers is the unified-identity source. Same
-       phones as the portal's seeded scenarios → same DiceBear seed →
-       same avatar in both panes → chat exchanges land in the SAME
-       portal partner card. */
-    async function loadCallers(){
+    /* V10.1 / V11.0 — /demo/callers is the unified-identity source.
+       Same phones as the portal's seeded scenarios → same avatar in
+       both panes → chat exchanges land in the SAME portal partner
+       card. V11.0 — accepts an optional industry slug; the tenant
+       switcher in the demo drawer calls window.reloadDemoCallers(slug)
+       when industry changes, which rebuilds the chip list with the
+       new vertical's personas. */
+    async function loadCallers(industry, opts){
+      opts = opts || {};
+      const slug = industry || window.currentIndustry || "hvac";
       try {
-        const r = await fetch("/demo/callers");
+        const url = "/demo/callers?industry=" + encodeURIComponent(slug);
+        const r = await fetch(url);
         const list = await r.json();
+        callersById = {};
         list.forEach(c => callersById[c.id] = c);
         $chips.innerHTML = list.map(c=>{
           const initial = (c.name||"?").charAt(0).toUpperCase();
@@ -813,8 +860,13 @@ def index():
         /* V10.4 — try to restore the prior chat state before
            auto-selecting the first caller. If a recent session was
            interrupted by F5, the prospect picks back up where they
-           left off. */
-        if (!restoreChatState()){
+           left off.
+           V11.0 — restore only on the initial load. Industry switches
+           always reset to the first persona of the new vertical. */
+        if (!opts.industrySwitch && !restoreChatState()){
+          const first = list[0];
+          if(first) selectCaller(first.id);
+        } else if (opts.industrySwitch){
           const first = list[0];
           if(first) selectCaller(first.id);
         }
@@ -822,6 +874,14 @@ def index():
         $chips.innerHTML = `<div style="padding:10px;color:var(--muted);font-size:12px;">Demo offline. Try again in a moment.</div>`;
       }
     }
+
+    /* V11.0 — exposed to the tenant switcher script (lives in
+       design.py demo_page shell, runs in a separate <script> block). */
+    window.reloadDemoCallers = function(industrySlug){
+      window.currentIndustry = industrySlug;
+      try { sessionStorage.removeItem("aircept_chat_v1"); } catch(_) {}
+      loadCallers(industrySlug, {industrySwitch: true});
+    };
 
     function selectCaller(id){
       activeCaller = id;
@@ -1163,11 +1223,16 @@ def index():
 
 
 @app.get("/demo/callers")
-def demo_callers():
-    """V10.1 — the seeded demo personas as a chat-caller list. Same
-    phone numbers as the portal's seeded scenarios, so picking
+def demo_callers(industry: str | None = None):
+    """V10.1 / V11.0 — the seeded demo personas as a chat-caller list.
+    Same phone numbers as the portal's seeded scenarios, so picking
     "Marcus" in the chat lands in the SAME partner card the prospect
     sees in the portal.
+
+    V11.0 — accepts an `industry` query param (e.g. ?industry=hvac).
+    When passed, returns the personas for that vertical; the tenant
+    switcher in the demo drawer calls this with the selected slug.
+    When omitted, returns septic personas (the pre-V11.0 default).
 
     Replaces /missed-calls as the source of truth for the combined
     demo at /. Public; no auth (matches /demo/today)."""
@@ -1175,10 +1240,12 @@ def demo_callers():
     try:
         # Make sure the personas exist in memory.json so a subsequent
         # /chat call resolves the caller_id. Cheap (idempotent).
-        _demo_seed.register_personas_in_memory()
+        # V11.0 — register for the requested industry (or all when not
+        # specified) so cross-industry switches don't 404 on caller_id.
+        _demo_seed.register_personas_in_memory(industry=industry or "all")
     except Exception as e:
         log.warning("demo personas registration in /demo/callers: %s", e)
-    return _demo_seed.list_personas()
+    return _demo_seed.list_personas(industry=industry)
 
 
 @app.post("/demo/reset")

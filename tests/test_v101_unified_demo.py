@@ -226,13 +226,21 @@ def test_chat_avatar_seed_matches_portal_avatar_seed(app_client):
 
 
 def test_combined_demo_uses_demo_callers_not_missed_calls(app_client):
-    """The combined demo at / must fetch from /demo/callers (V10.1
-    unified-identity), not the older /missed-calls path."""
+    """V10.1: the combined demo at / must fetch from /demo/callers
+    (unified-identity), not the older /missed-calls path.
+
+    V11.0: the fetch URL now carries an industry query param so the
+    caller list filters to the active vertical. We assert the URL
+    starts with /demo/callers — the query string can vary."""
     client, _ = app_client
     r = client.get("/")
     body = r.text
-    # The fetch call must target /demo/callers
-    assert 'fetch("/demo/callers")' in body
+    # The fetch call must target /demo/callers (with or without query).
+    # V11.0 — the URL is built as "/demo/callers?industry=..."; we
+    # match the path prefix to be tolerant of both forms.
+    assert "/demo/callers" in body
+    assert 'fetch("/demo/callers")' in body \
+        or '"/demo/callers?industry=' in body
     # And the old fetch call to /missed-calls must NOT appear.
     # (Code comments that mention `/missed-calls` are fine — we just
     # care that there's no live fetch to it.)

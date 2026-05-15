@@ -86,12 +86,19 @@ def test_customer_pane_includes_chat_widget(app_client):
 
 
 def test_customer_pane_has_quick_suggestions(app_client):
+    """V9.5: customer pane ships scripted demo prompts.
+
+    V11.0: chip labels are industry-specific. The default render is
+    HVAC, whose chips read 'AC out', 'No heat', 'Tune-up', + 'Wrong
+    number' (the generic-final chip kept across industries). Assert
+    on a shape that holds regardless of the default vertical: at
+    least four phone-suggestion buttons plus the always-present
+    'Wrong number' fallback."""
     r = app_client.get("/")
     body = r.text
-    # The four scripted demo prompts
-    assert "Emergency" in body
-    assert "Book a pump-out" in body
-    assert "Price check" in body
+    # At least 3 industry-specific chips + the generic Wrong number
+    assert body.count('class="phone-suggestion"') >= 4
+    # The wrong-number fallback survives across every industry
     assert "Wrong number" in body
 
 
