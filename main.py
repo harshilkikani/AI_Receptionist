@@ -487,8 +487,13 @@ def index():
     except Exception as e:
         log.debug("demo refresh_timestamps non-fatal: %s", e)
     try:
+        # V11.0 — initial portal render filters to the default
+        # industry (HVAC) so the activity feed matches the customer-
+        # side default. Switching industry triggers a refetch with
+        # the new slug.
         operator_inner = _today_body(
-            "septic_pro", t="", include_invoice_link=False)
+            "septic_pro", t="", include_invoice_link=False,
+            industry="hvac")
     except Exception as e:
         log.error("demo: _today_body failed: %s", e)
         operator_inner = (
@@ -876,11 +881,17 @@ def index():
     }
 
     /* V11.0 — exposed to the tenant switcher script (lives in
-       design.py demo_page shell, runs in a separate <script> block). */
+       design.py demo_page shell, runs in a separate <script> block).
+       Refetches both the chat caller list AND the operator portal
+       pane so the entire experience shifts to the new vertical in
+       one click. */
     window.reloadDemoCallers = function(industrySlug){
       window.currentIndustry = industrySlug;
       try { sessionStorage.removeItem("aircept_chat_v1"); } catch(_) {}
       loadCallers(industrySlug, {industrySwitch: true});
+      /* Refetch the operator-portal pane with the new industry filter
+         so "Recent activity" matches the chat caller list. */
+      if (typeof refreshPortal === "function") refreshPortal();
     };
 
     function selectCaller(id){
@@ -932,12 +943,14 @@ def index():
     async function refreshPortal(){
       if (!$portal || _portalRefreshing) return;
       _portalRefreshing = true;
+      const slug = window.currentIndustry || "hvac";
       try {
         /* Subtle opacity fade so the swap reads as a deliberate
            update, not a flicker. ~140ms total. */
         $portal.style.transition = "opacity 140ms ease";
         $portal.style.opacity = "0.7";
-        const r = await fetch("/demo/today", {cache:"no-store"});
+        const r = await fetch("/demo/today?industry=" + encodeURIComponent(slug),
+                              {cache:"no-store"});
         if (r.ok){
           const html = await r.text();
           $portal.innerHTML = html;
@@ -1268,18 +1281,19 @@ def demo_reset():
 
 
 @app.get("/demo/today")
-def demo_today_fragment():
-    """V9.6 — HTML fragment endpoint for live-refreshing the operator
-    portal pane on the combined demo. Returns just the body content
-    (no `<html>` chrome) so the JS can drop it into `#portal-body`.
+def demo_today_fragment(industry: str | None = None):
+    """V9.6 / V11.0 — HTML fragment endpoint for live-refreshing the
+    operator portal pane on the combined demo. Returns just the body
+    content (no `<html>` chrome) so the JS can drop it into
+    `#portal-body`.
 
     No auth: matches /. The fragment is the same body the real portal
     renders, just for septic_pro and without the invoice button.
 
-    V9.6.1 — slides the seeded scenarios to "now − minutes_ago" on every
-    fetch so the activity feed never reads stale "13 hours ago" labels.
-    Cheap: six small UPDATEs against indexed rows. Real chat exchanges
-    (call_sid LIKE 'SMS_<digits>') aren't touched."""
+    V11.0 — accepts ?industry=hvac (or any registered slug). When
+    set, the activity feed filters to that vertical's seeded phone
+    range and the section labels swap to vertical-native terminology.
+    When omitted, returns the unfiltered view (pre-V11.0 behavior)."""
     from src.client_portal import _today_body
     from src import demo_seed as _demo_seed
     from fastapi.responses import HTMLResponse
@@ -1288,7 +1302,9 @@ def demo_today_fragment():
     except Exception as e:
         log.debug("demo refresh_timestamps non-fatal: %s", e)
     try:
-        body = _today_body("septic_pro", t="", include_invoice_link=False)
+        body = _today_body("septic_pro", t="",
+                            include_invoice_link=False,
+                            industry=industry)
     except Exception as e:
         log.error("demo/today fragment failed: %s", e)
         body = (

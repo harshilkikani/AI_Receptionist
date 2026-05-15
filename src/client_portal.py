@@ -113,15 +113,32 @@ def _nav(client_id: str, t: str) -> list:
 
 def _today_body(client_id: str, t: str = "", *,
                  include_invoice_link: bool = True,
-                 partners_limit: int = 8) -> str:
-    """V9.5 — extracted from summary() so both the real portal route
-    and the public combined-demo page at / can render the same content
-    with the same components and the same data. No page chrome,
-    no auth — pure body fragment.
+                 partners_limit: int = 8,
+                 industry: Optional[str] = None) -> str:
+    """V9.5 / V11.0 — extracted from summary() so both the real portal
+    route and the public combined-demo page at / can render the same
+    content with the same components and the same data. No page
+    chrome, no auth — pure body fragment.
 
     `include_invoice_link` controls the inline invoice button in the
     hero (demo doesn't need it). `partners_limit` caps the activity feed.
+
+    V11.0 — when `industry` is set, the activity feed and follow-up
+    surface filter to that vertical's seeded phone-range (see
+    `demo_seed._INDUSTRY_PHONE_PREFIXES`). The section captions and
+    stat-card labels also swap to vertical-native terminology
+    (e.g. 'Recent inquiries' for real estate, 'Today's intakes' for
+    legal). The monthly aggregate counts are not filtered — that
+    requires a deeper usage.monthly_summary refactor; the activity
+    feed is what changes per switch.
     """
+    from src import industries as _industries
+    industry_meta = _industries.get(industry) if industry else None
+    phone_prefix = ""
+    if industry:
+        from src import demo_seed as _demo_seed
+        phone_prefix = _demo_seed.industry_phone_prefix(industry)
+
     client = tenant.load_client_by_id(client_id)
     if not client:
         return '<div class="empty">Tenant not configured.</div>'
@@ -133,8 +150,16 @@ def _today_body(client_id: str, t: str = "", *,
     # ── Recent activity (last 24h of calls + SMS, interleaved) ────────
     now_ts = int(time.time())
     today_ts = now_ts - 24 * 60 * 60
+    # V11.0 — pull a wider window when filtering so the post-filter
+    # list still has enough partners to feel populated.
+    raw_limit = partners_limit * 8 if phone_prefix else partners_limit
     partners_today = usage.list_conversation_partners(
-        client_id, limit=partners_limit, since_ts=today_ts)
+        client_id, limit=raw_limit, since_ts=today_ts)
+    if phone_prefix:
+        partners_today = [
+            p for p in partners_today
+            if (p.get("phone") or "").startswith(phone_prefix)
+        ][:partners_limit]
     today_calls = sum(p["calls"] for p in partners_today)
     today_msgs = sum(p["messages"] for p in partners_today)
     today_emerg = _today_emergency_count(client_id, today_ts)
@@ -163,13 +188,19 @@ def _today_body(client_id: str, t: str = "", *,
                 preview_html=preview,
                 live=is_live,
             ))
+        recent_label = (
+            (industry_meta or {}).get("portal_copy", {})
+            .get("recent_label", "Recent activity"))
         activity_html = (
-            section_caption("Recent activity")
+            section_caption(recent_label)
             + card("".join(cards), flush=True)
         )
     else:
+        recent_label = (
+            (industry_meta or {}).get("portal_copy", {})
+            .get("recent_label", "Recent activity"))
         activity_html = (
-            section_caption("Recent activity")
+            section_caption(recent_label)
             + card(
                 f'<div class="empty empty-warm">'
                 f'<div class="empty-icon">{icon("phone", size=20)}</div>'
@@ -182,7 +213,15 @@ def _today_body(client_id: str, t: str = "", *,
         )
 
     # ── Follow-ups section (soft variant — context, not data) ────────
-    followups = _followup_candidates(client_id, limit=5)
+    # V11.0 — when filtering by industry, pull a wider window then
+    # narrow to the industry's phone range.
+    followups_raw_limit = 40 if phone_prefix else 5
+    followups = _followup_candidates(client_id, limit=followups_raw_limit)
+    if phone_prefix:
+        followups = [
+            r for r in followups
+            if (r.get("from_number") or "").startswith(phone_prefix)
+        ][:5]
     followups_html = ""
     if followups:
         items = []
@@ -204,8 +243,11 @@ def _today_body(client_id: str, t: str = "", *,
                     if (raw_phone and t) else ""
                 ),
             ))
+        followup_label = (
+            (industry_meta or {}).get("portal_copy", {})
+            .get("followup_label", "Worth a follow-up"))
         followups_html = (
-            section_caption("Worth a follow-up")
+            section_caption(followup_label)
             + card("".join(items), variant="soft", flush=True)
         )
 
@@ -221,12 +263,20 @@ def _today_body(client_id: str, t: str = "", *,
     book_frac  = (bookings / max(1, s["calls_handled"])) if s["calls_handled"] else 0
     daily_emerg = [int(round(v * emerg_frac)) for v in daily_calls]
     daily_book  = [int(round(v * book_frac))  for v in daily_calls]
+    # V11.0 — stat-card labels swap per vertical. Real-estate says
+    # "Inquiries answered" / "Active showings", legal says "Intakes"
+    # / "Time-sensitive", etc. Numbers stay aggregate.
+    portal_copy = (industry_meta or {}).get("portal_copy", {})
+    stat_calls_label = portal_copy.get("stat_calls") or "Calls answered"
+    stat_emerg_label = portal_copy.get("stat_emergencies") or "Emergencies routed safely"
     top_stats = (
         section_caption("This month")
         + stats([
-            stat_card("Calls answered", s["calls_handled"],
+            stat_card(f"{stat_calls_label} answered" if stat_calls_label == "Calls"
+                      else stat_calls_label,
+                       s["calls_handled"],
                        sparkline_values=daily_calls),
-            stat_card("Emergencies routed safely", s["emergencies"],
+            stat_card(stat_emerg_label, s["emergencies"],
                        sparkline_values=daily_emerg),
             stat_card("Bookings captured", bookings,
                        sparkline_values=daily_book),

@@ -441,3 +441,71 @@ def test_legacy_data_attrs_replaced_not_appended():
     # design system shouldn't reference them anymore.)
     # Mostly just a sanity check that we didn't accidentally keep both.
     assert ".tenant-switcher" in css  # the styling still applies
+
+
+# ── 12. Portal fragment industry filter (V11.0 F) ───────────────────
+
+
+def test_demo_today_fragment_accepts_industry_query(app_client):
+    """V11.0 F — /demo/today?industry=X returns only that vertical's
+    seeded activity (filtered by phone prefix). This is the fix for
+    the original V11.0 ship where switching industry left the portal
+    pane stuck on the union of all industries."""
+    # Seed the demo first so /demo/today has content
+    from src import demo_seed
+    demo_seed.seed_septic_pro()
+
+    r_hvac = app_client.get("/demo/today?industry=hvac")
+    assert r_hvac.status_code == 200
+    body_hvac = r_hvac.text
+    # HVAC personas live in +15550102XXX range
+    import re
+    phones_hvac = set(re.findall(r"\+1555010[0-9]{4}", body_hvac))
+    if phones_hvac:
+        # All HVAC-range phones, no real-estate or others
+        for p in phones_hvac:
+            assert p.startswith("+155501020"), (
+                f"non-HVAC phone leaked into industry=hvac response: {p}")
+
+    r_re = app_client.get("/demo/today?industry=real_estate")
+    assert r_re.status_code == 200
+    body_re = r_re.text
+    phones_re = set(re.findall(r"\+1555010[0-9]{4}", body_re))
+    if phones_re:
+        for p in phones_re:
+            assert p.startswith("+155501030"), (
+                f"non-real-estate phone leaked into industry=real_estate: {p}")
+
+
+def test_initial_page_render_filters_to_hvac(app_client):
+    """V11.0 F — / route renders the initial portal pane filtered to
+    the default industry (HVAC). Without this fix the portal pane
+    showed the union of all 50 personas mixed together."""
+    from src import demo_seed
+    demo_seed.seed_septic_pro()
+    r = app_client.get("/")
+    body = r.text
+    import re
+    # Inside the portal-shell-body wrapper, all phones must be HVAC
+    m = re.search(r'id="portal-body">(.*?)</div>\s*</section>', body, re.DOTALL)
+    if m:
+        portal_section = m.group(1)
+        phones = set(re.findall(r"\+1555010[0-9]{4}", portal_section))
+        for p in phones:
+            assert p.startswith("+155501020"), (
+                f"non-HVAC phone in initial portal render: {p}")
+
+
+def test_refresh_portal_js_uses_current_industry(app_client):
+    """V11.0 F — refreshPortal() now reads window.currentIndustry and
+    appends it as a query param so polling and industry switches both
+    end up at the right vertical's filtered view."""
+    r = app_client.get("/")
+    body = r.text
+    # Both elements present in the JS body
+    assert "window.currentIndustry" in body
+    assert "/demo/today?industry=" in body
+    # reloadDemoCallers also triggers refreshPortal so portal + chat
+    # update together on switch
+    assert "window.reloadDemoCallers" in body
+    assert "refreshPortal" in body
