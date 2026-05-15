@@ -534,14 +534,42 @@ def index():
             <span class="ps-battery"><span class="ps-bat-fill"></span></span>
           </span>
         </div>
+        <!-- V11.2 — phone-bar has list and thread modes. List mode shows
+             the brand + tagline (Messages-app-pattern: customer is
+             looking at their inbox). Thread mode shows the active
+             caller (back button + avatar + name + phone). -->
         <div class="phone-bar">
-          <div class="biz">{_html.escape(default_brand)}</div>
-          <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
+          <div class="bar-list">
+            <div class="biz">{_html.escape(default_brand)}</div>
+            <div class="biz-sub">Messages</div>
+          </div>
+          <div class="bar-thread" aria-hidden="true">
+            <button class="phone-back" id="phone-back" type="button"
+                    aria-label="Back to messages">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round"
+                   stroke-linejoin="round">
+                <path d="M10 3.5 5.5 8 10 12.5"/>
+              </svg>
+            </button>
+            <span class="bar-thread-avatar">
+              <span class="bar-thread-avatar-initial" id="bar-thread-initial"></span>
+              <img id="bar-thread-img" alt="" loading="lazy" />
+            </span>
+            <div class="bar-thread-info">
+              <div class="bar-thread-name" id="bar-thread-name"></div>
+              <div class="bar-thread-phone" id="bar-thread-phone"></div>
+            </div>
+          </div>
         </div>
         <div class="phone-screen">
-          <div class="chat-chips" id="callers"></div>
+          <!-- V11.2 — LIST mode: vertical conversation list (iMessage
+               pattern) with avatar + name + phone + recent message
+               preview + timestamp. Replaces the V11.0-V11.1 horizontal
+               chip row. -->
+          <div class="conv-list" id="callers" role="list"></div>
           <div class="phone-conv" id="conv-body">
-            <div class="psys">Pick a caller above to start.</div>
+            <div class="psys">Pick a caller to start.</div>
           </div>
           <div class="phone-suggestions" id="suggestions">
             {suggestion_chips_html}
@@ -616,7 +644,9 @@ def index():
     customer_pane = f"""
     <section class="demo-pane demo-pane-customer">
       <div class="pane-label">What your customer sees</div>
-      <div class="phone-shell" style="position:relative;">{chat_inner}</div>
+      <div class="phone-shell" id="customer-phone"
+           data-mode="list"
+           style="position:relative;">{chat_inner}</div>
       <div class="pane-label" style="margin-top:24px">What you see on your phone</div>
       <div class="phone-shell owner-shell">{owner_phone_inner}</div>
     </section>
@@ -903,13 +933,43 @@ def index():
       return r;
     }
 
-    /* V10.1 / V11.0 — /demo/callers is the unified-identity source.
-       Same phones as the portal's seeded scenarios → same avatar in
-       both panes → chat exchanges land in the SAME portal partner
-       card. V11.0 — accepts an optional industry slug; the tenant
-       switcher in the demo drawer calls window.reloadDemoCallers(slug)
-       when industry changes, which rebuilds the chip list with the
-       new vertical's personas. */
+    /* V11.2 — phone format helper. +15551234567 → (555) 123-4567. */
+    function formatPhone(p){
+      const d = (p||"").replace(/\D/g, "").replace(/^1/, "");
+      if (d.length === 10){
+        return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+      }
+      return p || "";
+    }
+    /* V11.2 — short relative time for the conversation list. The seed
+       data carries scenario hints, not real timestamps yet, so we
+       fall back to a small set of believable values keyed by persona
+       index (the seed order is curated for demo flow). */
+    function callerWhen(c, idx){
+      if (c.type === "new") return "now";
+      const slots = ["1h", "3h", "5h", "Yesterday", "2d", "3d", "5d"];
+      return slots[Math.min(idx, slots.length - 1)] || "";
+    }
+
+    /* V11.2 — phone-mode switcher. Toggles the customer phone shell
+       between "list" (vertical conversation list, no input) and
+       "thread" (back button + caller header + conversation + input).
+       Mirrors iMessage / OpenPhone / WhatsApp navigation. */
+    const $phoneShell = document.getElementById("customer-phone");
+    function setPhoneMode(mode){
+      if (!$phoneShell) return;
+      $phoneShell.dataset.mode = mode;
+      $phoneShell.querySelector(".bar-thread")
+        ?.setAttribute("aria-hidden", mode === "thread" ? "false" : "true");
+      $phoneShell.querySelector(".bar-list")
+        ?.setAttribute("aria-hidden", mode === "list" ? "false" : "true");
+    }
+
+    /* V10.1 / V11.0 / V11.2 — /demo/callers is the unified-identity
+       source. V11.2 — renders a vertical conversation list (iMessage
+       pattern) with avatar + full name + phone + recent message
+       preview + relative timestamp. The pre-V11.2 horizontal chip
+       row is gone — bigger touch targets, real-app feel. */
     async function loadCallers(industry, opts){
       opts = opts || {};
       const slug = industry || window.currentIndustry || "hvac";
@@ -919,45 +979,55 @@ def index():
         const list = await r.json();
         callersById = {};
         list.forEach(c => callersById[c.id] = c);
-        $chips.innerHTML = list.map(c=>{
+        $chips.innerHTML = list.map((c, idx) => {
           const initial = (c.name||"?").charAt(0).toUpperCase();
-          const hue = hashHue(c.phone||c.id);
-          /* V11.1 — unified Pravatar URL across chat chip + portal
-             card + owner-phone bubble avatar. Same seed everywhere,
-             same face. Pre-V11.1 chat used DiceBear notionists
-             (cartoonish) while the portal used Pravatar (real
-             photos) — the same person looked different across
-             surfaces and broke identity continuity. */
-          const seed = (c.phone||c.id||"").replace(/\\D/g,"") || (c.id||"x");
+          /* V11.2 — Pravatar URL, identical seed across chat list +
+             portal card + owner-phone alert. Phone digits (without
+             country-code prefix) is the seed. */
+          const seed = (c.phone||"").replace(/\D/g, "").replace(/^1/, "")
+                       || (c.id||"x");
           const photoPrimary = `https://i.pravatar.cc/150?u=${encodeURIComponent(seed)}`;
           const photoFallback = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}`;
-          return `<a class="chat-chip" data-id="${escapeHTML(c.id)}" href="#" style="--av-h:${hue}">
-            <span class="av">
-              <span class="av-initial">${escapeHTML(initial)}</span>
-              <img class="av-img" src="${photoPrimary}" alt="" loading="lazy"
+          const phoneFmt = formatPhone(c.phone);
+          const when = callerWhen(c, idx);
+          const preview = c.preview || c.scenario_hint || "";
+          const newDot = c.type === "new"
+            ? '<span class="conv-row-dot" aria-label="New"></span>'
+            : '';
+          return `<button class="conv-row" data-id="${escapeHTML(c.id)}" role="listitem" type="button">
+            <span class="conv-row-avatar">
+              <span class="conv-row-avatar-initial">${escapeHTML(initial)}</span>
+              <img src="${photoPrimary}" alt="" loading="lazy"
                    onerror="if(this.dataset.tried!=='fallback'){this.dataset.tried='fallback';this.src='${photoFallback}';}else{this.style.display='none';}">
             </span>
-            <span>${escapeHTML(c.name)}</span>
-          </a>`;
+            <span class="conv-row-body">
+              <span class="conv-row-top">
+                <span class="conv-row-name">${escapeHTML(c.name)}</span>
+                <span class="conv-row-when">${escapeHTML(when)}</span>
+              </span>
+              <span class="conv-row-phone">${escapeHTML(phoneFmt)}</span>
+              <span class="conv-row-preview">${escapeHTML(preview)}${newDot}</span>
+            </span>
+          </button>`;
         }).join("");
-        $chips.querySelectorAll(".chat-chip").forEach(el=>{
-          el.addEventListener("click", e=>{ e.preventDefault(); selectCaller(el.dataset.id); });
+        $chips.querySelectorAll(".conv-row").forEach(el => {
+          el.addEventListener("click", e => {
+            e.preventDefault();
+            selectCaller(el.dataset.id);
+          });
         });
-        /* V10.4 — try to restore the prior chat state before
-           auto-selecting the first caller. If a recent session was
-           interrupted by F5, the prospect picks back up where they
-           left off.
-           V11.0 — restore only on the initial load. Industry switches
-           always reset to the first persona of the new vertical. */
-        if (!opts.industrySwitch && !restoreChatState()){
-          const first = list[0];
-          if(first) selectCaller(first.id);
-        } else if (opts.industrySwitch){
-          const first = list[0];
-          if(first) selectCaller(first.id);
+        /* V11.2 — restore prior session only on initial load. If a
+           session is restored, switch the phone to thread mode. */
+        if (!opts.industrySwitch && restoreChatState()){
+          if (activeCaller) setPhoneMode("thread");
+        } else {
+          /* No prior session OR industry-switch reset: stay in LIST
+             mode and let the user pick. iMessage pattern — open to
+             the inbox, not into a thread. */
+          setPhoneMode("list");
         }
       } catch(e){
-        $chips.innerHTML = `<div style="padding:10px;color:var(--muted);font-size:12px;">Demo offline. Try again in a moment.</div>`;
+        $chips.innerHTML = `<div class="conv-list-empty">Demo offline. Try again in a moment.</div>`;
       }
     }
 
@@ -987,14 +1057,41 @@ def index():
       activeCaller = id;
       _summaryShown = false;   /* fresh thread, allow summary again */
       _threadStart = Date.now();  /* V10.5 — track start for summary duration */
-      document.querySelectorAll(".chat-chip").forEach(el => el.classList.toggle("active", el.dataset.id === id));
       const c = callersById[id];
+      if (!c) return;
+      /* V11.2 — mark the active row in the list (still visible behind
+         the thread when the user backs out). */
+      document.querySelectorAll(".conv-row").forEach(el =>
+        el.classList.toggle("active", el.dataset.id === id));
+      /* V11.2 — update the thread-mode phone-bar with the caller's
+         avatar, name, and phone. */
+      const seed = (c.phone||"").replace(/\D/g, "").replace(/^1/, "")
+                   || (c.id||"x");
+      const photoPrimary = "https://i.pravatar.cc/150?u=" + encodeURIComponent(seed);
+      const photoFallback = "https://api.dicebear.com/9.x/notionists/svg?seed=" + encodeURIComponent(seed);
+      const $img = document.getElementById("bar-thread-img");
+      const $init = document.getElementById("bar-thread-initial");
+      const $name = document.getElementById("bar-thread-name");
+      const $phone = document.getElementById("bar-thread-phone");
+      if ($img){
+        $img.src = photoPrimary;
+        $img.onerror = function(){
+          if (this.dataset.tried !== "fallback"){
+            this.dataset.tried = "fallback";
+            this.src = photoFallback;
+          } else { this.style.display = "none"; }
+        };
+      }
+      if ($init) $init.textContent = (c.name||"?").charAt(0).toUpperCase();
+      if ($name) $name.textContent = c.name || "New caller";
+      if ($phone) $phone.textContent = formatPhone(c.phone);
+      /* V11.2 — transition into thread mode. */
+      setPhoneMode("thread");
       $body.innerHTML = "";
-      /* V10.5 — populate the chat immediately. The V10.4 sliding
-         banner + 700ms ceremony was demo theater; real receptionists
-         don't see that. A quiet system-line intro is enough. */
-      const intro = c.name ? `${c.name} · ${c.phone}` : `New caller · ${c.phone}`;
-      appendSystem(intro);
+      /* V10.5 / V11.2 — populate the thread immediately. iMessage-
+         pattern: the caller header IS the identity row, so we don't
+         repeat name+phone in the conversation. Just a quiet
+         scenario-hint line if there is one. */
       if (c.scenario_hint || c.preview) {
         appendSystem(c.scenario_hint || c.preview);
       }
@@ -1004,6 +1101,19 @@ def index():
       $input.disabled = false;
       $send.disabled = false;
       $input.focus();
+    }
+
+    /* V11.2 — back button wiring. Returns the phone to list mode so
+       the user can pick a different caller. Same pattern as iMessage's
+       back-to-inbox tap. */
+    const $phoneBack = document.getElementById("phone-back");
+    if ($phoneBack){
+      $phoneBack.addEventListener("click", function(){
+        activeCaller = null;
+        setPhoneMode("list");
+        document.querySelectorAll(".conv-row.active")
+          .forEach(el => el.classList.remove("active"));
+      });
     }
     /* V10.5 — replaces the V10.4 ticking call-timer attention-grab.
        Just record when the thread started so the end-of-call summary
@@ -1213,8 +1323,24 @@ def index():
         if (!callersById[state.caller]) return false;
         activeCaller = state.caller;
         $body.innerHTML = state.html;
-        document.querySelectorAll(".chat-chip").forEach(el =>
+        /* V11.2 — restore: mark the active row in the conversation
+           list AND switch the phone into thread mode so the caller
+           header reflects who the prospect was chatting with. */
+        document.querySelectorAll(".conv-row").forEach(el =>
           el.classList.toggle("active", el.dataset.id === activeCaller));
+        const restoredCaller = callersById[activeCaller];
+        if (restoredCaller){
+          const seed = (restoredCaller.phone||"").replace(/\D/g, "").replace(/^1/, "")
+                       || (restoredCaller.id||"x");
+          const $img = document.getElementById("bar-thread-img");
+          const $init = document.getElementById("bar-thread-initial");
+          const $name = document.getElementById("bar-thread-name");
+          const $phoneBar = document.getElementById("bar-thread-phone");
+          if ($img) $img.src = "https://i.pravatar.cc/150?u=" + encodeURIComponent(seed);
+          if ($init) $init.textContent = (restoredCaller.name||"?").charAt(0).toUpperCase();
+          if ($name) $name.textContent = restoredCaller.name || "New caller";
+          if ($phoneBar) $phoneBar.textContent = formatPhone(restoredCaller.phone);
+        }
         if (state.industry) window.currentIndustry = state.industry;
         $input.disabled = false;
         $send.disabled  = false;
@@ -1272,9 +1398,9 @@ def index():
         return;
       }
       if (/^[1-7]$/.test(e.key)){
-        const chips = document.querySelectorAll(".chat-chip");
+        const rows = document.querySelectorAll(".conv-row");
         const idx = parseInt(e.key, 10) - 1;
-        if (chips[idx]) chips[idx].click();
+        if (rows[idx]) rows[idx].click();
       }
     });
 
@@ -1301,11 +1427,18 @@ def index():
           if (typeof window.clearOwnerAlertDedup === "function"){
             window.clearOwnerAlertDedup();
           }
-          $body.innerHTML = '<div class="psys">Pick a caller above to start.</div>';
+          $body.innerHTML = '<div class="psys">Pick a caller to start.</div>';
           _ownerBadgeCount = 0;
           if ($ownerBadge){ $ownerBadge.style.display = "none"; $ownerBadge.textContent = "0"; }
           _summaryShown = false;
           _threadStart = 0;
+          activeCaller = null;
+          /* V11.2 — reset returns the phone to LIST mode so the next
+             demo session starts at the inbox, not in a half-cleared
+             thread. */
+          if (typeof setPhoneMode === "function") setPhoneMode("list");
+          document.querySelectorAll(".conv-row.active")
+            .forEach(el => el.classList.remove("active"));
           refreshPortal();
           $reset.textContent = "Reset demo";
         } catch(_){

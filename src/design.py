@@ -1046,6 +1046,164 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   background: currentColor; border-radius: 1px;
 }
 
+/* V11.2 — iMessage-pattern conversation list (replaces the V10.1
+   horizontal .chat-chips row). Vertical list of caller rows with
+   avatar + name + phone + recent message preview + relative time.
+   The pre-V11.2 .chat-chips / .chat-chip CSS is retained below as a
+   no-op for any historical markup paths. */
+.conv-list {
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--card-bg);
+  padding: 4px 0;
+}
+.conv-list::-webkit-scrollbar { width: 6px; }
+.conv-list::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  border-radius: 3px;
+}
+.conv-row {
+  appearance: none; background: transparent;
+  border: none; cursor: pointer;
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 16px;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  transition: background 120ms ease;
+  font-family: inherit; color: var(--fg);
+}
+.conv-row:last-child { border-bottom: none; }
+.conv-row:hover {
+  background: color-mix(in srgb, var(--fg) 4%, var(--card-bg));
+}
+.conv-row.active {
+  background: color-mix(in srgb, var(--accent) 8%, var(--card-bg));
+}
+.conv-row-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: var(--n-200); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  flex-shrink: 0;
+  font-size: 15px; font-weight: 600;
+}
+.conv-row-avatar-initial {
+  position: absolute; inset: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.conv-row-avatar img {
+  width: 100%; height: 100%; object-fit: cover;
+  position: relative; z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .conv-row-avatar { background: #243152; }
+  .conv-row-avatar-initial { color: #94a3b8; }
+}
+.conv-row-body {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.conv-row-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px;
+}
+.conv-row-name {
+  font-size: 14.5px; font-weight: 600;
+  letter-spacing: -0.008em;
+  color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.conv-row-when {
+  font-size: 11.5px; color: var(--muted);
+  flex-shrink: 0; font-variant-numeric: tabular-nums;
+}
+.conv-row-phone {
+  font-size: 11.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.005em;
+}
+.conv-row-preview {
+  font-size: 12.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 1px;
+  position: relative;
+}
+.conv-row-dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  margin-left: 6px; vertical-align: middle;
+}
+.conv-list-empty {
+  padding: 28px 16px; color: var(--muted); font-size: 12px;
+  text-align: center;
+}
+
+/* V11.2 — phone-bar in two flavors. List mode shows brand + tagline
+   ("Messages"). Thread mode shows back arrow + caller avatar + name +
+   phone — like the top of an iMessage thread. JS toggles
+   data-mode on .phone-shell to switch. */
+.phone-shell[data-mode="list"] .bar-thread { display: none; }
+.phone-shell[data-mode="thread"] .bar-list { display: none; }
+.phone-shell[data-mode="list"] .phone-conv,
+.phone-shell[data-mode="list"] .phone-suggestions,
+.phone-shell[data-mode="list"] .phone-input {
+  display: none;
+}
+.phone-shell[data-mode="thread"] .conv-list { display: none; }
+.bar-thread {
+  display: flex; align-items: center; gap: 10px;
+}
+.phone-back {
+  background: transparent; border: none; cursor: pointer;
+  width: 30px; height: 30px; border-radius: 8px;
+  color: var(--accent);
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-left: -6px;
+  transition: background 120ms;
+}
+.phone-back:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.bar-thread-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--n-200); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  font-size: 13px; font-weight: 600; flex-shrink: 0;
+}
+.bar-thread-avatar-initial {
+  position: absolute; inset: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.bar-thread-avatar img {
+  width: 100%; height: 100%; object-fit: cover;
+  position: relative; z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .bar-thread-avatar { background: #243152; }
+  .bar-thread-avatar-initial { color: #94a3b8; }
+}
+.bar-thread-info {
+  display: flex; flex-direction: column; min-width: 0;
+}
+.bar-thread-name {
+  font-size: 14px; font-weight: 600; color: var(--fg);
+  letter-spacing: -0.008em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bar-thread-phone {
+  font-size: 11.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.005em;
+}
+
+/* V10.1 → V11.2 legacy: .chat-chips / .chat-chip styling retained as
+   a no-op for any historical paths. Active demo uses .conv-list /
+   .conv-row above. */
 .chat-chips { display: flex; gap: 6px; padding: 12px 14px;
                border-bottom: 1px solid var(--border);
                overflow-x: auto; flex-shrink: 0;
@@ -1401,34 +1559,73 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   height: 1px; background: var(--border);
   margin: 2px -2px;
 }
-/* V11.1 hotfix — drawer dropdown contrast.
-   Pre-V11.1 used `var(--n-50)` for background which is static
-   (#f8fafc light) — in dark mode the light bg combined with the
-   dark-mode-overridden light text color became unreadable. Switched
-   to `var(--card-bg)` + `var(--fg)` which both adapt to color
-   scheme, restoring contrast in both modes. */
+/* V11.1 → V11.2 — drawer dropdown polish round 2.
+   Premium-SaaS dropdown treatment: solid contrast in both modes,
+   distinct hover + focus rings, a properly-sized chevron, and a
+   `color-scheme: light dark` hint that lets the OS-native option
+   panel honor the user's color preference instead of always
+   rendering as white. The native option panel itself is browser-
+   controlled — we still give it explicit bg/color so engines that
+   honor option CSS (Firefox, modern Edge) match the wrapper. */
 .demo-drawer .dd-row .tenant-switcher {
-  margin: 0; padding: 10px 13px;
+  margin: 0;
+  padding: 0;
   background: var(--card-bg);
   color: var(--fg);
-  border: 1px solid var(--border);
-  width: 100%; border-radius: 9px;
-  transition: border-color 120ms, background 120ms;
+  border: 1.5px solid var(--border);
+  width: 100%; border-radius: 10px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  position: relative;
 }
 .demo-drawer .dd-row .tenant-switcher:hover {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   background: color-mix(in srgb, var(--accent) 4%, var(--card-bg));
 }
+.demo-drawer .dd-row .tenant-switcher:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .demo-drawer .dd-row .tenant-switcher::after {
-  right: 14px; color: var(--muted);
+  content: "";
+  position: absolute;
+  right: 14px; top: 50%;
+  width: 7px; height: 7px;
+  border-right: 1.8px solid var(--fg);
+  border-bottom: 1.8px solid var(--fg);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+  opacity: 0.55;
+  transition: opacity 140ms;
+}
+.demo-drawer .dd-row .tenant-switcher:hover::after,
+.demo-drawer .dd-row .tenant-switcher:focus-within::after {
+  opacity: 0.9;
 }
 .demo-drawer .dd-row .tenant-switcher select {
-  width: 100%; padding-right: 18px; font-size: 13.5px;
-  font-weight: 500; letter-spacing: -0.005em;
+  width: 100%;
+  padding: 11px 36px 11px 13px;
+  font-size: 14px; font-weight: 500;
+  letter-spacing: -0.008em;
   color: var(--fg);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  /* Helps the OS-native option panel adopt the right color theme
+     (Chromium/Edge respect this for the dropdown background). */
+  color-scheme: light dark;
 }
 .demo-drawer .dd-row .tenant-switcher select option {
-  background: var(--card-bg); color: var(--fg);
+  background-color: var(--card-bg);
+  color: var(--fg);
+  font-weight: 500;
+  padding: 6px 8px;
+}
+@media (prefers-color-scheme: dark) {
+  .demo-drawer .dd-row .tenant-switcher select option {
+    background-color: #111a2e;
+    color: #e6edf7;
+  }
 }
 .demo-drawer .dd-actions { flex-direction: row; gap: 8px; }
 .demo-drawer .dd-btn {
