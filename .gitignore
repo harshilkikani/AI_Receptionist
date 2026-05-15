@@ -15,9 +15,14 @@ venv/
 
 # Runtime data
 memory.json
+memory.corrupt.*
 data/
 logs/
 _backups/
+
+# Auto-generated demo tenants (live tenants only get tracked)
+clients/demo_*.yaml
+clients/_expired/
 
 # OS
 .DS_Store

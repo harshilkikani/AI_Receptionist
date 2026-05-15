@@ -927,13 +927,10 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   .demo-brand .brand-mark { background: rgba(96, 165, 250, 0.12); }
   .demo-brand:hover { background: rgba(255,255,255,0.04); }
 }
-/* Legacy `.dot` retained as a no-op for any historical markup paths.
-   New markup uses `.brand-mark`; both can coexist. */
-.demo-brand .dot {
-  width: 10px; height: 10px; border-radius: 999px;
-  background: var(--accent); flex-shrink: 0;
-  display: none;
-}
+/* V11.1 → V12.0 — legacy `.dot` brand element CSS removed. The
+   accent-dot mark was replaced by the V11.1 .brand-mark SVG glyph
+   and the V11.1 .dot rule was kept as a display:none no-op. As of
+   V12.0 the rule is dead code. */
 .demo-phone-link {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 14px; border-radius: 999px;
@@ -1201,42 +1198,9 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   font-variant-numeric: tabular-nums; letter-spacing: 0.005em;
 }
 
-/* V10.1 → V11.2 legacy: .chat-chips / .chat-chip styling retained as
-   a no-op for any historical paths. Active demo uses .conv-list /
-   .conv-row above. */
-.chat-chips { display: flex; gap: 6px; padding: 12px 14px;
-               border-bottom: 1px solid var(--border);
-               overflow-x: auto; flex-shrink: 0;
-               background: var(--card-bg); }
-.chat-chips::-webkit-scrollbar { display: none; }
-.chat-chip { display: inline-flex; align-items: center; gap: 6px;
-              padding: 6px 10px; border-radius: 999px;
-              background: var(--n-100); color: var(--n-700);
-              font-size: 12px; font-weight: 500;
-              border: 1px solid transparent;
-              cursor: pointer; white-space: nowrap;
-              text-decoration: none;
-              transition: background 120ms; }
-.chat-chip:hover { background: var(--n-200); text-decoration: none; }
-.chat-chip.active { background: var(--accent-soft); color: var(--accent);
-                     border-color: var(--accent); font-weight: 600; }
-.chat-chip .av { width: 20px; height: 20px; border-radius: 999px;
-                  display: inline-flex; align-items: center; justify-content: center;
-                  font-size: 10px; font-weight: 700;
-                  background: hsl(var(--av-h, 220), 70%, 90%);
-                  color: hsl(var(--av-h, 220), 45%, 38%);
-                  position: relative; overflow: hidden; flex-shrink: 0; }
-.chat-chip .av-img { position: absolute; inset: 0;
-                      width: 100%; height: 100%; object-fit: cover;
-                      background: hsl(var(--av-h, 220), 70%, 90%); }
-.chat-chip .av-initial { position: relative; z-index: 0; }
-@media (prefers-color-scheme: dark) {
-  .chat-chip { background: #182338; color: #b2c2db; }
-  .chat-chip:hover { background: #1f2e4d; }
-  .chat-chip .av { background: hsl(var(--av-h, 220), 25%, 22%);
-                    color: hsl(var(--av-h, 220), 60%, 78%); }
-  .chat-chip .av-img { background: hsl(var(--av-h, 220), 25%, 22%); }
-}
+/* V10.1 → V11.2 → V12.0 — .chat-chips / .chat-chip CSS removed.
+   Replaced by .conv-list / .conv-row in V11.2; the legacy block was
+   retained as a no-op through V11.2 and is dead code as of V12.0. */
 
 .phone-conv { flex: 1; padding: 18px 16px;
                overflow-y: auto;

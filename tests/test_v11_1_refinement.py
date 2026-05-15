@@ -289,15 +289,16 @@ def test_brand_mark_css_styled_with_accent_tinted_background(app_client):
     assert "background-clip: text" in css
 
 
-def test_legacy_dot_hidden(app_client):
-    """The pre-V11.1 `.dot` element is kept as a no-op (display:none)
-    so any historical markup paths don't break."""
+def test_legacy_dot_removed(app_client):
+    """V11.1 retired the .dot brand element and kept it as a
+    display:none no-op for one cycle. V12.0 removed the no-op rule
+    entirely (cleanup phase). The legacy selector is no longer in
+    the CSS; new markup uses `.brand-mark`."""
     from src import design
     css = design.css()
-    # The .dot rule sets display:none in V11.1
-    idx = css.find(".demo-brand .dot")
-    chunk = css[idx:idx + 250]
-    assert "display: none" in chunk
+    # The `.demo-brand .dot {` rule body is gone (kept only an
+    # explanatory comment with the selector mentioned)
+    assert ".demo-brand .dot {" not in css
 
 
 # ── D. Drawer modernization ─────────────────────────────────────────
