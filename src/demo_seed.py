@@ -1,8 +1,15 @@
-"""V9.1 — demo-tenant activity seeder.
+"""V9.1 / V11.0 — demo-tenant activity seeder.
 
 The marketing-demo tenant (septic_pro) needs a populated portal so
 prospects don't land on an empty state. This module seeds a small set
 of plausible calls + SMS threads on first boot.
+
+V11.0 multi-industry expansion: every non-septic industry's personas
+(defined in `src/demo_personas.py`) are also seeded under septic_pro
+so the combined-demo portal can show industry-matched activity when
+the prospect switches the tenant switcher. Each industry uses a
+distinct phone range — see `demo_personas.py` for the mapping — which
+lets the portal filter by industry without a schema migration.
 
 Design constraints:
   - Idempotent. Running twice doesn't double up — seeded rows use a
@@ -16,8 +23,8 @@ Design constraints:
   - Realistic timing. Calls are dated to the last 5 days with varied
     times of day, so the Today feed has something fresh and the
     Conversations list has range.
-  - Mixed channels. Two SMS-only threads, two voice-only, one mixed —
-    exactly the scenarios the brief asks the portal to showcase.
+  - Mixed channels. SMS-only threads, voice-only, and mixed
+    scenarios are all represented across the seeded industries.
 
 To re-seed (e.g., after schema migrations or to refresh): clear the
 DEMO_ rows manually and re-boot, or call `purge_then_seed()`.
@@ -27,6 +34,8 @@ from __future__ import annotations
 import logging
 import time
 from typing import Optional
+
+from src.demo_personas import PERSONAS_BY_INDUSTRY
 
 log = logging.getLogger("demo_seed")
 
@@ -192,25 +201,83 @@ _SCENARIOS = [
 ]
 
 
-def refresh_timestamps() -> dict:
-    """V9.6.1 — re-base every seeded DEMO_v_* call (and matching SMS
-    transcript / sms rows) so they read as if they happened "minutes_ago"
-    from now. Without this, the demo's "13 hours ago" / "2 days ago"
-    labels age with the server uptime — which makes the activity feed
-    feel stale during a live demo a day after the seed ran.
+# V11.0 — every industry's personas in one indexed dict. Septic is the
+# canonical historical set (above); the other 11 industries live in
+# `demo_personas.PERSONAS_BY_INDUSTRY` and are pulled in here.
+# `industry` is tagged on every persona record either by the explicit
+# field (new industries) or implicitly via the septic phone-range
+# (legacy personas — see `_industry_for_phone`).
+_SCENARIOS_BY_INDUSTRY: dict[str, list[dict]] = {
+    "septic": _SCENARIOS,
+    **PERSONAS_BY_INDUSTRY,
+}
 
-    Idempotent. Safe to call on every /demo/today request — six small
-    UPDATEs against indexed columns. Returns the number of rows
-    refreshed for observability."""
+
+# V11.0 — industry → +1-555-EXC pattern. Used by the portal to filter
+# the Today feed without a schema migration; the call/sms rows carry
+# the phone, and the phone uniquely identifies the industry.
+_INDUSTRY_PHONE_PREFIXES: dict[str, str] = {
+    "septic":              "+155501010",
+    "hvac":                "+155501020",
+    "real_estate":         "+155501030",
+    "plumbing":            "+155501040",
+    "roofing":             "+155501050",
+    "construction":        "+155501060",
+    "property_management": "+155501070",
+    "electrical":          "+155501080",
+    "landscaping":         "+155501090",
+    "restoration":         "+155502010",
+    "med_spa":             "+155502020",
+    "legal_intake":        "+155502030",
+}
+
+
+def industry_phone_prefix(industry: str) -> str:
+    """Return the demo-phone prefix for an industry slug, or "" if
+    unknown. The portal's industry filter passes this to a SQL LIKE
+    query against from_number."""
+    return _INDUSTRY_PHONE_PREFIXES.get(industry, "")
+
+
+def _industry_for_phone(phone: str) -> Optional[str]:
+    """Reverse-lookup: given a phone, return its industry slug. Used by
+    the portal when it needs to badge per-card or filter per-industry."""
+    if not phone:
+        return None
+    for slug, prefix in _INDUSTRY_PHONE_PREFIXES.items():
+        if phone.startswith(prefix):
+            return slug
+    return None
+
+
+def refresh_timestamps() -> dict:
+    """V9.6.1 / V11.0 — re-base every seeded DEMO_v_* call (and matching
+    SMS transcript / sms rows) so they read as if they happened
+    "minutes_ago" from now. Without this, the demo's "13 hours ago" /
+    "2 days ago" labels age with the server uptime — which makes the
+    activity feed feel stale during a live demo a day after the seed
+    ran.
+
+    V11.0 — broadened to iterate every industry's seeded personas,
+    not just septic. Now refreshes ~50 scenarios across 12 industries.
+
+    Idempotent. Safe to call on every /demo/today request. Returns
+    the number of rows refreshed for observability."""
     from src import usage, transcripts
     now_ts = int(time.time())
     voice_n = 0
     sms_n = 0
     transcript_n = 0
+    # V11.0 — flatten every industry's personas into one iterable.
+    all_scenarios = [
+        sc
+        for industry_scenarios in _SCENARIOS_BY_INDUSTRY.values()
+        for sc in industry_scenarios
+    ]
     with usage._db_lock:
         conn = usage._connect()
         usage._init_schema(conn)
-        for sc in _SCENARIOS:
+        for sc in all_scenarios:
             phone = sc["phone"]
             # ── Voice scenarios: shift start_ts/end_ts so the call
             # registers at the configured minutes_ago offset. ──
@@ -300,16 +367,41 @@ def refresh_timestamps() -> dict:
     return {"voice": voice_n, "sms": sms_n, "transcripts": transcript_n}
 
 
-def list_personas() -> list:
-    """V10.1 — the demo personas EXPOSED as caller objects shaped like
-    /missed-calls returns. The combined-demo at / pulls from here so
+def list_personas(industry: Optional[str] = None) -> list:
+    """V10.1 / V11.0 — the demo personas exposed as caller objects shaped
+    like /missed-calls returns. The combined-demo at / pulls from here so
     the chat caller's identity matches the seeded portal partner —
-    same name, same phone, same DiceBear avatar.
+    same name, same phone, same Pravatar avatar.
 
-    The 'fresh' persona at the end is a clean-slate scenario with no
-    seeded history; useful for showing first-call behavior."""
+    V11.0 — when an `industry` slug is passed, returns only personas for
+    that industry. When None (default), returns septic personas (the
+    pre-V11.0 behavior). Pass `industry='all'` for every persona across
+    every industry.
+
+    A "fresh caller" entry is appended for each industry so the prospect
+    can demo first-time-caller behavior without conflicting with any seed."""
+    if industry == "all":
+        scenarios = [
+            sc
+            for industry_scenarios in _SCENARIOS_BY_INDUSTRY.values()
+            for sc in industry_scenarios
+        ]
+        fresh_phone = "+15550100099"
+    elif industry:
+        scenarios = _SCENARIOS_BY_INDUSTRY.get(industry, [])
+        # Fresh-caller phone for this industry uses the industry's
+        # prefix + 099 so it doesn't collide with the seeded numbers.
+        prefix = _INDUSTRY_PHONE_PREFIXES.get(industry, "+155501010")
+        fresh_phone = prefix + "099"
+    else:
+        # Default — septic only. Matches the pre-V11.0 behavior so
+        # existing callers (e.g., the legacy /demo/callers path) keep
+        # the same response shape.
+        scenarios = _SCENARIOS
+        fresh_phone = "+15550101099"
+
     out = []
-    for sc in _SCENARIOS:
+    for sc in scenarios:
         first = (sc.get("first_name") or "").strip()
         last = (sc.get("last_name") or "").strip()
         name = (f"{first} {last}".strip() or "Unknown caller")
@@ -325,6 +417,7 @@ def list_personas() -> list:
             "preview":        sc.get("scenario_hint") or "",
             "type":           "return" if is_return else "new",
             "scenario_hint":  sc.get("scenario_hint") or "",
+            "industry":       sc.get("industry") or "septic",
             "equipment":      "",
         })
     # V10.1 — extra "fresh caller" so the prospect can also demo the
@@ -332,28 +425,33 @@ def list_personas() -> list:
     out.append({
         "id":            "fresh",
         "name":          "New caller",
-        "phone":         "+15550101099",
+        "phone":         fresh_phone,
         "address":       "",
         "preview":       "No history — ask anything.",
         "type":          "new",
         "scenario_hint": "Clean slate — try a brand-new scenario.",
+        "industry":      industry or "septic",
         "equipment":     "",
     })
     return out
 
 
-def register_personas_in_memory() -> int:
-    """V10.1 — pre-create memory.json entries for every demo persona
-    so /chat doesn't 404 on lookup. Phones match the seeded portal
-    partners exactly, which means a chat exchange surfaces on the
-    SAME partner card the prospect saw in the portal.
+def register_personas_in_memory(industry: Optional[str] = None) -> int:
+    """V10.1 / V11.0 — pre-create memory.json entries for every demo
+    persona so /chat doesn't 404 on lookup. Phones match the seeded
+    portal partners exactly, which means a chat exchange surfaces on
+    the SAME partner card the prospect saw in the portal.
+
+    V11.0 — when an `industry` slug is passed, only that industry's
+    personas are registered. None (default) registers septic personas.
+    'all' registers every persona across every industry.
 
     Idempotent. Updates the name/phone of existing entries (in case a
     persona was renamed) without dropping their conversation history.
     Returns the number of personas touched."""
     import json as _json
     import memory
-    personas = list_personas()
+    personas = list_personas(industry=industry)
     touched = 0
     with memory._io_lock:
         data = memory._load_unsafe()
@@ -478,7 +576,11 @@ def _seed_sms(scenario: dict, now_ts: int) -> None:
 
 
 def seed_septic_pro(*, force: bool = False) -> dict:
-    """Idempotent seed. Returns counts.
+    """V11.0 — idempotent seed across every industry's personas. Despite
+    the function name (kept for backwards compatibility), all 12
+    industries' personas are seeded into the septic_pro tenant. Each
+    industry uses a distinct phone-range so the portal can filter
+    without a schema migration. Returns counts.
 
     `force=True` skips the already-seeded guard — useful in tests.
     """
@@ -491,44 +593,83 @@ def seed_septic_pro(*, force: bool = False) -> dict:
     if not force and _already_seeded(TENANT_ID):
         # V10.1 — even on idempotent re-runs, make sure the personas
         # exist in memory.json so the chat at / can address them. Cheap.
+        # V11.0 — register every industry's personas, not just septic.
         try:
-            register_personas_in_memory()
+            register_personas_in_memory(industry="all")
         except Exception as e:
             log.warning("demo persona registration failed: %s", e)
         return {"seeded": False, "reason": "already_seeded"}
 
     # V10.1 — register the personas in memory.json before seeding so the
     # chat callers are addressable as soon as the page renders.
+    # V11.0 — register every industry's personas, not just septic.
     try:
-        register_personas_in_memory()
+        register_personas_in_memory(industry="all")
     except Exception as e:
         log.warning("demo persona registration failed: %s", e)
     now_ts = int(time.time())
     voice_n = 0
     sms_n = 0
-    for sc in _SCENARIOS:
-        if sc.get("voice"):
-            _seed_voice(sc, now_ts)
-            voice_n += 1
-        if sc.get("sms"):
-            _seed_sms(sc, now_ts)
-            sms_n += 1
-    log.info("demo_seed: planted %d voice + %d sms scenarios into %s",
-             voice_n, sms_n, TENANT_ID)
-    return {"seeded": True, "voice": voice_n, "sms": sms_n}
+    per_industry: dict[str, dict] = {}
+    for industry_slug, scenarios in _SCENARIOS_BY_INDUSTRY.items():
+        ind_voice = 0
+        ind_sms = 0
+        for sc in scenarios:
+            if sc.get("voice"):
+                _seed_voice(sc, now_ts)
+                ind_voice += 1
+            if sc.get("sms"):
+                _seed_sms(sc, now_ts)
+                ind_sms += 1
+        per_industry[industry_slug] = {"voice": ind_voice, "sms": ind_sms}
+        voice_n += ind_voice
+        sms_n += ind_sms
+    log.info("demo_seed: planted %d voice + %d sms scenarios across "
+             "%d industries into %s",
+             voice_n, sms_n, len(_SCENARIOS_BY_INDUSTRY), TENANT_ID)
+    return {"seeded": True, "voice": voice_n, "sms": sms_n,
+            "per_industry": per_industry}
 
 
 def purge_then_seed() -> dict:
-    """Drop existing demo rows + re-seed. Operator escape hatch.
+    """V9.1 / V11.0 — drop existing demo rows + re-seed across every
+    industry. Operator escape hatch.
+
+    V11.0 — extended to clear every industry's phone ranges. Each
+    industry uses a distinct +1-555-0XX-XXXX block (see
+    _INDUSTRY_PHONE_PREFIXES) — we DELETE any row matching the union
+    of those ranges before re-seeding. Without this broadening, a
+    purge-and-reseed left orphan rows from other industries' prior
+    seeds, polluting the portal.
 
     Demo rows are identified by:
       - calls.call_sid starting with 'DEMO_'  (voice scenarios)
-      - calls / transcripts / sms rows whose phone is in the 555-0101XX
-        block (NANP fictional reserve; matches the seeded scenarios)
+      - calls / transcripts / sms rows whose phone is in any of the
+        +1-555-0XX-XXXX industry blocks (NANP fictional reserve)
     """
     from src import usage
     from src.transcripts import _init_transcripts_schema
-    demo_phone_prefix = "+155501010%"   # SQL LIKE — covers 555-01010X-555-01010X
+    # V11.0 — combined LIKE clauses for every industry's phone range.
+    # Each prefix is 10 digits (e.g. "+155501010") so a trailing "%"
+    # matches that industry's full range.
+    prefix_clauses = " OR ".join(
+        ["from_number LIKE ?"] * len(_INDUSTRY_PHONE_PREFIXES))
+    to_prefix_clauses = " OR ".join(
+        ["to_number LIKE ?"] * len(_INDUSTRY_PHONE_PREFIXES))
+    prefix_params = tuple(p + "%" for p in _INDUSTRY_PHONE_PREFIXES.values())
+    # SMS_-prefixed call_sids embed the normalized phone — match each
+    # industry's range under both the SMS_555010 (raw) and
+    # SMS_1555010 (with country code) variants.
+    sms_sid_clauses = []
+    sms_sid_params = []
+    for prefix in _INDUSTRY_PHONE_PREFIXES.values():
+        # +155501010 → "SMS_15550101%" and "SMS_555010%"
+        digits = prefix.lstrip("+")
+        sms_sid_clauses.append("call_sid LIKE ?")
+        sms_sid_params.append(f"SMS_{digits}%")
+        sms_sid_clauses.append("call_sid LIKE ?")
+        sms_sid_params.append(f"SMS_{digits[1:]}%")  # without leading "1"
+    sms_sid_clause = " OR ".join(sms_sid_clauses)
     with usage._db_lock:
         conn = usage._connect()
         usage._init_schema(conn)
@@ -536,22 +677,18 @@ def purge_then_seed() -> dict:
         # fresh DB (e.g. test environment) doesn't 500 on purge.
         _init_transcripts_schema(conn)
         conn.execute(
-            """DELETE FROM calls WHERE client_id = ?
-                AND (call_sid LIKE 'DEMO_%' OR from_number LIKE ?)""",
-            (TENANT_ID, demo_phone_prefix))
+            f"""DELETE FROM calls WHERE client_id = ?
+                AND (call_sid LIKE 'DEMO_%' OR {prefix_clauses})""",
+            (TENANT_ID,) + prefix_params)
         conn.execute(
-            """DELETE FROM transcripts
+            f"""DELETE FROM transcripts
                 WHERE client_id = ?
-                  AND (call_sid LIKE 'DEMO_%'
-                    OR call_sid LIKE 'SMS_555010%'
-                    OR call_sid LIKE 'SMS_15550101%')""",
-            (TENANT_ID,))
+                  AND (call_sid LIKE 'DEMO_%' OR {sms_sid_clause})""",
+            (TENANT_ID,) + tuple(sms_sid_params))
         conn.execute(
-            """DELETE FROM sms WHERE client_id = ?
-                AND (call_sid LIKE 'SMS_555010%'
-                  OR call_sid LIKE 'SMS_15550101%'
-                  OR to_number LIKE ?)""",
-            (TENANT_ID, demo_phone_prefix))
+            f"""DELETE FROM sms WHERE client_id = ?
+                AND ({sms_sid_clause} OR {to_prefix_clauses})""",
+            (TENANT_ID,) + tuple(sms_sid_params) + prefix_params)
         conn.close()
     return seed_septic_pro(force=True)
 
