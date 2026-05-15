@@ -79,6 +79,9 @@ EXPECTED_ROUTES: Set[tuple] = {
     # V9.6 — combined demo at / live-refreshes the operator pane via this fragment
     ("GET",  "/demo/today"),
 
+    # V10.1 — seeded demo personas (unified-identity source for the combined demo)
+    ("GET",  "/demo/callers"),
+
     # V9.1 — unified per-partner conversations
     ("GET",  "/client/{client_id}/conversations"),
     ("GET",  "/client/{client_id}/conversations/{phone_slug}"),

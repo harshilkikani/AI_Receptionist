@@ -35,11 +35,20 @@ TENANT_ID = "septic_pro"
 # Each scenario is one phone-number partner with a varied story.
 # Times are offsets from "now" so the data stays fresh on every boot.
 # Phone numbers are 555-01XX (officially reserved for fiction by NANP).
+#
+# V10.1 — `caller_id`, `last_name`, `address`, `scenario_hint` added
+# so the combined-demo chat at / can use these SAME personas as its
+# caller list. Same phone in chat = same phone in portal = same
+# DiceBear avatar = same partner card. Unified end-to-end identity.
 _SCENARIOS = [
     {
         # Overflow emergency that got transferred — 6 hours ago.
         "phone": "+15550101001",
+        "caller_id": "marcus",
         "first_name": "Marcus",
+        "last_name": "Reilly",
+        "address": "412 Maple Lane, Lancaster",
+        "scenario_hint": "Sewage backup emergency — try saying your toilets are overflowing.",
         "voice": {
             "minutes_ago": 6 * 60,
             "duration_s": 47,
@@ -61,7 +70,11 @@ _SCENARIOS = [
     {
         # Routine pump-out booking — yesterday afternoon.
         "phone": "+15550101002",
+        "caller_id": "sarah",
         "first_name": "Sarah",
+        "last_name": "Wong",
+        "address": "412 Oak Street, Lancaster",
+        "scenario_hint": "Returning customer booking a routine pump-out.",
         "voice": {
             "minutes_ago": 26 * 60,
             "duration_s": 92,
@@ -82,7 +95,11 @@ _SCENARIOS = [
     {
         # Price-shopping inquiry — 2 days ago.
         "phone": "+15550101003",
+        "caller_id": "diane",
         "first_name": "Diane",
+        "last_name": "Patel",
+        "address": "",   # never gave it on the original call
+        "scenario_hint": "Price inquiry — ask how much a pump-out costs.",
         "voice": {
             "minutes_ago": 2 * 24 * 60 + 30,
             "duration_s": 38,
@@ -112,7 +129,11 @@ _SCENARIOS = [
     {
         # After-hours callback request via SMS — last night.
         "phone": "+15550101004",
+        "caller_id": "ron",
         "first_name": "Ron",
+        "last_name": "Albright",
+        "address": "228 Riverside Drive, Lancaster",
+        "scenario_hint": "After-hours quote request — ask for an estimate.",
         "voice": None,
         "sms": {
             "minutes_ago": 14 * 60,
@@ -128,7 +149,11 @@ _SCENARIOS = [
         # Wrong-number SMS — 3 days ago. Showcases the "calm filter"
         # behavior without making the portal feel cluttered.
         "phone": "+15550101005",
+        "caller_id": "stranger",
         "first_name": "",
+        "last_name": "",
+        "address": "",
+        "scenario_hint": "Wrong number — try asking for someone who doesn't work there.",
         "voice": None,
         "sms": {
             "minutes_ago": 3 * 24 * 60 + 200,
@@ -141,7 +166,11 @@ _SCENARIOS = [
     {
         # Follow-up estimate conversation mid-day today.
         "phone": "+15550101006",
+        "caller_id": "linda",
         "first_name": "Linda",
+        "last_name": "Hayes",
+        "address": "1100 Birch Road, Lancaster",
+        "scenario_hint": "New drain field estimate — ask for a quote.",
         "voice": {
             "minutes_ago": 95,
             "duration_s": 64,
@@ -271,6 +300,87 @@ def refresh_timestamps() -> dict:
     return {"voice": voice_n, "sms": sms_n, "transcripts": transcript_n}
 
 
+def list_personas() -> list:
+    """V10.1 — the demo personas EXPOSED as caller objects shaped like
+    /missed-calls returns. The combined-demo at / pulls from here so
+    the chat caller's identity matches the seeded portal partner —
+    same name, same phone, same DiceBear avatar.
+
+    The 'fresh' persona at the end is a clean-slate scenario with no
+    seeded history; useful for showing first-call behavior."""
+    out = []
+    for sc in _SCENARIOS:
+        first = (sc.get("first_name") or "").strip()
+        last = (sc.get("last_name") or "").strip()
+        name = (f"{first} {last}".strip() or "Unknown caller")
+        # Type matches the V0 chat widget's expectation. Personas with a
+        # full conversation seeded look like return callers; the stranger
+        # (wrong number) and any name-less persona reads as "new".
+        is_return = bool(first and (sc.get("voice") or sc.get("sms")))
+        out.append({
+            "id":             sc.get("caller_id") or "unknown",
+            "name":           name,
+            "phone":          sc["phone"],
+            "address":        sc.get("address") or "",
+            "preview":        sc.get("scenario_hint") or "",
+            "type":           "return" if is_return else "new",
+            "scenario_hint":  sc.get("scenario_hint") or "",
+            "equipment":      "",
+        })
+    # V10.1 — extra "fresh caller" so the prospect can also demo the
+    # first-time-caller experience without conflicting with any seed.
+    out.append({
+        "id":            "fresh",
+        "name":          "New caller",
+        "phone":         "+15550101099",
+        "address":       "",
+        "preview":       "No history — ask anything.",
+        "type":          "new",
+        "scenario_hint": "Clean slate — try a brand-new scenario.",
+        "equipment":     "",
+    })
+    return out
+
+
+def register_personas_in_memory() -> int:
+    """V10.1 — pre-create memory.json entries for every demo persona
+    so /chat doesn't 404 on lookup. Phones match the seeded portal
+    partners exactly, which means a chat exchange surfaces on the
+    SAME partner card the prospect saw in the portal.
+
+    Idempotent. Updates the name/phone of existing entries (in case a
+    persona was renamed) without dropping their conversation history.
+    Returns the number of personas touched."""
+    import json as _json
+    import memory
+    personas = list_personas()
+    touched = 0
+    with memory._io_lock:
+        data = memory._load_unsafe()
+        for p in personas:
+            cid = p["id"]
+            existing = data.get(cid)
+            if existing:
+                existing["name"] = p["name"]
+                existing["phone"] = p["phone"]
+                existing["address"] = p["address"] or existing.get("address", "")
+                existing["type"] = p["type"]
+            else:
+                data[cid] = {
+                    "id":           cid,
+                    "name":         p["name"],
+                    "phone":        p["phone"],
+                    "address":      p["address"],
+                    "type":         p["type"],
+                    "equipment":    "",
+                    "conversation": [],
+                    "history":      [],
+                }
+            touched += 1
+        memory._atomic_write(_json.dumps(data, indent=2))
+    return touched
+
+
 def _already_seeded(client_id: str) -> bool:
     from src import usage
     with usage._db_lock:
@@ -379,8 +489,20 @@ def seed_septic_pro(*, force: bool = False) -> dict:
         return {"seeded": False, "reason": "tenant_missing"}
 
     if not force and _already_seeded(TENANT_ID):
+        # V10.1 — even on idempotent re-runs, make sure the personas
+        # exist in memory.json so the chat at / can address them. Cheap.
+        try:
+            register_personas_in_memory()
+        except Exception as e:
+            log.warning("demo persona registration failed: %s", e)
         return {"seeded": False, "reason": "already_seeded"}
 
+    # V10.1 — register the personas in memory.json before seeding so the
+    # chat callers are addressable as soon as the page renders.
+    try:
+        register_personas_in_memory()
+    except Exception as e:
+        log.warning("demo persona registration failed: %s", e)
     now_ts = int(time.time())
     voice_n = 0
     sms_n = 0

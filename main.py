@@ -517,7 +517,9 @@ def index():
     chat_js = """
     <script>
     const DEMO_CLIENT_ID = "septic_pro";
-    const PREFERRED_ORDER = ["ellen", "linda", "travis", "sarah", "dave", "mike"];
+    /* V10.1 — sort order now comes from /demo/callers (seeded
+       persona order is the canonical demo flow). PREFERRED_ORDER
+       retired with /missed-calls as the chat source. */
     let activeCaller = null;
     let callersById = {};
     const $body = document.getElementById("conv-body");
@@ -556,21 +558,19 @@ def index():
     }
     function appendSystem(t){ appendMsg("sys", t); }
 
+    /* V10.1 — /demo/callers is the unified-identity source. Same
+       phones as the portal's seeded scenarios → same DiceBear seed →
+       same avatar in both panes → chat exchanges land in the SAME
+       portal partner card. */
     async function loadCallers(){
       try {
-        const r = await fetch("/missed-calls");
+        const r = await fetch("/demo/callers");
         const list = await r.json();
         list.forEach(c => callersById[c.id] = c);
-        list.sort((a, b) => {
-          const ai = PREFERRED_ORDER.indexOf(a.id), bi = PREFERRED_ORDER.indexOf(b.id);
-          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-        });
         $chips.innerHTML = list.map(c=>{
           const initial = (c.name||"?").charAt(0).toUpperCase();
           const hue = hashHue(c.phone||c.id);
-          /* V9.6.1 — same DiceBear notionists seed pattern as the
-             portal-side call_card so the same caller has the same
-             illustrated portrait across both panes. */
+          /* Same DiceBear seed as the portal-side call_card. */
           const seed = (c.phone||c.id||"").replace(/\\D/g,"") || (c.id||"x");
           const photo = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}`;
           return `<a class="chat-chip" data-id="${escapeHTML(c.id)}" href="#" style="--av-h:${hue}">
@@ -597,7 +597,13 @@ def index():
       document.querySelectorAll(".chat-chip").forEach(el => el.classList.toggle("active", el.dataset.id === id));
       const c = callersById[id];
       $body.innerHTML = "";
-      appendSystem(`You're now ${c.name} · ${c.phone}`);
+      /* V10.1 — show the scenario hint so the prospect knows what
+         the persona's situation is before they start typing. */
+      const intro = c.name ? `You're ${c.name} — ${c.phone}` : `New caller — ${c.phone}`;
+      appendSystem(intro);
+      if (c.scenario_hint || c.preview) {
+        appendSystem(c.scenario_hint || c.preview);
+      }
       if(c.type === "return" && c.address){
         appendSystem(`On file: ${c.address}${c.equipment ? " · " + c.equipment : ""}`);
       }
@@ -690,6 +696,25 @@ def index():
         f'{chat_js}'
     )
     return HTMLResponse(demo_page(title="AI Receptionist", body=body))
+
+
+@app.get("/demo/callers")
+def demo_callers():
+    """V10.1 — the seeded demo personas as a chat-caller list. Same
+    phone numbers as the portal's seeded scenarios, so picking
+    "Marcus" in the chat lands in the SAME partner card the prospect
+    sees in the portal.
+
+    Replaces /missed-calls as the source of truth for the combined
+    demo at /. Public; no auth (matches /demo/today)."""
+    from src import demo_seed as _demo_seed
+    try:
+        # Make sure the personas exist in memory.json so a subsequent
+        # /chat call resolves the caller_id. Cheap (idempotent).
+        _demo_seed.register_personas_in_memory()
+    except Exception as e:
+        log.warning("demo personas registration in /demo/callers: %s", e)
+    return _demo_seed.list_personas()
 
 
 @app.get("/demo/today")
