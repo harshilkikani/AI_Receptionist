@@ -137,6 +137,29 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv11";
 }
+
+/* V12.0 — thin custom scrollbars across the app. Replaces the
+   chunky OS default that broke premium feel. Two strategies (the
+   web is split): Firefox honors `scrollbar-width` + `scrollbar-color`,
+   Chromium/WebKit honors `::-webkit-scrollbar`. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent)
+                   transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
 /* V9.4 — explicit type scale for content headings. Page-level H1
    lives in `header.page` below; these handle in-body section headers. */
 h2, .h2 { font-size: 22px; font-weight: 600;
@@ -1202,48 +1225,89 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
    Replaced by .conv-list / .conv-row in V11.2; the legacy block was
    retained as a no-op through V11.2 and is dead code as of V12.0. */
 
-.phone-conv { flex: 1; padding: 18px 16px;
+/* V12.0 — phone-conv vertical rhythm. Replaces the pre-V12.0 flat
+   10px gap between all bubbles with iMessage-pattern clustering:
+   adjacent same-sender bubbles sit 3px apart (one cluster), and
+   sender-change introduces a 12px gap (cluster break). Achieved by
+   removing `gap` and using margin-top on each bubble with an
+   adjacent-sibling override for same-sender continuation. */
+.phone-conv { flex: 1; padding: 18px 16px 14px;
                overflow-y: auto;
-               display: flex; flex-direction: column; gap: 10px; }
+               display: flex; flex-direction: column; }
 
-.phone-suggestions { display: flex; gap: 6px; padding: 8px 14px 0;
+/* V12.0 — suggestion chips spacing refined. Pre-V12.0 used a 6px
+   gap which felt cramped between pills. Bumped to 7px. Padding-top
+   reduced to 6px (the conversation already has 14px bottom padding,
+   stacking added 22px which felt loose). */
+.phone-suggestions { display: flex; gap: 7px; padding: 6px 14px 0;
                       flex-wrap: wrap; flex-shrink: 0; }
-.phone-suggestion { font-size: 12px; padding: 6px 10px;
+.phone-suggestion { font-size: 12px; padding: 6px 11px;
                      border-radius: 999px;
                      background: var(--accent-soft); color: var(--accent);
-                     border: none; cursor: pointer; font-weight: 500; }
-.phone-suggestion:hover { filter: brightness(0.95); }
+                     border: none; cursor: pointer; font-weight: 500;
+                     letter-spacing: -0.005em;
+                     transition: background 140ms, transform 80ms; }
+.phone-suggestion:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--accent-soft));
+}
+.phone-suggestion:active { transform: scale(0.97); }
 
+/* V12.0 — phone input refined to iMessage proportions. Slimmer
+   container padding (10px vs 12px), 36px send-button to match the
+   input height, no longer a "form with input + button" but a tight
+   chat composer. */
 .phone-input { border-top: 1px solid var(--border);
-                padding: 12px 14px;
-                display: flex; gap: 8px;
+                padding: 10px 12px 12px;
+                display: flex; gap: 8px; align-items: center;
                 background: var(--card-bg); flex-shrink: 0; }
-.phone-input input { flex: 1; padding: 10px 14px;
+.phone-input input { flex: 1; padding: 9px 14px;
                       border: 1px solid var(--border);
                       border-radius: 999px;
                       font-family: var(--font); font-size: 14px;
                       background: var(--bg); color: var(--fg);
                       outline: none;
-                      transition: border-color 120ms; }
-.phone-input input:focus { border-color: var(--accent); }
+                      transition: border-color 140ms, box-shadow 140ms; }
+.phone-input input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .phone-input button { border: none; background: var(--accent);
                        color: var(--accent-fg);
-                       width: 38px; height: 38px;
+                       width: 36px; height: 36px;
                        border-radius: 999px;
                        cursor: pointer; flex-shrink: 0;
                        display: inline-flex; align-items: center; justify-content: center;
-                       font-size: 18px;
-                       transition: filter 120ms; }
-.phone-input button:hover { filter: brightness(0.95); }
+                       font-size: 18px; font-weight: 600;
+                       transition: background 140ms, transform 80ms;
+                       box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.phone-input button:hover {
+  background: color-mix(in srgb, var(--fg) 8%, var(--accent));
+}
+.phone-input button:active { transform: scale(0.96); }
 .phone-input button:disabled { background: var(--n-300);
                                 cursor: not-allowed; }
 
 /* Phone-shell-internal chat bubbles. Same vocabulary as .bubble but
-   scoped under .phone-conv so the spacing reads chat-app-native. */
+   scoped under .phone-conv so the spacing reads chat-app-native.
+   V12.0 — cluster spacing replaces flat-gap layout. */
 .phone-conv .pmsg { max-width: 80%; padding: 9px 14px;
                      border-radius: 18px; font-size: 14px;
                      line-height: 1.45;
+                     margin-top: 12px;
                      white-space: pre-wrap; word-wrap: break-word; }
+.phone-conv .pmsg:first-child { margin-top: 0; }
+/* V12.0 — cluster continuation: same-sender consecutive bubbles
+   sit close together (3px gap) and share rounded-corner treatment
+   so the tail-curve only appears on the last bubble in the cluster.
+   iMessage pattern. */
+.phone-conv .pmsg.user + .pmsg.user,
+.phone-conv .pmsg.ai + .pmsg.ai { margin-top: 3px; }
+.phone-conv .pmsg.user + .pmsg.user { border-bottom-right-radius: 18px; }
+.phone-conv .pmsg.ai + .pmsg.ai { border-bottom-left-radius: 18px; }
+/* Restore the tail curve on the *last* bubble in a cluster — the
+   one with no same-sender sibling after it. */
+.phone-conv .pmsg.user:not(:has(+ .pmsg.user)) { border-bottom-right-radius: 6px; }
+.phone-conv .pmsg.ai:not(:has(+ .pmsg.ai)) { border-bottom-left-radius: 6px; }
 .phone-conv .pmsg.user { background: var(--accent); color: var(--accent-fg);
                           align-self: flex-end;
                           border-bottom-right-radius: 6px; }
