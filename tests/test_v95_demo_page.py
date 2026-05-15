@@ -228,9 +228,10 @@ def test_demo_page_helper_renders_minimal_shell():
 
 
 def test_demo_page_helper_escapes_title():
-    out = design.demo_page(title="<script>", body="")
-    assert "<script>" not in out
-    assert "&lt;script&gt;" in out
+    out = design.demo_page(title="<script>alert(1)</script>", body="")
+    # User-injected `<script>` payload must not appear unescaped.
+    assert "<script>alert(1)" not in out
+    assert "&lt;script&gt;alert" in out
 
 
 def test_demo_page_helper_renders_phone_number():

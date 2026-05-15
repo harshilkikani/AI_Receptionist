@@ -132,10 +132,15 @@ def test_today_has_followups_section_when_short_calls_exist(app_client):
 
 
 def test_today_does_not_mention_ai(app_client):
-    """Brief: the product should NOT feel like 'AI startup demo'."""
+    """Brief: the product should NOT feel like 'AI startup demo'.
+    V10.3 — only check user-visible body, not inlined <style>/<script>
+    contents (those carry historical comments that aren't rendered)."""
+    import re
     tok = client_portal.issue_token("ace_hvac")
     r = app_client.get(f"/client/ace_hvac?t={tok}")
-    lower = r.text.lower()
+    visible = re.sub(r"<(style|script)[^>]*>.*?</\1>", "",
+                       r.text, flags=re.DOTALL | re.IGNORECASE)
+    lower = visible.lower()
     assert ">ai<" not in lower
     assert "the ai " not in lower
 

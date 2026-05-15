@@ -211,12 +211,14 @@ def test_demo_today_endpoint_refreshes_timestamps(app_client):
 
 # ── 3. Photo avatars via partner_photo_url() ─────────────────────────
 
-def test_partner_photo_url_uses_dicebear_notionists():
-    """V9.6.1 — DiceBear `notionists` style. Clean illustrated portraits,
-    public CDN, no licensing concerns."""
-    url = design.partner_photo_url("+15551234567")
-    assert "dicebear.com" in url
-    assert "notionists" in url
+def test_partner_photo_url_uses_pravatar_primary_dicebear_fallback():
+    """V10.3 — primary URL is Pravatar (real photo). DiceBear is the
+    fallback used by call_card's <img onerror>."""
+    primary = design.partner_photo_url("+15551234567")
+    fallback = design.partner_photo_fallback_url("+15551234567")
+    assert "pravatar.cc" in primary
+    assert "dicebear.com" in fallback
+    assert "notionists" in fallback
 
 
 def test_partner_photo_url_stable_for_same_seed():
@@ -291,23 +293,26 @@ def test_call_card_photo_escapes_url():
 # ── Portal today body actually uses photos ───────────────────────────
 
 def test_portal_today_body_emits_photo_imgs_for_partners(app_client):
-    """E2E: /demo/today renders call cards with DiceBear <img> tags."""
+    """E2E: /demo/today renders call cards with <img> tags. V10.3 —
+    primary URLs are Pravatar; DiceBear lives in the onerror fallback."""
     demo_seed.seed_septic_pro()
     r = app_client.get("/demo/today")
     assert r.status_code == 200
     body = r.text
     assert "av-img" in body
+    assert "pravatar.cc" in body
+    # The fallback URL is present in the onerror attribute
     assert "dicebear.com" in body
 
 
 def test_portal_today_partners_have_unique_photos(app_client):
-    """Each partner must get a distinct photo URL (different seed)."""
+    """Each partner must get a distinct photo URL (different seed).
+    V10.3 — primary URLs are now Pravatar (i.pravatar.cc)."""
     demo_seed.seed_septic_pro()
     r = app_client.get("/demo/today")
     body = r.text
     import re
-    urls = set(re.findall(r'src="(https://api\.dicebear\.com[^"]+)"', body))
-    # At least 2 unique partner photos surface in the Today feed
+    urls = set(re.findall(r'src="(https://i\.pravatar\.cc[^"]+)"', body))
     assert len(urls) >= 2
 
 

@@ -480,6 +480,18 @@ def index():
 
     # ── Customer pane: phone-shell wrapping the chat widget ───────
     chat_inner = """
+        <div class="phone-status">
+          <span class="ps-time">9:41</span>
+          <span class="ps-right">
+            <span class="ps-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 10"><path d="M1 9h2V6H1zM5 9h2V4H5zM9 9h2V2H9zM13 9h2V0h-2z"/></svg>
+            </span>
+            <span class="ps-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 12"><path d="M8 12L0 4a11 11 0 0 1 16 0Z" fill="currentColor" stroke="none"/></svg>
+            </span>
+            <span class="ps-battery"><span class="ps-bat-fill"></span></span>
+          </span>
+        </div>
         <div class="phone-bar">
           <div class="biz">Septic Pro</div>
           <div class="biz-sub">+1 (844) 940-3274 · Open now</div>
@@ -504,10 +516,48 @@ def index():
           </form>
         </div>
     """
+    # V10.3 — owner-SMS preview phone (the third actor in the demo:
+    # customer / AI / owner). Pre-seeded with Marcus's emergency brief
+    # so the prospect immediately sees what Bob receives. Updates
+    # dynamically when the prospect triggers an emergency or booking.
+    owner_phone_inner = """
+        <div class="phone-status">
+          <span class="ps-time">9:41</span>
+          <span class="ps-right">
+            <span class="ps-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 10"><path d="M1 9h2V6H1zM5 9h2V4H5zM9 9h2V2H9zM13 9h2V0h-2z"/></svg>
+            </span>
+            <span class="ps-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 12"><path d="M8 12L0 4a11 11 0 0 1 16 0Z" fill="currentColor" stroke="none"/></svg>
+            </span>
+            <span class="ps-battery"><span class="ps-bat-fill"></span></span>
+          </span>
+        </div>
+        <div class="phone-bar">
+          <div class="biz">Bob's phone</div>
+          <div class="biz-sub">Texts from your receptionist</div>
+        </div>
+        <div class="phone-screen">
+          <div class="owner-conv" id="owner-conv">
+            <div class="owner-sms urgent">
+              <div class="sms-from">AI Receptionist</div>
+              <div>Emergency · Marcus Reilly · 412 Maple Lane, Lancaster · sewage backup · about to bridge.</div>
+              <div class="sms-ts">6h ago</div>
+            </div>
+            <div class="owner-sms">
+              <div class="sms-from">AI Receptionist</div>
+              <div>Booking · Sarah Wong · Tuesday 1pm pump-out · 412 Oak Street.</div>
+              <div class="sms-ts">yesterday</div>
+            </div>
+          </div>
+        </div>
+    """
     customer_pane = f"""
     <section class="demo-pane demo-pane-customer">
       <div class="pane-label">What your customer sees</div>
-      <div class="phone-shell">{chat_inner}</div>
+      <div class="phone-shell" style="position:relative;">{chat_inner}</div>
+      <div class="pane-label" style="margin-top:24px">What you see on your phone</div>
+      <div class="phone-shell owner-shell">{owner_phone_inner}</div>
     </section>
     """
 
@@ -557,6 +607,91 @@ def index():
       return div;
     }
     function appendSystem(t){ appendMsg("sys", t); }
+
+    /* V10.3 — push a new SMS bubble into the owner phone preview
+       when the AI flags the call. Pulls intent + priority from the
+       /chat response and the partner's name/address from callersById. */
+    const $ownerConv = document.getElementById("owner-conv");
+    function pushOwnerSMS(caller, data){
+      if (!$ownerConv) return;
+      const intent   = (data && data.intent) || "";
+      const priority = (data && data.priority) || "";
+      const isEmerg  = priority === "high" || /emergency/i.test(intent);
+      const isBook   = /scheduling|book/i.test(intent);
+      let body = "";
+      if (isEmerg){
+        body = `Emergency · ${caller.name}` +
+                (caller.address ? ` · ${caller.address}` : "") +
+                ` · about to bridge.`;
+      } else if (isBook){
+        body = `Booking · ${caller.name}` +
+                (caller.address ? ` · ${caller.address}` : "");
+      } else {
+        return;   /* low-priority chatter doesn't ping the owner */
+      }
+      const div = document.createElement("div");
+      div.className = "owner-sms just-arrived" + (isEmerg ? " urgent" : "");
+      div.innerHTML =
+        `<div class="sms-from">AI Receptionist</div>` +
+        `<div>${escapeHTML(body)}</div>` +
+        `<div class="sms-ts">just now</div>`;
+      /* Newest on top so the prospect sees it immediately. */
+      $ownerConv.insertBefore(div, $ownerConv.firstChild);
+      setTimeout(()=>div.classList.remove("just-arrived"), 600);
+    }
+
+    /* V10.3 — first-visit onboarding pointer over the first caller
+       chip. Dismissed via localStorage on first chip-click. */
+    function maybeShowOnboarding(){
+      try {
+        if (localStorage.getItem("aircept_onboarded")) return;
+      } catch (_) { /* private mode etc. — show anyway */ }
+      const ptr = document.createElement("div");
+      ptr.className = "onboard-pointer";
+      ptr.textContent = "Pick a caller to start →";
+      const shell = document.querySelector(".phone-shell");
+      if (shell) shell.appendChild(ptr);
+      const dismiss = () => {
+        ptr.remove();
+        try { localStorage.setItem("aircept_onboarded", "1"); } catch(_){}
+        $chips.removeEventListener("click", dismiss);
+      };
+      $chips.addEventListener("click", dismiss);
+    }
+
+    /* V10.3 — animated typing-dots bubble while the AI is composing
+       a reply. Replaces the static "…" loading placeholder. */
+    function appendTyping(){
+      const div = document.createElement("div");
+      div.className = "pmsg ai typing";
+      div.innerHTML = "<span></span><span></span><span></span>";
+      $body.appendChild(div);
+      $body.scrollTop = $body.scrollHeight;
+      return div;
+    }
+
+    /* V10.3 — Delivered → Read indicator under the customer's
+       outbound bubble. iMessage micro-detail; signals the message
+       got through and the (AI's) "eyes" saw it. */
+    function appendReceipt(){
+      const r = document.createElement("div");
+      r.className = "receipt";
+      r.textContent = "Delivered";
+      $body.appendChild(r);
+      requestAnimationFrame(()=>r.classList.add("shown"));
+      // After ~200ms, swap to "Read" with the accent color.
+      setTimeout(()=>{
+        r.textContent = "Read";
+        r.classList.add("read");
+      }, 220);
+      // Once the AI's typing dots appear, the receipt fades back so
+      // the cluster doesn't grow unbounded across a long thread.
+      setTimeout(()=>{
+        r.style.transition = "opacity 600ms ease";
+        r.classList.remove("shown");
+      }, 1500);
+      return r;
+    }
 
     /* V10.1 — /demo/callers is the unified-identity source. Same
        phones as the portal's seeded scenarios → same DiceBear seed →
@@ -680,10 +815,13 @@ def index():
     async function send(text){
       if(!activeCaller || !text.trim()) return;
       appendMsg("user", text);
+      /* V10.3 — receipt under the outbound bubble + animated typing
+         dots while the AI composes. */
+      appendReceipt();
       $input.value = "";
       $input.disabled = true;
       $send.disabled = true;
-      const loading = appendMsg("ai", "…", {loading:true});
+      const loading = appendTyping();
       try {
         const r = await fetch("/chat", {
           method:"POST",
@@ -709,6 +847,12 @@ def index():
         if (c && c.phone){
           _highlightPartnerDigits = _normalizeForHighlight(c.phone);
         }
+        /* V10.3 — if the AI flagged the call as an emergency or a
+           booking, fire a new SMS into the owner-phone preview so
+           the prospect sees the third-actor loop close in real time. */
+        if (c){
+          pushOwnerSMS(c, data);
+        }
         /* Schedule the portal refresh ~600ms after the reply lands so
            the prospect sees the chat update first, then the portal
            catches up. */
@@ -728,6 +872,7 @@ def index():
       if(btn && !$input.disabled){ send(btn.dataset.msg); }
     });
     loadCallers();
+    maybeShowOnboarding();
     </script>
     """
 

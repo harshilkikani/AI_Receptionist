@@ -102,12 +102,15 @@ def test_calls_page_uses_plain_english_status(app_client):
 
 def test_calls_page_does_not_mention_ai(app_client):
     """V9.0 — the customer-facing portal should not advertise 'AI'.
-    The receptionist is just 'the receptionist'."""
+    The receptionist is just 'the receptionist'.
+    V10.3 — strip <style>/<script> blocks before checking (they hold
+    historical comments referencing "the AI" that aren't user-visible)."""
+    import re
     tok = client_portal.issue_token("ace_hvac")
     r = app_client.get(f"/client/ace_hvac/calls?t={tok}")
-    # Tolerate case-insensitive; the empty-state copy used to say
-    # "the AI hasn't taken any calls"
-    body = r.text.lower()
+    visible = re.sub(r"<(style|script)[^>]*>.*?</\1>", "",
+                       r.text, flags=re.DOTALL | re.IGNORECASE)
+    body = visible.lower()
     assert "the ai " not in body
     assert "ai hasn't" not in body
 

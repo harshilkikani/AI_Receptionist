@@ -209,13 +209,27 @@ def _today_body(client_id: str, t: str = "", *,
             + card("".join(items), variant="soft", flush=True)
         )
 
-    # ── Bare stat strip — no card chrome ──────────────────────────────
+    # ── Bare stat strip with 30-day sparklines (V10.3) ────────────
+    try:
+        daily_calls = usage.daily_call_counts(client_id, days=30)
+    except Exception:
+        daily_calls = []
+    # Emergencies + bookings don't have their own daily helpers yet —
+    # approximate as derived fractions of daily_calls so the sparklines
+    # tell a coherent trend without a new backend surface.
+    emerg_frac = (s["emergencies"] / max(1, s["calls_handled"])) if s["calls_handled"] else 0
+    book_frac  = (bookings / max(1, s["calls_handled"])) if s["calls_handled"] else 0
+    daily_emerg = [int(round(v * emerg_frac)) for v in daily_calls]
+    daily_book  = [int(round(v * book_frac))  for v in daily_calls]
     top_stats = (
         section_caption("This month")
         + stats([
-            stat_card("Calls answered", s["calls_handled"]),
-            stat_card("Emergencies routed safely", s["emergencies"]),
-            stat_card("Bookings captured", bookings),
+            stat_card("Calls answered", s["calls_handled"],
+                       sparkline_values=daily_calls),
+            stat_card("Emergencies routed safely", s["emergencies"],
+                       sparkline_values=daily_emerg),
+            stat_card("Bookings captured", bookings,
+                       sparkline_values=daily_book),
         ])
     )
 
@@ -318,8 +332,33 @@ def conversations_list(client_id: str, t: str = "", limit: int = 50):
         count_label = (
             f"{len(partners)} {'person' if len(partners) == 1 else 'people'}"
         )
+        # V10.3 — inline search filters the partner list clientside.
+        search_input = (
+            '<div class="conv-search">'
+            '<span class="conv-search-icon">'
+            f'{icon("search", size=14)}'
+            '</span>'
+            '<input type="search" id="conv-filter" '
+            'placeholder="Search by name or phone…" autocomplete="off">'
+            '</div>'
+            '<script>'
+            '(function(){'
+            'const $f = document.getElementById("conv-filter");'
+            'if(!$f) return;'
+            'const $cards = document.querySelectorAll("section.card.flush .call, section.card.flush details.call");'
+            '$f.addEventListener("input", function(){'
+            '  const q = ($f.value||"").toLowerCase().trim();'
+            '  $cards.forEach(c=>{'
+            '    const text = c.textContent.toLowerCase();'
+            '    c.style.display = (!q || text.indexOf(q)>=0) ? "" : "none";'
+            '  });'
+            '});'
+            '})();'
+            '</script>'
+        )
         body = (
             f'<div class="list-count">{html.escape(count_label)}</div>'
+            + search_input
             + card("".join(cards), flush=True)
         )
 
@@ -742,6 +781,35 @@ def _render_partner_preview(client_id: str, phone: str,
     bubble_html = (
         '<div class="preview-bubbles">' + "".join(bubbles) + '</div>'
     )
+
+    # V10.3 — recording mock for voice-channel partners. Pure visual:
+    # 10-bar waveform that animates for ~3.5s when the play button is
+    # clicked. No actual audio (the demo doesn't have call recordings).
+    has_voice = any(t.get("channel") == "voice" for t in tail)
+    if has_voice:
+        # Synth a plausible duration from the call meta if available;
+        # falls back to a flat "0:24" so the prospect sees a label.
+        duration = "0:24"
+        try:
+            voice_turn = next(t for t in reversed(tail)
+                               if t.get("channel") == "voice")
+            meta = _t.get_call_meta(voice_turn["call_sid"])
+            if meta and meta.get("duration_s"):
+                m, s = divmod(int(meta["duration_s"]), 60)
+                duration = f"{m}:{s:02d}"
+        except Exception:
+            pass
+        rec_player = (
+            f'<div class="rec-player">'
+            f'<button class="rec-play-btn" type="button" '
+            f'aria-label="Play recording"></button>'
+            f'<div class="rec-waveform" aria-hidden="true">'
+            + ('<span></span>' * 10) +
+            f'</div>'
+            f'<div class="rec-meta">Recording · {html.escape(duration)}</div>'
+            f'</div>'
+        )
+        bubble_html = rec_player + bubble_html
 
     # Foot: "View full thread" link if we have a token (real portal).
     tq = f"?t={html.escape(t)}" if t else ""

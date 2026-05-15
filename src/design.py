@@ -408,6 +408,12 @@ table.data td.muted { color: var(--muted); }
 .stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
                margin-top: 6px; line-height: 1.1; color: var(--fg); }
 .stat .delta { margin-top: 6px; font-size: 12px; font-weight: 500; }
+/* V10.3 — sparkline slot at the bottom of stat cards. */
+.stat .stat-spark { margin-top: 10px; opacity: 0.85;
+                     display: block; line-height: 0; }
+.stat .stat-spark .spark { width: 100%; max-width: 140px; }
+.stat .stat-spark .spark path { stroke: var(--accent); }
+.stat .stat-spark .spark path.fill { fill: var(--accent-soft); opacity: 0.7; }
 .stat .delta.up   { color: var(--success-500); }
 .stat .delta.down { color: var(--danger-500); }
 .stat .delta.flat { color: var(--muted); }
@@ -633,6 +639,126 @@ details.call.call-expandable[open] > summary .call-chevron {
   font-size: 13px; color: var(--muted);
 }
 .call-preview .preview-foot a { color: var(--accent); font-weight: 500; }
+
+/* V10.3 — recording playback mock. A small <button> inside the
+   preview triggers an animated waveform for ~3.5s. No audio plays —
+   the visual carries the "this was a real recorded call" signal. */
+.call-preview .rec-player {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; margin-bottom: 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.rec-play-btn {
+  width: 32px; height: 32px; border-radius: 999px;
+  border: none; background: var(--accent); color: var(--accent-fg);
+  cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; padding: 0;
+  transition: filter 120ms;
+}
+.rec-play-btn:hover { filter: brightness(0.95); }
+.rec-play-btn::before {
+  content: ""; display: inline-block;
+  width: 0; height: 0;
+  border-left: 9px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  margin-left: 2px;
+}
+.rec-player.playing .rec-play-btn::before {
+  border-left: none;
+  border-right: none;
+  width: 9px; height: 9px;
+  background: currentColor;
+  margin-left: 0;
+  border-radius: 1px;
+}
+.rec-waveform {
+  display: inline-flex; gap: 2px;
+  align-items: center; height: 24px; flex: 1;
+}
+.rec-waveform span {
+  display: inline-block;
+  width: 3px; height: 6px;
+  background: var(--muted);
+  border-radius: 1px;
+  transition: height 200ms ease, background 200ms;
+}
+.rec-player.playing .rec-waveform span {
+  background: var(--accent);
+  animation: wave-pulse 0.9s ease-in-out infinite;
+}
+.rec-player.playing .rec-waveform span:nth-child(2)  { animation-delay: 0.05s; }
+.rec-player.playing .rec-waveform span:nth-child(3)  { animation-delay: 0.10s; }
+.rec-player.playing .rec-waveform span:nth-child(4)  { animation-delay: 0.15s; }
+.rec-player.playing .rec-waveform span:nth-child(5)  { animation-delay: 0.20s; }
+.rec-player.playing .rec-waveform span:nth-child(6)  { animation-delay: 0.25s; }
+.rec-player.playing .rec-waveform span:nth-child(7)  { animation-delay: 0.30s; }
+.rec-player.playing .rec-waveform span:nth-child(8)  { animation-delay: 0.35s; }
+.rec-player.playing .rec-waveform span:nth-child(9)  { animation-delay: 0.40s; }
+.rec-player.playing .rec-waveform span:nth-child(10) { animation-delay: 0.45s; }
+@keyframes wave-pulse {
+  0%, 100% { height: 4px; }
+  50%      { height: 18px; }
+}
+.rec-meta { font-size: 12px; color: var(--muted);
+             font-variant-numeric: tabular-nums;
+             white-space: nowrap; flex-shrink: 0; }
+
+/* V10.3 — Conversations list search input. Slim, focused, drops
+   into the partner-count slot at the top of the list. */
+.conv-search {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  margin-bottom: 16px;
+}
+.conv-search input {
+  border: none; background: transparent;
+  font-family: var(--font); font-size: 14px;
+  color: var(--fg); outline: none; flex: 1;
+}
+.conv-search input::placeholder { color: var(--muted); }
+.conv-search .conv-search-icon { color: var(--muted);
+                                   display: inline-flex; }
+
+/* V10.3 — tenant switcher in the demo top bar. */
+.tenant-switcher {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 16px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--n-100);
+  font-size: 12px; font-weight: 500;
+  color: var(--n-700);
+  cursor: pointer; position: relative;
+  border: 1px solid transparent;
+}
+.tenant-switcher:hover { background: var(--n-200); }
+.tenant-switcher select {
+  appearance: none; border: none; background: transparent;
+  font-family: var(--font); font-size: 12px; font-weight: 500;
+  color: var(--n-700); cursor: pointer; padding-right: 14px;
+  outline: none;
+}
+.tenant-switcher::after {
+  content: ""; position: absolute; right: 10px; top: 50%;
+  transform: translateY(-25%);
+  width: 5px; height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) {
+  .tenant-switcher { background: #182338; color: #b2c2db; }
+  .tenant-switcher:hover { background: #1f2e4d; }
+  .tenant-switcher select { color: #b2c2db; }
+}
 @media (max-width: 640px) {
   .call-preview { padding: 14px 16px 16px; }
   .call-preview .preview-bubble { font-size: 14px; max-width: 88%; }
@@ -847,6 +973,41 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   background: var(--bg);
 }
 
+/* V10.3 — iOS-style status bar at the top of each phone screen.
+   9:41 time + signal + WiFi + battery icons. Cosmetic but signals
+   "real device" subliminally to the prospect. */
+.phone-status {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 18px 6px;
+  font-size: 12px; font-weight: 600;
+  color: var(--fg); letter-spacing: -0.01em;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.phone-status .ps-time { font-weight: 700; }
+.phone-status .ps-right { display: inline-flex; align-items: center;
+                           gap: 5px; }
+.phone-status .ps-icon { display: inline-block;
+                          width: 14px; height: 10px; }
+.phone-status .ps-icon svg { width: 100%; height: 100%;
+                              stroke: currentColor; fill: currentColor; }
+.phone-status .ps-battery {
+  display: inline-flex; align-items: center;
+  width: 22px; height: 11px;
+  border: 1px solid currentColor; border-radius: 3px;
+  position: relative; padding: 1px;
+}
+.phone-status .ps-battery::after {
+  content: ""; position: absolute; top: 3px; right: -3px;
+  width: 2px; height: 5px;
+  background: currentColor; border-radius: 0 1px 1px 0;
+}
+.phone-status .ps-battery .ps-bat-fill {
+  display: block; width: 78%; height: 100%;
+  background: currentColor; border-radius: 1px;
+}
+
 .chat-chips { display: flex; gap: 6px; padding: 12px 14px;
                border-bottom: 1px solid var(--border);
                overflow-x: auto; flex-shrink: 0;
@@ -936,6 +1097,107 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
                      align-self: center; text-align: center;
                      padding: 4px 12px; }
 .phone-conv .pmsg.loading { color: var(--muted); font-style: italic; }
+/* V10.3 — animated three-dot typing indicator replaces the static "…"
+   loading bubble. iMessage-standard interaction signal. */
+.phone-conv .pmsg.typing { padding: 12px 16px;
+                            display: inline-flex; gap: 4px;
+                            align-items: center; min-height: 36px;
+                            background: var(--n-100); }
+@media (prefers-color-scheme: dark) {
+  .phone-conv .pmsg.typing { background: #1a2541; }
+}
+.phone-conv .pmsg.typing span { width: 6px; height: 6px;
+                                 border-radius: 999px;
+                                 background: var(--muted);
+                                 animation: typing-bounce 1.2s ease-in-out infinite; }
+.phone-conv .pmsg.typing span:nth-child(2) { animation-delay: 0.18s; }
+.phone-conv .pmsg.typing span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-4px); opacity: 1; }
+}
+
+/* V10.3 — owner-SMS preview phone. Sits beneath the customer phone
+   in the left column. Visualizes the briefings the AI sends to the
+   business owner's personal phone — the third actor in the
+   conversation (customer / AI / owner).
+   Same .phone-shell chrome; .phone-conv inside uses sms-style
+   bubbles all aligned left (inbound from "AI Receptionist"). */
+.owner-shell { margin-top: 22px; }
+.owner-shell .biz-sub { color: var(--muted); }
+.owner-shell .phone-screen { min-height: 220px; max-height: 360px; }
+.owner-conv { padding: 14px 14px 6px;
+               overflow-y: auto; flex: 1;
+               display: flex; flex-direction: column; gap: 8px; }
+.owner-conv:empty::before {
+  content: "Bob will see emergency briefings here.";
+  color: var(--muted); font-size: 12px; align-self: center;
+  margin-top: 24px;
+}
+.owner-sms {
+  background: var(--n-100); color: var(--fg);
+  padding: 8px 12px 9px; border-radius: 14px;
+  max-width: 92%; align-self: flex-start;
+  font-size: 13px; line-height: 1.4;
+  border-bottom-left-radius: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  .owner-sms { background: #1a2541; color: #e6edf7; }
+}
+.owner-sms .sms-from { font-size: 11px; color: var(--muted);
+                        font-weight: 600; margin-bottom: 3px; }
+.owner-sms.urgent { background: var(--danger-100);
+                     color: var(--danger-500); }
+.owner-sms.urgent .sms-from { color: var(--danger-500); }
+@media (prefers-color-scheme: dark) {
+  .owner-sms.urgent { background: #2e0d0d; color: #fb7185; }
+  .owner-sms.urgent .sms-from { color: #fb7185; }
+}
+.owner-sms .sms-ts { font-size: 10px; color: var(--muted);
+                      margin-top: 4px; }
+.owner-sms.urgent .sms-ts { color: rgba(251,113,133,0.7); }
+/* New-arrival animation when an SMS slides in. */
+.owner-sms.just-arrived {
+  animation: sms-arrive 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes sms-arrive {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* V10.3 — first-visit onboarding pointer. Pulses over the first
+   caller chip until the prospect clicks any chip. localStorage-gated
+   so it doesn't reappear after dismissal. */
+.onboard-pointer {
+  position: absolute; left: 14px; top: 56px;
+  background: var(--fg); color: var(--bg);
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 12px; font-weight: 500;
+  box-shadow: 0 6px 14px rgba(15,23,42,0.18);
+  pointer-events: none; z-index: 5;
+  white-space: nowrap;
+  animation: pointer-bob 1.8s ease-in-out infinite;
+}
+.onboard-pointer::after {
+  content: ""; position: absolute; top: -5px; left: 18px;
+  width: 10px; height: 10px; background: var(--fg);
+  transform: rotate(45deg);
+}
+@keyframes pointer-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* V10.3 — read receipts under the customer's outbound bubbles.
+   "Delivered" appears instantly; "Read" replaces it after ~200ms
+   (set by the chat JS). iMessage micro-detail. */
+.phone-conv .receipt { font-size: 10.5px; color: var(--muted);
+                        align-self: flex-end;
+                        margin: 0 4px -2px;
+                        opacity: 0; transition: opacity 200ms ease;
+                        letter-spacing: .02em; }
+.phone-conv .receipt.shown { opacity: 1; }
+.phone-conv .receipt.read { color: var(--accent); }
 .phone-conv .pmeta { display: flex; gap: 4px; flex-wrap: wrap;
                       margin-top: 6px; align-self: flex-start; }
 .phone-conv .pmeta .tag { font-size: 10px; font-weight: 600;
@@ -1131,6 +1393,24 @@ def page(*, title: str, body: str,
     {footer_html}
   </main>
 </div>
+<script>
+/* V10.3 — recording-mock play button wiring. Toggles the .playing
+   class on the .rec-player for ~3.5s so the waveform animates.
+   No actual audio is loaded; the visual carries the signal. */
+document.addEventListener("click", function(e){{
+  const btn = e.target.closest(".rec-play-btn");
+  if (!btn) return;
+  e.preventDefault();
+  const player = btn.closest(".rec-player");
+  if (!player) return;
+  if (player.classList.contains("playing")){{
+    player.classList.remove("playing");
+    return;
+  }}
+  player.classList.add("playing");
+  setTimeout(function(){{ player.classList.remove("playing"); }}, 3500);
+}});
+</script>
 </body></html>"""
 
 
@@ -1193,7 +1473,23 @@ def demo_page(*, title: str, body: str,
   <a href="/" class="demo-brand">
     <span class="dot"></span><span>AI Receptionist</span>
   </a>
-  <a href="{tel}" class="demo-phone-link">
+  <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
+    <select aria-label="Demo industry">
+      <option value="septic"      data-brand="Septic Pro"
+              data-emergency="My toilets are backing up and there's sewage in the basement!"
+              data-book="Hey, I need to schedule a routine pumping."
+              data-price="How much does a pump-out cost?">Septic Pro</option>
+      <option value="hvac"        data-brand="Sunrise HVAC"
+              data-emergency="My furnace died overnight and it's 12 degrees inside."
+              data-book="Need someone to look at my AC — not cooling well."
+              data-price="What does a tune-up cost?">Sunrise HVAC</option>
+      <option value="real-estate" data-brand="Lawrence Realty"
+              data-emergency="I lost my keys, I'm locked out of the showing!"
+              data-book="I saw the Birch Road listing — can I tour Saturday?"
+              data-price="What's the asking price on 1100 Birch?">Lawrence Realty</option>
+    </select>
+  </div>
+  <a href="{tel}" class="demo-phone-link" style="margin-left:auto;">
     <svg width="14" height="14" viewBox="0 0 24 24"
          stroke="currentColor" fill="none" stroke-width="1.75"
          stroke-linecap="round" stroke-linejoin="round">
@@ -1203,6 +1499,45 @@ def demo_page(*, title: str, body: str,
   </a>
 </header>
 {body}
+<script>
+/* V10.3 — recording-mock play button. Toggles .playing for 3.5s. */
+document.addEventListener("click", function(e){{
+  const btn = e.target.closest(".rec-play-btn");
+  if (!btn) return;
+  e.preventDefault();
+  const player = btn.closest(".rec-player");
+  if (!player) return;
+  if (player.classList.contains("playing")){{
+    player.classList.remove("playing"); return;
+  }}
+  player.classList.add("playing");
+  setTimeout(function(){{ player.classList.remove("playing"); }}, 3500);
+}});
+/* V10.3 — tenant switcher: swap brand label + chat suggestions on
+   the demo page. Pure clientside; no backend tenant switch. */
+(function(){{
+  const $sw = document.getElementById("tenant-switcher");
+  if (!$sw) return;
+  const $sel = $sw.querySelector("select");
+  $sel.addEventListener("change", function(){{
+    const opt = $sel.options[$sel.selectedIndex];
+    const brand = opt.getAttribute("data-brand");
+    const e = opt.getAttribute("data-emergency");
+    const b = opt.getAttribute("data-book");
+    const p = opt.getAttribute("data-price");
+    document.querySelectorAll(".phone-bar .biz").forEach(el=>{{
+      // Only swap the customer phone's biz label (not the owner phone)
+      if (el.textContent === "Bob's phone") return;
+      el.textContent = brand;
+    }});
+    document.querySelectorAll(".phone-suggestion").forEach((btn, i)=>{{
+      if (i === 0 && e) btn.dataset.msg = e;
+      if (i === 1 && b) btn.dataset.msg = b;
+      if (i === 2 && p) btn.dataset.msg = p;
+    }});
+  }});
+}})();
+</script>
 </body></html>"""
 
 
@@ -1232,18 +1567,27 @@ def data_table(headers: list, rows: list, *, empty_text: str = "No data yet.") -
 
 
 def stat_card(label: str, value, *, delta: Optional[str] = None,
-              direction: str = "flat") -> str:
-    """direction: 'up' | 'down' | 'flat'."""
+              direction: str = "flat",
+              sparkline_values: Optional[list] = None) -> str:
+    """direction: 'up' | 'down' | 'flat'.
+
+    V10.3 — optional `sparkline_values` (list of ints) adds a small
+    30-day trend line at the bottom of the card. Operational depth
+    signal without overloading the visual."""
     delta_html = ""
     if delta is not None:
         direction = direction if direction in ("up", "down", "flat") else "flat"
         arrow = {"up": "▲", "down": "▼", "flat": "·"}[direction]
         delta_html = f'<div class="delta {direction}">{arrow} {html.escape(str(delta))}</div>'
+    spark_html = ""
+    if sparkline_values and any(v > 0 for v in sparkline_values):
+        spark_html = f'<div class="stat-spark">{sparkline(sparkline_values, width=140, height=28)}</div>'
     return (
         f'<div class="stat">'
         f'<div class="label">{html.escape(label)}</div>'
         f'<div class="value">{html.escape(str(value))}</div>'
         f'{delta_html}'
+        f'{spark_html}'
         f'</div>'
     )
 
@@ -1374,24 +1718,50 @@ def _avatar_hue(seed: str) -> int:
     return int(digest[:4], 16) % 360
 
 
-# V9.6.1 — illustrated portrait avatar URL.
-# DiceBear's `notionists` style — clean, modern, professional. Public CDN,
-# no licensing concerns (CC0 source set), stable per seed. We pass the
-# partner's normalized phone digits so the same partner always gets the
-# same portrait. The image is requested via `<img>` so failures fall
-# back transparently to the initial-letter disc (see `.av-img onerror`
-# in call_card).
+# V10.3 — real-photo avatars via Pravatar (i.pravatar.cc), with the
+# V9.6.1 DiceBear notionists illustration as the fallback chain.
+#
+# Pravatar serves curated portrait photos deterministic by `u=<seed>`.
+# Same phone → same photo. Free, no API key, suitable for mockups and
+# demos. The image is loaded as <img>; on load failure we fall through
+# the chain: pravatar → dicebear → initial disc.
+#
+# Notes:
+#   - Pravatar is marketed as a placeholder service for prototyping.
+#     The portraits are real-people likenesses; appropriate for a sales
+#     demo but a production deployment with real customer photos would
+#     swap to a contracted photo source or a vetted GAN-generated set.
+#   - The fallback to DiceBear is automatic in call_card's <img onerror>
+#     because we emit BOTH URLs and the browser tries them in order.
 DICEBEAR_BASE = "https://api.dicebear.com/9.x/notionists/svg"
+PRAVATAR_BASE = "https://i.pravatar.cc/150"
 
 
 def partner_photo_url(seed: str) -> str:
-    """Returns a stable illustrated-portrait URL for the partner.
-    Empty seed returns empty string (caller will use the initial disc)."""
+    """V10.3 — returns the real-photo URL (Pravatar). Falls back via
+    HTML `onerror` cascade to DiceBear → initial disc. Empty seed
+    returns empty string."""
     if not seed:
         return ""
     try:
         from urllib.parse import quote
-        # Normalize the seed for stable URLs: digits only when possible.
+        try:
+            from memory import normalize_phone
+            s = normalize_phone(seed) or seed
+        except Exception:
+            s = seed
+        return f"{PRAVATAR_BASE}?u={quote(s)}"
+    except Exception:
+        return ""
+
+
+def partner_photo_fallback_url(seed: str) -> str:
+    """V10.3 — the DiceBear illustration used when the Pravatar URL
+    fails to load. Wired via call_card's <img onerror> handler."""
+    if not seed:
+        return ""
+    try:
+        from urllib.parse import quote
         try:
             from memory import normalize_phone
             s = normalize_phone(seed) or seed
@@ -1453,12 +1823,26 @@ def call_card(*, caller: str, from_number: str = "",
         if live else ""
     )
     if photo_url:
+        # V10.3 — graceful fallback chain. <img onerror> first swaps
+        # the src to the DiceBear URL (illustrated portrait); if THAT
+        # also fails, the second onerror hides the image entirely so
+        # the initial-letter disc behind it stays visible.
+        fallback = partner_photo_fallback_url(seed)
+        if fallback:
+            onerr = (
+                f"if(this.dataset.tried!='fallback'){{"
+                f"this.dataset.tried='fallback';"
+                f"this.src='{fallback}';"
+                f"}}else{{this.style.display='none';}}"
+            )
+        else:
+            onerr = "this.style.display='none'"
         avatar = (
             f'<div class="av" style="--av-h:{hue}">'
             f'<span class="av-initial">{initial}</span>'
             f'<img class="av-img" src="{html.escape(photo_url)}" alt="" '
             f'loading="lazy" '
-            f'onerror="this.style.display=\'none\'"></div>'
+            f'onerror="{onerr}"></div>'
         )
     else:
         avatar = f'<div class="av" style="--av-h:{hue}">{initial}</div>'

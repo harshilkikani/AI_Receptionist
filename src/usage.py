@@ -351,6 +351,35 @@ def recent_calls(client_id: Optional[str] = None, limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
+def daily_call_counts(client_id: str, days: int = 30) -> list:
+    """V10.3 — daily call counts over the last N days for the given
+    tenant. Returns a list of length `days`, oldest-first, with each
+    bucket holding the count of calls whose start_ts fell into that
+    UTC day. Powers the sparklines on the portal Today stats."""
+    if not client_id:
+        return [0] * days
+    now_ts = _now_ts()
+    day_seconds = 86400
+    # Day-bucket cutoffs from `days` days ago to now, oldest-first.
+    cutoff = now_ts - days * day_seconds
+    buckets = [0] * days
+    with _db_lock:
+        conn = _connect()
+        _init_schema(conn)
+        rows = conn.execute(
+            """SELECT start_ts FROM calls
+                WHERE client_id = ? AND start_ts >= ?""",
+            (client_id, cutoff),
+        ).fetchall()
+        conn.close()
+    for r in rows:
+        ts = int(r["start_ts"])
+        idx = days - 1 - ((now_ts - ts) // day_seconds)
+        if 0 <= idx < days:
+            buckets[idx] += 1
+    return buckets
+
+
 # ── V9.1 — Conversation partners (per-phone aggregation) ──────────────
 
 def list_conversation_partners(client_id: str, *,
