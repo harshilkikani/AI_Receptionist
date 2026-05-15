@@ -5,19 +5,34 @@ Different emotional arc from HVAC: the customer isn't in distress,
 they're shopping. The win isn't speed, it's **lead capture + same-day
 follow-up** vs. the call rolling to voicemail at 8pm.
 
-Run from `http://localhost:8000/`. The seeded scenarios use Septic
-Pro by default; for the live demo you'd configure a real-estate
-tenant. The flow below describes what the agent SEES — the
-underlying personas serve as illustrative substitutes.
+**V11.0 — real estate is now a first-class vertical.** Open the demo
+page, open the demo drawer (`⋯`), switch the industry selector to
+**Lawrence Realty**. The chat caller list, suggestion chips, owner
+phone label, and pre-baked owner SMS bubbles all swap to real-estate
+content. No tenant config needed — the registry drives every surface.
+
+Six purpose-built personas ship with the real-estate switcher:
+
+| Caller | Scenario | Demo highlight |
+|---|---|---|
+| **Caleb Morrison** | Birch Road buyer inquiry, weekend tour | Speed-to-lead capture |
+| **Priya Shah** | Open-house follow-up, disclosure request | Lead nurture |
+| **Daniel Ellis** | Seller inquiry, asking commission | CMA-prep routing |
+| **Sienna Park** | Returning buyer, negotiation question | Continuity / agent handoff |
+| **Jordan Bailey** | Active showing, lockbox stuck | The real-estate "emergency" |
+| **Emily Rodriguez** | After-hours Zillow inquiry → confirmation SMS | Cross-channel timeline |
 
 ---
 
 ## Setup
 
-- Open the demo page. Pick **Diane Patel** in the phone.
-- Diane's scenario hint reads: *"Price inquiry — ask how much a
-  pump-out costs."* For the real-estate framing, replace with a Zillow
-  inquiry talk-track.
+- Open the demo page. Open the demo drawer (`⋯`) and switch to
+  **Lawrence Realty**.
+- Pick **Caleb Morrison** in the phone — the canonical Saturday-tour
+  scenario.
+- The chat suggestion chips now read: *Listing inquiry · Tour
+  Saturday · List my house · Lockbox stuck · Wrong number*. Use them
+  to drive the conversation when the audience hesitates.
 
 > **Talk track:** "Most agents lose 30-40% of inbound leads after
 > hours. Buyer sees the listing at 9pm, calls, rolls to voicemail,

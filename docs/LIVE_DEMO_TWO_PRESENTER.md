@@ -32,10 +32,22 @@ For other demo formats, see: `DEMO_HVAC.md` (solo HVAC) · `DEMO_REAL_ESTATE.md`
 ## Pre-demo checklist (5 minutes before)
 
 1. Demo page open at the root URL in a clean browser window. Refresh once to load fresh.
-2. Tenant switcher set to **HVAC** (the strongest opening flow — emergencies sell faster than schedules).
+2. Tenant switcher set to **Sunrise HVAC** (the V11.0 default — emergencies sell faster than schedules).
 3. Click the `⋯` in the top bar once to confirm the drawer opens, then close it. (Avoids first-click lag during the demo.)
 4. Both presenters' phones on silent — **not** Do Not Disturb if you're doing the live call moment.
 5. Notecard with **+1 (844) 940-3274** visible to A.
+
+**V11.0 — 12 supported verticals.** The switcher inside the demo drawer covers:
+
+| Tier 1 (deep) | Tier 2 (production) | Tier 3 (ready) |
+|---|---|---|
+| HVAC | Plumbing | Landscaping |
+| Real Estate | Roofing | Legal Intake |
+| Septic | Construction | Med Spa |
+|  | Property Management | Restoration |
+|  | Electrical |  |
+
+Switching the industry adapts in one click: chat suggestion chips, customer phone brand, owner phone label, pre-baked owner SMS bubbles, portal Today headline, and the chat caller list. Each vertical ships with 3-6 purpose-built personas. **Match the switcher to whoever you're talking to** — agents see Lawrence Realty, plumbers see Riverside Plumbing, attorneys see Lawler & Associates. It's the highest-impact improv move in any demo.
 6. Browser zoom at ~110% if showing on a laptop screen smaller than 15". The portal pane reads tight at default zoom.
 7. **One dry-run together.** Five minutes. Pick a persona, type the line, watch the owner SMS land. If anything stalls, refresh once and try again. Don't show up cold.
 
