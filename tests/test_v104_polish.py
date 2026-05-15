@@ -101,8 +101,15 @@ def test_chat_without_industry_passes_message_verbatim(app_client, monkeypatch):
     assert captured.get("message") == "test plain"
 
 
-def test_chat_septic_industry_no_override(app_client, monkeypatch):
-    """`industry='septic'` is the current behavior; no rewrite."""
+def test_chat_septic_industry_uses_registry_fragment(app_client, monkeypatch):
+    """V10.4: `industry='septic'` previously meant 'no override' — the
+    tenant system prompt was already septic.
+
+    V11.0: every industry (including septic) flows through
+    industries.prompt_fragment(slug) for consistency. Septic now gets
+    a registry-driven context cue; the cue reinforces the tenant
+    prompt's existing septic identity rather than adding a different
+    persona, so behavior is unchanged in practice."""
     import main
     captured = {}
     def fake_pipeline(caller, message, **kw):
@@ -116,7 +123,11 @@ def test_chat_septic_industry_no_override(app_client, monkeypatch):
         "caller_id": "marcus", "message": "hi",
         "client_id": "septic_pro", "industry": "septic",
     })
-    assert captured["message"] == "hi"
+    # V11.0 — context fragment wraps the message
+    assert "[Context:" in captured["message"]
+    assert "septic" in captured["message"].lower()
+    # User's actual message is still appended after the context cue
+    assert captured["message"].endswith("hi")
 
 
 def test_chat_real_estate_industry_uses_realty_context(app_client, monkeypatch):

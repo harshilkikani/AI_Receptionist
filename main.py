@@ -1336,30 +1336,23 @@ def chat(body: ChatIn):
             except Exception as e:
                 log.warning("demo log_sms inbound failed: %s", e)
 
-    # V10.4 — combined-demo industry context. When the tenant switcher
-    # is set to HVAC or real-estate, prepend a small context cue to the
-    # user message so the LLM responds with the matching business
-    # persona. The cue is bracketed so Claude treats it as context, not
-    # caller speech (the prompt forbids meta-narration, so it won't
-    # echo the brackets). The DB still writes under septic_pro.
-    effective_message = body.message
+    # V10.4 / V11.0 — combined-demo industry context. When the tenant
+    # switcher is set to a non-septic vertical, prepend the registry's
+    # per-industry system-prompt fragment so the LLM responds with the
+    # matching business persona. The cue is bracketed so Claude treats
+    # it as context, not caller speech (the prompt forbids meta-
+    # narration, so it won't echo the brackets). The DB still writes
+    # under septic_pro.
+    #
+    # V11.0 — replaces the pre-V11.0 if/elif chain for hvac/real_estate
+    # (~17 lines of hardcoded copy). Now every supported industry has
+    # a ~70-word ground-truth prompt grounded in the vertical's actual
+    # workflow — see src/industries.py. Adding industry #13 doesn't
+    # require touching this file.
+    from src import industries as _industries
     industry = (body.industry or "").strip().lower()
-    if industry == "hvac":
-        effective_message = (
-            "[Context: you're the receptionist for an HVAC company. "
-            "Replace pump-out / septic references with furnace, AC, "
-            "ducts, heat pump etc. as appropriate. Do NOT mention "
-            "this context in your reply.] "
-            + body.message
-        )
-    elif industry in ("real-estate", "realty", "real_estate"):
-        effective_message = (
-            "[Context: you're the receptionist for a real-estate "
-            "agency. Replace pump-out / septic references with "
-            "listings, showings, offers, disclosures. The owner is "
-            "the agent. Do NOT mention this context in your reply.] "
-            + body.message
-        )
+    fragment = _industries.prompt_fragment(industry)
+    effective_message = (fragment + body.message) if fragment else body.message
 
     result = _run_pipeline(caller, effective_message, client=client,
                             call_sid=sid)
