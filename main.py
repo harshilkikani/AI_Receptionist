@@ -618,9 +618,14 @@ def index():
                 f'}}else{{this.style.display=\'none\';}}">'
                 f'</span>'
             )
+        # V13.0 — sender = customer name (with avatar), not the
+        # marketing-string "AI Receptionist". Real owners see who the
+        # alert is about; "AI Receptionist" attribution lives in the
+        # phone-bar header ("Owner notifications") as channel chrome.
+        sender_label = cust_name or "Owner notifications"
         seeded_sms_html_parts.append(
             f'''<div class="owner-sms{urgent_class}">
-              <div class="sms-head">{avatar_html}<span class="sms-from">AI Receptionist</span><span class="sms-ts">{_html.escape(entry.get("ts_label", ""))}</span></div>
+              <div class="sms-head">{avatar_html}<span class="sms-from">{_html.escape(sender_label)}</span><span class="sms-ts">{_html.escape(entry.get("ts_label", ""))}</span></div>
               <div class="sms-body">{_html.escape(entry.get("body", ""))}</div>
               <div class="sms-read shown" aria-label="Read">
                 <svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>
@@ -777,17 +782,20 @@ def index():
       const priority = (data && data.priority) || "";
       const isEmerg  = priority === "high" || /emergency/i.test(intent);
       const isBook   = /scheduling|book/i.test(intent);
-      let body = "";
+      /* V13.0 — body comes from the server (industries.owner_sms(slug,
+         kind, ctx)) so the live alert text matches the per-industry
+         seeded bubbles. Falls back to a minimal natural-language
+         construction if the server didn't ship one. */
+      let body = (data && data.owner_sms_body) || "";
       let intentCategory = "";
       if (isEmerg){
-        body = `Emergency · ${caller.name}` +
-                (caller.address ? ` · ${caller.address}` : "") +
-                ` · about to bridge.`;
         intentCategory = "emergency";
+        if (!body) body = (caller.address ? caller.address + " — " : "")
+                          + "urgent. Bridging now.";
       } else if (isBook){
-        body = `Booking · ${caller.name}` +
-                (caller.address ? ` · ${caller.address}` : "");
         intentCategory = "booking";
+        if (!body) body = (caller.address ? caller.address + " · " : "")
+                          + "new booking.";
       } else {
         return;   /* low-priority chatter doesn't ping the owner */
       }
@@ -805,10 +813,7 @@ def index():
          switches (only the pre-baked seed swaps). */
       div.dataset.dynamic = "1";
       /* V11.1 — small customer avatar so the alert visually links
-         to a person. Pravatar by phone digits, DiceBear fallback.
-         V11.1 hotfix — original implementation used quote-escaped
-         string concatenation that emitted invalid JS to the
-         browser. Switched to a single template literal. */
+         to a person. Pravatar by phone digits, DiceBear fallback. */
       const avSeed = ((caller.phone || caller.id || "") + "")
         .replace(/\\D/g, "").replace(/^1/, "") || caller.id || "x";
       const avPrimary = "https://i.pravatar.cc/150?u=" + encodeURIComponent(avSeed);
@@ -819,8 +824,11 @@ def index():
         `<img src="${avPrimary}" alt="" loading="lazy" ` +
         `onerror="if(this.dataset.tried!==&#39;fallback&#39;){this.dataset.tried=&#39;fallback&#39;;this.src=&#39;${avFallback}&#39;;}else{this.style.display=&#39;none&#39;;}">` +
         `</span>`;
+      /* V13.0 — sender = customer name (the person the alert is
+         about), not the marketing-string "AI Receptionist". */
+      const senderLabel = caller.name || "Owner notifications";
       div.innerHTML =
-        `<div class="sms-head">${avatarHtml}<span class="sms-from">AI Receptionist</span><span class="sms-ts">just now</span></div>` +
+        `<div class="sms-head">${avatarHtml}<span class="sms-from">${escapeHTML(senderLabel)}</span><span class="sms-ts">just now</span></div>` +
         `<div class="sms-body">${escapeHTML(body)}</div>` +
         `<div class="sms-read" aria-label="Read">` +
           `<svg viewBox="0 0 12 12"><path d="M2 6l2.5 2.5L10 3"/></svg>` +
@@ -1611,6 +1619,40 @@ def chat(body: ChatIn):
                            result.get("reply", ""), direction="outbound")
         except Exception as e:
             log.warning("demo log_sms outbound failed: %s", e)
+
+    # V13.0 — render the owner-phone SMS body via the per-industry
+    # registry template so the live alert uses the same wording as
+    # the seeded bubbles. The client merges this with the caller
+    # avatar + name (sender row) before inserting the bubble.
+    try:
+        intent = (result.get("intent") or "").lower()
+        priority = (result.get("priority") or "").lower()
+        kind = None
+        if priority == "high" or "emergency" in intent:
+            kind = "emergency"
+        elif "scheduling" in intent or "book" in intent:
+            kind = "booking"
+        if kind:
+            ctx = {
+                "name": caller.get("name", ""),
+                "addr": caller.get("address", ""),
+                "phone": caller_phone,
+                "issue": (body.message or "")[:80],
+                "scope": (body.message or "")[:80],
+                "window": "ASAP" if kind == "emergency" else "tomorrow",
+                "time": "tomorrow",
+                "unit": caller.get("address", ""),
+                "treatment": (body.message or "")[:50],
+                "category": (body.message or "")[:50],
+                "deadline": "near-term",
+                "claim": "",
+            }
+            owner_sms_body = _industries.owner_sms(industry, kind, ctx)
+            if owner_sms_body:
+                result["owner_sms_body"] = owner_sms_body
+                result["owner_sms_kind"] = kind
+    except Exception as e:
+        log.debug("owner_sms_body render non-fatal: %s", e)
 
     return result
 

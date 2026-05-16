@@ -1382,12 +1382,18 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   color: var(--muted); font-size: 12px; align-self: center;
   margin-top: 24px;
 }
+/* V11.0 / V13.0 — owner-SMS bubble. V13.0 unifies the bubble
+   vocabulary with the customer-side .pmsg (radius 18, font 14,
+   padding 9/14) so both phones speak one chat language. The two
+   shells stop reading as "Android Material vs iMessage" eight
+   inches apart on screen. */
 .owner-sms {
   background: var(--n-100); color: var(--fg);
-  padding: 10px 12px 11px; border-radius: 14px;
+  padding: 9px 14px; border-radius: 18px;
   max-width: 92%; align-self: flex-start;
-  font-size: 13px; line-height: 1.42;
-  border-bottom-left-radius: 4px;
+  font-size: 14px; line-height: 1.45;
+  border-bottom-left-radius: 6px;
+  white-space: pre-wrap; word-wrap: break-word;
 }
 @media (prefers-color-scheme: dark) {
   .owner-sms { background: #1a2541; color: #e6edf7; }
@@ -1419,18 +1425,22 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   .owner-sms .sms-av { background: #243152; color: #94a3b8; }
   .owner-sms .sms-av-initial { color: #94a3b8; }
 }
+/* V13.0 — sender row carries the customer name (the person the
+   alert is about), not "AI Receptionist". Slightly weightier than
+   pre-V13 since this is now the conversation-partner identity. */
 .owner-sms .sms-from {
-  font-size: 11px; color: var(--muted);
+  font-size: 13px; color: var(--fg);
   font-weight: 600;
+  letter-spacing: -0.005em;
   flex: 0 0 auto;
 }
 .owner-sms .sms-ts {
-  font-size: 10.5px; color: var(--muted);
+  font-size: 11px; color: var(--muted);
   margin-left: auto;
   letter-spacing: 0.01em;
 }
 .owner-sms .sms-body {
-  font-size: 13px; line-height: 1.42;
+  font-size: 14px; line-height: 1.45;
 }
 .owner-sms.urgent { background: var(--danger-100);
                      color: var(--danger-500); }
@@ -2360,9 +2370,12 @@ document.addEventListener("click", function(e){{
             + '}}else{{this.style.display=\\'none\\';}}">'
             + '</span>')
         : '';
+      /* V13.0 — sender = customer name (the person the alert is
+         about), not the marketing-string "AI Receptionist". */
+      const senderLabel = name || "Owner notifications";
       return '<div class="owner-sms' + urgentClass + '">'
         + '<div class="sms-head">' + avatar
-        + '<span class="sms-from">AI Receptionist</span>'
+        + '<span class="sms-from">' + _esc(senderLabel) + '</span>'
         + '<span class="sms-ts">' + ts + '</span></div>'
         + '<div class="sms-body">' + body + '</div>'
         + '<div class="sms-read shown" aria-label="Read">'

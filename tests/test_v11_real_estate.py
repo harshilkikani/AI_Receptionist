@@ -91,40 +91,51 @@ def test_real_estate_emergency_keywords_include_lockbox_terms():
 
 
 def test_real_estate_seller_intake_routes_to_cma():
-    """Seller inquiries → CMA prep callback. Encoded in owner_sms_templates."""
+    """V11.0: seller inquiries → CMA prep callback. V13.0: the
+    owner-SMS template is body-only (sender carries the customer
+    name), so 'Seller' no longer appears in the template literal.
+    The CMA-prep routing is encoded in the system prompt — verify
+    there instead."""
+    prompt = industries.get("real_estate")["system_prompt"]
+    assert "CMA" in prompt
+    assert "list" in prompt.lower()  # "wanting to list"
+    # Quote template still carries the CMA workflow hook
     quote_template = industries.get("real_estate")["owner_sms_templates"]["quote"]
-    assert "Seller" in quote_template
-    assert "CMA" in quote_template
+    assert "CMA" in quote_template or "list" in quote_template.lower()
 
 
 # ── 2. Owner-SMS rendering ──────────────────────────────────────────
 
 
 def test_real_estate_emergency_owner_sms_format():
-    """Lockbox emergency → 'Lockbox issue · {name} · {addr} · ...
-    Buyer on-site now' format."""
+    """V11.0 → V13.0 — emergency template is body-only. The
+    customer name now lives in the sender row (with avatar) so the
+    body is just the situational details: '{addr} — lockbox stuck.
+    Buyer on-site at {phone}.'"""
     rendered = industries.owner_sms("real_estate", "emergency", {
         "name": "Jordan Bailey",
         "addr": "1100 Birch Road",
         "phone": "+15550103005",
     })
-    assert "Lockbox" in rendered
-    assert "Jordan Bailey" in rendered
     assert "1100 Birch" in rendered
-    assert "Buyer on-site" in rendered
+    # Name no longer in the body (sender row carries it)
+    assert "Jordan Bailey" not in rendered
+    # Lockbox situation conveyed by the body
+    assert "lockbox" in rendered.lower()
 
 
 def test_real_estate_booking_owner_sms_format():
-    """Showing booking → 'Showing requested · {name} · {addr} · ...'"""
+    """V11.0 → V13.0 — booking template is body-only."""
     rendered = industries.owner_sms("real_estate", "booking", {
         "name": "Caleb Morrison",
         "addr": "1100 Birch Road",
         "time": "Saturday 1pm",
         "phone": "+15550103001",
     })
-    assert "Showing requested" in rendered
-    assert "Caleb Morrison" in rendered
+    assert "1100 Birch" in rendered
     assert "Saturday 1pm" in rendered
+    # Name no longer in the body
+    assert "Caleb Morrison" not in rendered
 
 
 # ── 3. Personas ─────────────────────────────────────────────────────
@@ -293,10 +304,16 @@ def test_chat_real_estate_legacy_slug_also_works(app_client, monkeypatch):
 
 
 def test_real_estate_seeded_bubbles_show_lockbox_and_showing(app_client):
-    """When the prospect switches to real-estate, the owner phone
-    should show pre-baked Jordan-lockbox + Caleb-Saturday-1pm bubbles."""
+    """V11.0 → V13.0 — seeded bubbles use natural-language bodies
+    without the leading 'Category · {name} ·' prefix (the customer
+    name lives in the sender row with the avatar). Verify the
+    workflow signals (lockbox + Saturday showing) survive."""
     seeded = industries.seeded_owner_sms("real_estate")
     bodies = " ".join(s["body"] for s in seeded)
-    assert "Lockbox" in bodies or "lockbox" in bodies
-    assert "Showing requested" in bodies
+    customer_names = {s.get("customer_name") for s in seeded}
+    assert "lockbox" in bodies.lower()
+    assert "Saturday" in bodies
     assert "1100 Birch" in bodies
+    # Customer-name continuity preserved via the customer_name field
+    assert "Jordan Bailey" in customer_names
+    assert "Caleb Morrison" in customer_names

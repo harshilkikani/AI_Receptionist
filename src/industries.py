@@ -84,10 +84,15 @@ _HVAC = {
     ],
     "emergency_indicator": "Emergency",
     "owner_sms_templates": {
-        "emergency": "Emergency · {name} · {addr} · {issue} · Call about to bridge",
-        "booking":   "Service · {name} · {addr} · {window} · {issue}",
-        "quote":     "Estimate request · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only. The customer's name is now rendered as the
+        # bubble sender (with their avatar) so repeating it in the body
+        # is redundant. The urgent class on the bubble conveys
+        # "Emergency" visually; the body just carries the situational
+        # details a real receptionist would text.
+        "emergency": "{addr} — {issue}. Bridging now.",
+        "booking":   "{addr} · {window} · {issue}",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "transferred",
@@ -124,14 +129,13 @@ _HVAC = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Marcus Reilly",
          "customer_phone": "+15550102001",
-         "body": "Emergency · Marcus Reilly · 4729 Maple · "
-                 "AC out, baby in house · Call about to bridge.",
+         "body": "4729 Maple — AC out, baby in house. "
+                 "Bridging now.",
          "ts_label": "6h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Wendy Larsen",
          "customer_phone": "+15550102002",
-         "body": "Service · Wendy Larsen · 218 Linden · "
-                 "Thursday 1pm furnace tune-up.",
+         "body": "218 Linden · Thursday 1pm furnace tune-up.",
          "ts_label": "yesterday"},
     ],
 }
@@ -170,10 +174,11 @@ _REAL_ESTATE = {
     ],
     "emergency_indicator": "Active showing",
     "owner_sms_templates": {
-        "emergency": "Lockbox issue · {name} · {addr} · {phone} · Buyer on-site now",
-        "booking":   "Showing requested · {name} · {addr} · {time} · {phone}",
-        "quote":     "Seller inquiry · {name} · {addr} · CMA prep needed · {phone}",
-        "followup":  "Buyer follow-up · {name} · {addr} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — lockbox stuck. Buyer on-site at {phone}.",
+        "booking":   "{addr} · {time}. Callback {phone}.",
+        "quote":     "{addr} — wants to list. CMA prep at {phone}.",
+        "followup":  "{addr} — buyer follow-up at {phone}.",
     },
     "summary_verbs": {
         "emergency": "agent paged",
@@ -207,14 +212,12 @@ _REAL_ESTATE = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Jordan Bailey",
          "customer_phone": "+15550103005",
-         "body": "Lockbox issue · Jordan Bailey · 1100 Birch · "
-                 "Buyer on-site now. Paging you.",
+         "body": "1100 Birch — lockbox stuck. Buyer on-site now.",
          "ts_label": "15m ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Caleb Morrison",
          "customer_phone": "+15550103001",
-         "body": "Showing requested · Caleb Morrison · 1100 Birch · "
-                 "Saturday 1pm.",
+         "body": "1100 Birch · Saturday 1pm. New buyer.",
          "ts_label": "1h ago"},
     ],
 }
@@ -251,10 +254,11 @@ _SEPTIC = {
     ],
     "emergency_indicator": "Emergency",
     "owner_sms_templates": {
-        "emergency": "Emergency · {name} · {addr} · {issue} · Call about to bridge",
-        "booking":   "Pump-out · {name} · {addr} · {window}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — {issue}. Bridging now.",
+        "booking":   "{addr} · pump-out {window}.",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "transferred",
@@ -283,16 +287,18 @@ _SEPTIC = {
     },
     "seeded_owner_sms": [
         {"kind": "emergency", "urgent": True,
-         "customer_name": "Marcus Reilly",
+         # V13.0 C — distinct septic persona; previously shared
+         # "Marcus Reilly" with HVAC and read as data duplication
+         # during HVAC→Septic demo switching.
+         "customer_name": "Henry Walsh",
          "customer_phone": "+15550101001",
-         "body": "Emergency · Marcus Reilly · 412 Maple · "
-                 "sewage backup · Call about to bridge.",
+         "body": "412 Maple — sewage backup in basement. "
+                 "Bridging now.",
          "ts_label": "6h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Sarah Wong",
          "customer_phone": "+15550101002",
-         "body": "Booking · Sarah Wong · Tuesday 1pm pump-out · "
-                 "412 Oak Street.",
+         "body": "412 Oak · Tuesday 1pm pump-out.",
          "ts_label": "yesterday"},
     ],
 }
@@ -334,10 +340,11 @@ _PLUMBING = {
     ],
     "emergency_indicator": "Active leak",
     "owner_sms_templates": {
-        "emergency": "Emergency · {name} · {addr} · {issue} · Tech being dispatched",
-        "booking":   "Service · {name} · {addr} · {window} · {issue}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — {issue}. Tech dispatched.",
+        "booking":   "{addr} · {window} · {issue}",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "tech dispatched",
@@ -369,14 +376,13 @@ _PLUMBING = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Anita Brooks",
          "customer_phone": "+15550104001",
-         "body": "Emergency · Anita Brooks · 319 Cedar · "
-                 "pipe burst behind wall · Tech dispatched.",
+         "body": "319 Cedar — pipe burst behind wall. "
+                 "Tech dispatched.",
          "ts_label": "2h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Tony Russo",
          "customer_phone": "+15550104002",
-         "body": "Service · Tony Russo · 1428 Oak Hollow · "
-                 "Tuesday 10am water heater.",
+         "body": "1428 Oak Hollow · Tuesday 10am water heater.",
          "ts_label": "yesterday"},
     ],
 }
@@ -413,10 +419,11 @@ _ROOFING = {
     ],
     "emergency_indicator": "Active leak",
     "owner_sms_templates": {
-        "emergency": "Active roof leak · {name} · {addr} · {issue} · Tarp crew needed",
-        "booking":   "Inspection · {name} · {addr} · {window}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — active leak. Tarp crew needed.",
+        "booking":   "{addr} · inspection {window}.",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "tarp crew dispatched",
@@ -448,14 +455,12 @@ _ROOFING = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Brad Mitchell",
          "customer_phone": "+15550105001",
-         "body": "Active roof leak · Brad Mitchell · 623 Hillcrest · "
-                 "Tarp crew dispatched.",
+         "body": "623 Hillcrest — active leak. Tarp crew dispatched.",
          "ts_label": "1h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Lisa Yoon",
          "customer_phone": "+15550105004",
-         "body": "Inspection · Lisa Yoon · 388 Magnolia · "
-                 "Wednesday 9am.",
+         "body": "388 Magnolia · Wednesday 9am inspection.",
          "ts_label": "6h ago"},
     ],
 }
@@ -491,10 +496,11 @@ _CONSTRUCTION = {
     ],
     "emergency_indicator": "Site issue",
     "owner_sms_templates": {
-        "emergency": "Site emergency · {name} · {addr} · {issue}",
-        "booking":   "Estimate visit · {name} · {addr} · {window} · {scope}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — site issue. {issue}.",
+        "booking":   "{addr} · {window} · {scope}",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "owner paged",
@@ -526,14 +532,12 @@ _CONSTRUCTION = {
         {"kind": "booking", "urgent": True,
          "customer_name": "Paul Anderson",
          "customer_phone": "+15550106001",
-         "body": "Estimate visit · Paul Anderson · 927 Crestview · "
-                 "Friday 10am kitchen remodel.",
+         "body": "927 Crestview · Friday 10am — kitchen remodel walk.",
          "ts_label": "5h ago"},
         {"kind": "quote", "urgent": False,
          "customer_name": "Julia Sanchez",
          "customer_phone": "+15550106002",
-         "body": "Estimate · Julia Sanchez · 1503 Beverly · "
-                 "Thursday 2pm addition.",
+         "body": "1503 Beverly · Thursday 2pm — addition walk.",
          "ts_label": "yesterday"},
     ],
 }
@@ -570,10 +574,11 @@ _PROPERTY_MANAGEMENT = {
     ],
     "emergency_indicator": "Tenant emergency",
     "owner_sms_templates": {
-        "emergency": "Tenant emergency · {name} · {unit} · {issue} · On-call maintenance",
-        "booking":   "Tour · {name} · {unit} · {time} · {phone}",
-        "quote":     "Application inquiry · {name} · {unit} · {phone}",
-        "followup":  "Resident follow-up · {name} · {unit} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{unit} — {issue}. On-call maintenance dispatched.",
+        "booking":   "{unit} · {time} tour. Callback {phone}.",
+        "quote":     "{unit} — application started. Callback {phone}.",
+        "followup":  "{unit} — resident follow-up at {phone}.",
     },
     "summary_verbs": {
         "emergency": "maintenance dispatched",
@@ -606,15 +611,13 @@ _PROPERTY_MANAGEMENT = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Jasmine Lee",
          "customer_phone": "+15550107001",
-         "body": "Tenant emergency · Jasmine Lee · Unit 4B / "
-                 "218 Fifth · no heat, baby in unit · "
+         "body": "Unit 4B / 218 Fifth — no heat, baby in unit. "
                  "Maintenance dispatched.",
          "ts_label": "3h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Alex Pham",
          "customer_phone": "+15550107002",
-         "body": "Tour · Alex Pham · 218 Fifth · "
-                 "Saturday 11am 2BR.",
+         "body": "218 Fifth · Saturday 11am — 2BR tour.",
          "ts_label": "yesterday"},
     ],
 }
@@ -651,10 +654,11 @@ _ELECTRICAL = {
     ],
     "emergency_indicator": "Electrical emergency",
     "owner_sms_templates": {
-        "emergency": "Electrical emergency · {name} · {addr} · {issue} · Tech being dispatched",
-        "booking":   "Service · {name} · {addr} · {window} · {issue}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — {issue}. Tech dispatched.",
+        "booking":   "{addr} · {window} · {issue}",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "tech dispatched",
@@ -685,14 +689,12 @@ _ELECTRICAL = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Nina Castro",
          "customer_phone": "+15550108002",
-         "body": "Electrical emergency · Nina Castro · 682 Willowbrook · "
-                 "Sparking outlet · Tech dispatched.",
+         "body": "682 Willowbrook — sparking outlet. Tech dispatched.",
          "ts_label": "30m ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Steve Whitman",
          "customer_phone": "+15550108003",
-         "body": "Estimate · Steve Whitman · 2218 Walnut Hollow · "
-                 "Friday 10am panel upgrade.",
+         "body": "2218 Walnut Hollow · Friday 10am — panel upgrade.",
          "ts_label": "yesterday"},
     ],
 }
@@ -733,10 +735,11 @@ _LANDSCAPING = {
     ],
     "emergency_indicator": "Tree down",
     "owner_sms_templates": {
-        "emergency": "Tree down · {name} · {addr} · {issue}",
-        "booking":   "Service · {name} · {addr} · {window} · {scope}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {scope} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — tree down. {issue}.",
+        "booking":   "{addr} · {window} · {scope}",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "{scope} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "crew dispatched",
@@ -767,14 +770,13 @@ _LANDSCAPING = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Chris Boyd",
          "customer_phone": "+15550109002",
-         "body": "Tree down · Chris Boyd · 1840 Forest Edge · "
-                 "Driveway blocked · Crew dispatched.",
+         "body": "1840 Forest Edge — tree down across driveway. "
+                 "Crew dispatched.",
          "ts_label": "2h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Helen Vargas",
          "customer_phone": "+15550109001",
-         "body": "Service walk · Helen Vargas · 412 Garden View · "
-                 "Saturday 10am weekly lawn quote.",
+         "body": "412 Garden View · Saturday 10am — weekly lawn quote.",
          "ts_label": "5h ago"},
     ],
 }
@@ -811,10 +813,11 @@ _RESTORATION = {
     ],
     "emergency_indicator": "Active water",
     "owner_sms_templates": {
-        "emergency": "Mitigation needed · {name} · {addr} · {issue} · Crew within the hour",
-        "booking":   "Mitigation · {name} · {addr} · {window}",
-        "quote":     "Estimate · {name} · {addr} · {scope}",
-        "followup":  "Follow-up · {name} · {claim} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{addr} — {issue}. Crew within the hour.",
+        "booking":   "{addr} · {window} mitigation.",
+        "quote":     "{addr} — {scope}. Estimate requested.",
+        "followup":  "Claim {claim} — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "crew dispatched",
@@ -845,14 +848,14 @@ _RESTORATION = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Jacob Cole",
          "customer_phone": "+15550201001",
-         "body": "Mitigation · Jacob Cole · 344 Brookside · "
-                 "Active flooding · Crew within the hour.",
+         "body": "344 Brookside — active flooding. "
+                 "Crew within the hour.",
          "ts_label": "30m ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Naomi Reyes",
          "customer_phone": "+15550201002",
-         "body": "Mitigation · Naomi Reyes · 1207 Maple Ridge · "
-                 "This afternoon · Allstate claim.",
+         "body": "1207 Maple Ridge · mitigation this afternoon · "
+                 "Allstate claim.",
          "ts_label": "6h ago"},
     ],
 }
@@ -888,10 +891,11 @@ _MED_SPA = {
     ],
     "emergency_indicator": "Clinical concern",
     "owner_sms_templates": {
-        "emergency": "Clinical · {name} · {issue} · {phone} · Callback requested",
-        "booking":   "Consultation · {name} · {treatment} · {time} · {phone}",
-        "quote":     "Treatment inquiry · {name} · {treatment} · {phone}",
-        "followup":  "Follow-up · {name} · {treatment} · {phone}",
+        # V13.0 — body-only (sender = customer name + avatar).
+        "emergency": "{issue}. Callback requested at {phone}.",
+        "booking":   "{treatment} · {time}. Callback {phone}.",
+        "quote":     "{treatment} — inquiry. Callback {phone}.",
+        "followup":  "{treatment} — follow-up at {phone}",
     },
     "summary_verbs": {
         "emergency": "clinician paged",
@@ -926,14 +930,12 @@ _MED_SPA = {
         {"kind": "booking", "urgent": False,
          "customer_name": "Olivia Bennett",
          "customer_phone": "+15550202001",
-         "body": "Consultation · Olivia Bennett · "
-                 "Saturday 2pm Botox.",
+         "body": "Botox consult · Saturday 2pm.",
          "ts_label": "4h ago"},
         {"kind": "followup", "urgent": False,
          "customer_name": "Chen Liu",
          "customer_phone": "+15550202003",
-         "body": "Reschedule · Chen Liu · "
-                 "Friday 11am filler.",
+         "body": "Filler appointment moved · Friday 11am.",
          "ts_label": "yesterday"},
     ],
 }
@@ -970,10 +972,11 @@ _LEGAL_INTAKE = {
     ],
     "emergency_indicator": "Time-sensitive",
     "owner_sms_templates": {
-        "emergency": "Time-sensitive intake · {category} · {phone} · {deadline}",
-        "booking":   "Consultation · {category} · {time} · {phone}",
-        "quote":     "Intake · {category} · {phone} · Callback requested",
-        "followup":  "Existing matter follow-up · {phone}",
+        # V13.0 — body-only (sender = caller name + avatar).
+        "emergency": "{category} — deadline {deadline}. Callback {phone}.",
+        "booking":   "{category} consultation · {time}. Callback {phone}.",
+        "quote":     "{category} — intake captured. Callback {phone}.",
+        "followup":  "Existing matter — callback to {phone}",
     },
     "summary_verbs": {
         "emergency": "attorney paged",
@@ -1009,14 +1012,12 @@ _LEGAL_INTAKE = {
         {"kind": "emergency", "urgent": True,
          "customer_name": "Renata Cruz",
          "customer_phone": "+15550203003",
-         "body": "Time-sensitive intake · Renata Cruz · "
-                 "Eviction · court in 6 days · Callback today.",
+         "body": "Eviction — court in 6 days. Callback today.",
          "ts_label": "2h ago"},
         {"kind": "booking", "urgent": False,
          "customer_name": "Anita Powell",
          "customer_phone": "+15550203001",
-         "body": "Consultation · Anita Powell · "
-                 "Friday 3pm workplace matter.",
+         "body": "Workplace matter consultation · Friday 3pm.",
          "ts_label": "6h ago"},
     ],
 }
