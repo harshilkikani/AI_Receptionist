@@ -30,11 +30,8 @@ log = logging.getLogger("owner_commands")
 HELP_KEYWORDS = {"help", "info", "status", "link"}
 
 
-def _normalize_phone(p: str) -> str:
-    digits = re.sub(r"\D", "", p or "")
-    if len(digits) == 11 and digits.startswith("1"):
-        digits = digits[1:]
-    return digits
+# V13.0 — _normalize_phone consolidated. See V13.0 D commit note.
+from memory import normalize_phone as _normalize_phone  # noqa: E402
 
 
 def _is_owner(from_phone: str, client: dict) -> bool:

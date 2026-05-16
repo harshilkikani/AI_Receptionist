@@ -115,25 +115,12 @@ _TEMPLATES_ES = {
     ],
 }
 
-_TEMPLATES_HI = {
-    "morning": ["Namaste, main Joanna, {company} se— subah subah kya hua?"],
-    "afternoon": ["Hey, main Joanna, {company} se— kya hua batao?"],
-    "evening": ["Hi, main Joanna, {company} se— shaam ko kya baat hai?"],
-    "late_night": ["Namaste, main Joanna, {company} se after-hours line— emergency hai kya?"],
-}
-
-_TEMPLATES_GU = {
-    "morning": ["Hello, hu Joanna, {company} thi— savar ma shu thayum?"],
-    "afternoon": ["Hey, hu Joanna, {company} thi— shu thayum kahejo?"],
-    "evening": ["Hi, hu Joanna, {company} thi— saanj ne kahejo shu thayum?"],
-    "late_night": ["Hello, hu Joanna, {company} thi after-hours line— emergency che ke?"],
-}
-
+# V13.0 — Hindi (_TEMPLATES_HI) and Gujarati (_TEMPLATES_GU)
+# greeting template families removed. No live tenant ever set
+# default_language to hi/gu, and the product is now en+es only.
 _TEMPLATES_BY_LANG = {
     "en": _TEMPLATES_EN,
     "es": _TEMPLATES_ES,
-    "hi": _TEMPLATES_HI,
-    "gu": _TEMPLATES_GU,
 }
 
 

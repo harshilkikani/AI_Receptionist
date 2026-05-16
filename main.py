@@ -43,9 +43,9 @@ from src import tts as _tts
 from src import humanize_speech as _humanize
 from src import anti_robot as _anti_robot
 from src import grounding as _grounding
-# V10.0 — V7.2 disfluency injection retired from the pipeline.
-# Module kept on disk for one version in case of rollback.
-# from src import disfluency as _disfluency  # noqa: deprecated
+# V10.0 → V13.0 — V7.2 disfluency module was retired from the
+# pipeline in V10.0 and kept on disk for rollback. V13.0 deleted
+# src/disfluency.py wholesale; we're well past the rollback window.
 from src import audio_cache as _audio_cache_module   # V8.9b filler lookup
 from src import recordings as _recordings
 from src.security import AdminRateLimitMiddleware, SecurityHeadersMiddleware
@@ -378,14 +378,11 @@ def _run_pipeline(caller: dict, user_message: str, client: dict = None,
             except AttributeError:
                 result.priority = "low"
 
-    # V10.0 — V7.2 disfluency injection RETIRED. The conversation audit
-    # showed 46% of assistant turns opened with a filler and diversity
-    # was 0.2 — the LLM was already using the openers (per prompt), the
-    # V8.9b cached fillers were already playing pre-reply, and V7.2 was
-    # the third layer stacking on top. Removing it lets the LLM's
-    # natural output land unmodified. The disfluency module is kept on
-    # disk under src/disfluency.py (deprecated) for one version in case
-    # of rollback; nothing calls it.
+    # V10.0 → V13.0 — V7.2 disfluency injection was retired in V10.0
+    # (46% of assistant turns opened with a filler, diversity was
+    # 0.2) and the module was kept on disk for rollback. V13.0
+    # deleted src/disfluency.py wholesale. The LLM's natural output
+    # now lands unmodified.
 
     # Track LLM + TTS usage (TTS char count = length of reply, since Polly
     # bills by synthesized character)
@@ -1810,52 +1807,32 @@ def _twiml(body: str) -> Response:
 
 # ── Voice settings ──────────────────────────────────────────────────────
 # Neural voices sound dramatically more human than standard Polly.
+# V13.0 — multilingual reduction. Pre-V13.0 mapped 9 languages
+# (en/es/hi/gu/pt/it/ja/ko/zh). No live tenant in clients/ was
+# ever configured with a non-en default_language, and the goal
+# directs the product to en+es only. The other 7 are dead branches.
 # Map language codes to the best available neural voice.
 VOICE_MAP = {
     "en": "Polly.Joanna-Neural",
     "es": "Polly.Lupe-Neural",
-    "hi": "Polly.Kajal-Neural",
-    "gu": "Polly.Kajal-Neural",     # No Polly Gujarati voice; Hindi neural is closest
-    "pt": "Polly.Camila-Neural",
-    "it": "Polly.Bianca-Neural",
-    "ja": "Polly.Kazuha-Neural",
-    "ko": "Polly.Seoyeon-Neural",
-    "zh": "Polly.Zhiyu-Neural",
 }
 
 # Tiered voice map — short transactional phrases can use a cheaper voice.
 # On Polly via Twilio all Neural voices cost the same, so this is a scaffold
 # for when operator switches to ElevenLabs (Flash vs. Turbo vs. Multilingual)
 # or another provider with actual tiered pricing.
-#
-# Currently both tiers resolve to the same Polly Neural voice — no cost win
-# on the current TTS stack. Operator updates this map when they swap TTS.
 VOICE_TIER_MAP = {
     "premium": VOICE_MAP,          # main conversational turns
     "flash": VOICE_MAP,            # short transactional phrases
     "standard": {                  # downgrade to standard (non-neural) if needed
         "en": "Polly.Joanna",
         "es": "Polly.Lupe",
-        "hi": "Polly.Aditi",
-        "gu": "Polly.Aditi",
-        "pt": "Polly.Camila",
-        "it": "Polly.Bianca",
-        "ja": "Polly.Mizuki",
-        "ko": "Polly.Seoyeon",
-        "zh": "Polly.Zhiyu",
     },
 }
 # Twilio <Gather> language codes for speech recognition
 STT_LANG_MAP = {
     "en": "en-US",
     "es": "es-US",
-    "hi": "hi-IN",
-    "gu": "gu-IN",
-    "pt": "pt-BR",
-    "it": "it-IT",
-    "ja": "ja-JP",
-    "ko": "ko-KR",
-    "zh": "zh-CN",
 }
 DEFAULT_LANG = "en"
 
@@ -1880,7 +1857,8 @@ def _stt_lang(lang: str) -> str:
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
-DTMF_LANG = {"1": "en", "2": "es", "3": "hi", "4": "gu"}
+# V13.0 — DTMF language picker trimmed to en+es only.
+DTMF_LANG = {"1": "en", "2": "es"}
 
 def _greeting_for(client: dict, lang: str,
                   *, caller: dict = None,
@@ -2184,11 +2162,13 @@ def voice_incoming(From: str = Form(default=""), To: str = Form(default=""),
     if _recordings.is_enabled(client):
         vr.say(_recordings.disclosure_text(),
                voice=_voice_for("en", client, mode="transactional"))
+    # V13.0 — language menu reduced to en+es. Pre-V13.0 announced
+    # all four DTMF options including Hindi and Gujarati prompts;
+    # those branches were never exercised in production and the
+    # platform is now en+es only.
     vr.say(f"Hey, thanks for calling {client['name']}.", voice=_voice_for("en"))
     vr.say("For English, press 1.", voice=_voice_for("en"))
     vr.say("Para espanol, presione 2.", voice=_voice_for("es"))
-    vr.say("Hindi ke liye 3 dabaayein.", voice=_voice_for("hi"))
-    vr.say("Gujarati maate 4 dabaavo.", voice=_voice_for("hi"))
     vr.gather(input="dtmf", action="/voice/setlang", method="POST",
               num_digits=1, timeout=5)
     vr.redirect("/voice/setlang?Digits=1", method="POST")

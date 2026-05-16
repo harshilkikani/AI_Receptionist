@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 
 import llm
-from src import anti_robot, grounding, humanize_speech, disfluency
+from src import anti_robot, grounding, humanize_speech
 
 
 # ── ordering invariants ─────────────────────────────────────────────
@@ -261,24 +261,10 @@ def test_anti_robot_runs_before_grounding(monkeypatch):
     assert call_order.index("grounding") > call_order.index("anti_robot")
 
 
-def test_disfluency_never_called_post_v10(monkeypatch):
-    """V10.0 retired V7.2. The pipeline must NEVER call add_disfluency
-    regardless of tenant flags."""
-    import main
-    called = []
-    monkeypatch.setattr(disfluency, "add_disfluency",
-                        lambda *a, **k: called.append("hit") or a[0])
-    monkeypatch.setattr(llm, "chat_with_usage",
-                        lambda *a, **k: (llm.ChatResponse(
-                            reply="That's fine.",
-                            intent="General", priority="low"), (1, 1)))
-
-    # Even with disfluency:True on the tenant, post-V10 the pipeline
-    # doesn't import or call disfluency.
-    main._run_pipeline(
-        {"id": "x", "phone": "+1", "history": [], "conversation": []},
-        "hi",
-        client={"id": "x", "name": "X", "disfluency": True},
-        call_sid="CA_v10_off",
-    )
-    assert called == []
+def test_disfluency_module_gone_post_v13():
+    """V10.0 retired V7.2 disfluency injection but kept src/disfluency.py
+    on disk for one version's worth of rollback. V13.0 deleted the
+    module entirely (well past the rollback window). Importing it
+    must now raise ImportError."""
+    with pytest.raises(ImportError):
+        from src import disfluency  # noqa: F401

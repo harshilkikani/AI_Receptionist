@@ -49,9 +49,10 @@ def test_resolve_tz_none_falls_back():
 
 @pytest.mark.parametrize("lang, bucket_hour, accepted_markers", [
     # V8.12.4 — EN templates tightened to local-business cadence.
-    # Bucket-specific markers like "evening"/"tonight" are intentionally
-    # gone (they were performative). Joanna's name is the universal
-    # signature; late-night still announces itself.
+    # V13.0 — Hindi (hi) and Gujarati (gu) parameterized cases removed.
+    # Multilingual support reduced to en + es only; the hi/gu greeting
+    # template families were never set on any live tenant and were
+    # deleted from src/greeting.py.
     ("en", 9,  ("joanna",)),
     ("en", 14, ("joanna",)),
     ("en", 19, ("joanna",)),
@@ -60,14 +61,6 @@ def test_resolve_tz_none_falls_back():
     ("es", 14, ("hola",)),
     ("es", 19, ("buenas tardes",)),
     ("es", 23, ("despues de horas",)),
-    ("hi", 9,  ("subah",)),
-    ("hi", 14, ("kya hua",)),
-    ("hi", 19, ("shaam",)),
-    ("hi", 23, ("emergency",)),
-    ("gu", 9,  ("savar",)),
-    ("gu", 14, ("kahejo",)),
-    ("gu", 19, ("saanj",)),
-    ("gu", 23, ("emergency",)),
 ])
 def test_lang_bucket_greetings(lang, bucket_hour, accepted_markers):
     now = datetime(2026, 5, 13, bucket_hour, 30, tzinfo=timezone.utc)

@@ -20,12 +20,10 @@ import yaml
 CLIENTS_DIR = Path(__file__).parent.parent / "clients"
 
 
-def _normalize_phone(phone: str) -> str:
-    """Reduce phone to digits, strip US country code if 11 digits starting with 1."""
-    digits = re.sub(r"\D", "", phone or "")
-    if len(digits) == 11 and digits.startswith("1"):
-        digits = digits[1:]
-    return digits
+# V13.0 — _normalize_phone consolidated. Pre-V13.0 had 4 identical
+# definitions across tenant/recall/spam_filter/owner_commands.
+# Single canonical now imported from memory.
+from memory import normalize_phone as _normalize_phone  # noqa: E402
 
 
 @lru_cache(maxsize=1)

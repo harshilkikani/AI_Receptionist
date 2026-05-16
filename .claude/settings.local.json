@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(python -m pytest tests/ -q --tb=line)",
+      "Bash(python -m pytest tests/)",
+      "Bash(python -m pytest tests/test_security.py -v)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(python -m pytest tests/test_client_portal.py -v)",
+      "Bash(python -m pytest tests/test_invoices.py -v)",
+      "Bash(python -m pytest tests/test_owner_notify.py -v)",
+      "Bash(python -m pytest tests/test_owner_digest.py -v)",
+      "Bash(python -m pytest tests/test_onboarding.py -v)",
+      "Bash(python -m pytest tests/test_twilio_signature.py -v)",
+      "Bash(python -m pytest tests/test_evals.py -v)",
+      "Bash(python -m pytest tests/test_prompt_caching.py -v)",
+      "Bash(python *)",
+      "Bash(gh auth *)",
+      "Bash(awk '{print $4}')",
+      "Bash(xargs -I {} sh -c 'wc -c < \"{}\" 2>/dev/null | tr -d \"\\\\n\"; echo \" {}\"')",
+      "Bash(grep -iE '\\\\.env$|memory\\\\.json|usage\\\\.db|secret|auth.?token|api.?key')",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh api *)",
+      "Bash(gh repo *)",
+      "Bash(git remote *)",
+      "Bash(git tag *)",
+      "Bash(git filter-branch *)",
+      "Bash(git stash *)",
+      "Bash(xargs -r -n 1 git update-ref -d)",
+      "Bash(git push *)",
+      "Bash(git ls-remote *)"
+    ]
+  }
+}

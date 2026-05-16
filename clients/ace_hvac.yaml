@@ -23,9 +23,11 @@ tts_runtime_model: "eleven_flash_v2_5"
 # boost) produce the most natural conversational delivery. To re-tune
 # later, ADD this block back — but A/B against the no-settings default
 # before assuming any change is an improvement.
-# V7.2 — natural disfluency (opt-in). Fires after anti_robot + grounding.
-disfluency: true
-disfluency_intensity: 0.15
+# V7.2 → V10.0 → V13.0 — `disfluency: true` / `disfluency_intensity`
+# config flags removed. The V7.2 module was retired in V10.0 and
+# the disk file was deleted in V13.0. Keeping the flag here would
+# tripwire a future operator into thinking the heuristic still
+# exists.
 # V8.9b — endpointing fillers. Plays a cached "Mhm —" / "Lemme see —"
 # within ~300ms of the caller's speech ending while the LLM runs in a
 # background thread. Caller hears the AI "thinking" instead of dead

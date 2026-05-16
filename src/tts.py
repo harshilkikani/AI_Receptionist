@@ -94,12 +94,10 @@ class TtsPayload:
 
 
 def _polly_voice_for_lang(lang: str) -> str:
+    # V13.0 — supported languages reduced to en + es.
     return {
-        "en": "Polly.Joanna-Neural", "es": "Polly.Lupe-Neural",
-        "hi": "Polly.Kajal-Neural", "gu": "Polly.Kajal-Neural",
-        "pt": "Polly.Camila-Neural", "it": "Polly.Bianca-Neural",
-        "ja": "Polly.Kazuha-Neural", "ko": "Polly.Seoyeon-Neural",
-        "zh": "Polly.Zhiyu-Neural",
+        "en": "Polly.Joanna-Neural",
+        "es": "Polly.Lupe-Neural",
     }.get(lang, "Polly.Joanna-Neural")
 
 
