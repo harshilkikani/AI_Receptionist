@@ -473,6 +473,14 @@ def resolve_provider(client: Optional[dict]) -> TtsProvider:
     return cls()
 
 
+def is_elevenlabs(client: Optional[dict]) -> bool:
+    """V13.0 — true if the tenant's resolved provider is ElevenLabs.
+    Used by /chat-side pipeline to skip humanize_for_speech (which
+    ElevenLabs reads natively without the rewrites)."""
+    name = ((client or {}).get("tts_provider") or "polly").lower().strip()
+    return name == "elevenlabs"
+
+
 def voice_id_for(client: Optional[dict]) -> Optional[str]:
     """Per-tenant voice id override, falling back to provider default."""
     if not client:

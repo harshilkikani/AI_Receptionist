@@ -111,7 +111,44 @@ def _nav(client_id: str, t: str) -> list:
 
 # ── Routes ─────────────────────────────────────────────────────────────
 
+# V13.0 — _today_body short-TTL fragment cache. The pre-V13.0 hot
+# path ran ~14 SQLite queries through a single _db_lock on every
+# 10s poll per connected viewer; on burst polling (1.5s for 30s
+# after a chat turn) that's ~280 queries per turn. The cache
+# trades 5 seconds of staleness for ~13 fewer queries per refresh,
+# which is invisible to the eye and meaningful to the DB.
+_TODAY_BODY_CACHE: dict[tuple, tuple[float, str]] = {}
+_TODAY_BODY_CACHE_TTL = 5.0
+
+
+def invalidate_today_body_cache() -> None:
+    """Called from /demo/reset and demo-seed paths so the next
+    refresh after a mutation never serves stale data."""
+    _TODAY_BODY_CACHE.clear()
+
+
 def _today_body(client_id: str, t: str = "", *,
+                 include_invoice_link: bool = True,
+                 partners_limit: int = 8,
+                 industry: Optional[str] = None) -> str:
+    # V13.0 — cache lookup. Key includes every input that changes
+    # the output. Auth token `t` is part of the key because it's
+    # embedded in href links inside the fragment.
+    cache_key = (client_id, t, bool(include_invoice_link),
+                 partners_limit, industry or "")
+    now_cache = time.time()
+    hit = _TODAY_BODY_CACHE.get(cache_key)
+    if hit and (now_cache - hit[0]) < _TODAY_BODY_CACHE_TTL:
+        return hit[1]
+    rendered = _today_body_uncached(
+        client_id, t,
+        include_invoice_link=include_invoice_link,
+        partners_limit=partners_limit, industry=industry)
+    _TODAY_BODY_CACHE[cache_key] = (now_cache, rendered)
+    return rendered
+
+
+def _today_body_uncached(client_id: str, t: str = "", *,
                  include_invoice_link: bool = True,
                  partners_limit: int = 8,
                  industry: Optional[str] = None) -> str:
@@ -164,6 +201,34 @@ def _today_body(client_id: str, t: str = "", *,
     today_msgs = sum(p["messages"] for p in partners_today)
     today_emerg = _today_emergency_count(client_id, today_ts)
 
+    # V13.0 — phone-to-name index built ONCE per _today_body call.
+    # Pre-V13.0 each `_partner_label(phone)` walked the full
+    # memory.json caller list — O(n) × 8 partner cards + 5 follow-up
+    # cards = ~400 dict scans per portal refresh. With 1.5s burst
+    # polling that's ~3,000 dict scans per chat turn just for the
+    # portal pane. One index, scoped to this render, drops it to O(1).
+    _name_index: dict[str, str] = {}
+    try:
+        from memory import list_callers, normalize_phone as _np
+        for rec in list_callers():
+            digits = _np(rec.get("phone", ""))
+            if digits:
+                name = (rec.get("name") or "").strip()
+                if name and name != "Unknown caller":
+                    _name_index[digits] = name
+    except Exception:
+        pass
+
+    def _name_or_format(phone: str) -> str:
+        try:
+            from memory import normalize_phone as _np
+            digits = _np(phone or "")
+            if digits and digits in _name_index:
+                return _name_index[digits]
+        except Exception:
+            pass
+        return _partner_label(phone)
+
     activity_html = ""
     if partners_today:
         cards = []
@@ -173,7 +238,7 @@ def _today_body(client_id: str, t: str = "", *,
                                                 p.get("last_call_sid", ""))
             is_live = (now_ts - int(p["last_ts"] or 0)) <= 60
             cards.append(call_card(
-                caller=_partner_label(p["phone"]),
+                caller=_name_or_format(p["phone"]),
                 from_number=p["phone"],
                 when=when,
                 photo_url=partner_photo_url(p["phone"]),
@@ -229,7 +294,7 @@ def _today_body(client_id: str, t: str = "", *,
             when = _human_when(r["start_ts"], now_ts)
             raw_phone = r.get("from_number") or ""
             items.append(call_card(
-                caller=_partner_label(raw_phone),
+                caller=_name_or_format(raw_phone),
                 from_number=raw_phone,
                 when=when,
                 photo_url=partner_photo_url(raw_phone),

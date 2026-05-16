@@ -411,8 +411,15 @@ def test_voice_respond_high_priority_uses_emergency_path(signed_client, monkeypa
 def test_gather_async_path_returns_filler_redirect(signed_client, monkeypatch, tmp_path):
     """When tenant has endpointing_fillers=true AND a cached filler
     exists AND the base URL is resolvable, /voice/gather should return
-    <Play filler><Redirect /voice/respond?t=...>."""
+    <Play filler><Redirect /voice/respond?t=...>.
+
+    V13.0 — `main.FILLER_SKIP_PROBABILITY` defaults to 0.5 (skip
+    half the turns to break the always-on filler pattern). For the
+    deterministic infra-path test we pin to 0.0 so the filler
+    always fires."""
     from src import audio_cache, tts, tenant
+    import main
+    monkeypatch.setattr(main, "FILLER_SKIP_PROBABILITY", 0.0)
     monkeypatch.setattr(audio_cache, "_AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setattr(tts, "_AUDIO_DIR", tmp_path / "audio")
     # Don't set PUBLIC_BASE_URL env (would mismatch Twilio sig URL).

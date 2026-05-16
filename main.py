@@ -1511,6 +1511,13 @@ def demo_reset():
     from src import demo_seed as _demo_seed
     try:
         result = _demo_seed.purge_then_seed()
+        # V13.0 — invalidate the _today_body fragment cache so the
+        # next portal poll re-renders against the freshly-seeded data.
+        try:
+            from src.client_portal import invalidate_today_body_cache
+            invalidate_today_body_cache()
+        except Exception:
+            pass
         return {"ok": True, **result}
     except Exception as e:
         log.error("demo reset failed: %s", e)
@@ -1618,6 +1625,14 @@ def chat(body: ChatIn):
                            result.get("reply", ""), direction="outbound")
         except Exception as e:
             log.warning("demo log_sms outbound failed: %s", e)
+        # V13.0 — invalidate the _today_body fragment cache so the
+        # next poll picks up this new exchange immediately. Without
+        # this the activity feed could lag by up to 5s on a burst.
+        try:
+            from src.client_portal import invalidate_today_body_cache
+            invalidate_today_body_cache()
+        except Exception:
+            pass
 
     # V13.0 — render the owner-phone SMS body via the per-industry
     # registry template so the live alert uses the same wording as
@@ -1999,13 +2014,34 @@ def _maybe_filler_for_async(client: Optional[dict],
 
     V10.0 — passes call_sid through so the cached filler picker can
     avoid repeating fillers within a single call.
+
+    V13.0 — added a probabilistic restraint gate. Pre-V13.0 the
+    filler fired on EVERY turn when `endpointing_fillers: true`.
+    The conversational-realism audit flagged that this recreates
+    the V7.2 problem (46% of turns opening with a filler) — the
+    LLM prompt explicitly says "Default: no filler. A real
+    receptionist doesn't lead with 'Got it' / 'Yeah' most of the
+    time." With FILLER_SKIP_PROBABILITY at 0.5, half the turns get
+    the latency mask when they need it (deliberative replies);
+    half pass straight through (factual acks). Same infra, half
+    the "AI tell."
     """
     try:
+        import random as _random
+        # V13.0 — restraint gate. Tests override this to 0.0 to
+        # exercise the path deterministically.
+        if _random.random() < FILLER_SKIP_PROBABILITY:
+            return None
         return _audio_cache_module.filler_payload_for(
             client, call_sid=call_sid)
     except Exception as e:
         log.warning("V8.9b filler_payload_for failed: %s", e)
         return None
+
+
+# V13.0 — gate for _maybe_filler_for_async. Module-level so tests
+# can monkeypatch to 0.0 (always fire) or 1.0 (always skip).
+FILLER_SKIP_PROBABILITY = 0.5
 
 
 def _emit_audio(vr, message: str, lang: str, client: dict = None):
@@ -2018,7 +2054,12 @@ def _emit_audio(vr, message: str, lang: str, client: dict = None):
     Always falls back to Polly on render failure (same contract as
     _respond's else branch).
     """
-    if _humanize.is_enabled(client):
+    # V13.0 — skip humanize_for_speech for ElevenLabs tenants. The
+    # V8.11 audit flagged this as needing an A/B; never resolved.
+    # ElevenLabs reads "$129" with appropriate inflection natively;
+    # humanize turns it into "one hundred twenty-nine dollars" which
+    # ElevenLabs then reads flatter (each word a separate token).
+    if _humanize.is_enabled(client) and not _tts.is_elevenlabs(client):
         message = _humanize.humanize_for_speech(message)
     payload = _tts.render(message, client=client, lang=lang)
     if payload.kind == "play" and payload.url:
@@ -2061,8 +2102,10 @@ def _respond(vr, message: str, lang: str, client: dict = None):
         timeout=8,
         action_on_empty_result=True,
     )
-    # V4.2 — natural speech preprocessing for any TTS provider.
-    if _humanize.is_enabled(client):
+    # V4.2 / V13.0 — natural speech preprocessing. V13.0 skips it for
+    # ElevenLabs which reads numerals/prices/phones natively without
+    # the rewrites making them flatter.
+    if _humanize.is_enabled(client) and not _tts.is_elevenlabs(client):
         message = _humanize.humanize_for_speech(message)
     payload = _tts.render(message, client=client, lang=lang)
     if payload.kind == "play" and payload.url:
