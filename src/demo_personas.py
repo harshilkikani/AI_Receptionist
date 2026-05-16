@@ -1276,17 +1276,21 @@ _MED_SPA = [
             "outcome":      "normal",
             "emergency":    False,
             "summary":      "Pricing inquiry — consultation offered.",
+            # V13.0 — V11 persona quoted "$250 for full legs" which
+            # directly contradicts the system prompt's "Don't quote
+            # firm prices." A real spa front desk softly redirects:
+            # pricing depends on the specific area and skin, and is
+            # confirmed at consult. Tone now matches the prompt.
             "turns": [
                 ("user",      "How much for laser hair removal on legs?"),
-                ("assistant", "Per session it's $250 for full legs — most "
-                              "people need 6 to 8 sessions for full results. "
-                              "We also have a package price. Want to come "
-                              "in for a complimentary consult? Dr. Patel "
-                              "or Sarah, depending on skin type."),
+                ("assistant", "It depends on the area and skin — Dr. Patel "
+                              "will walk through the right package at "
+                              "your consult. Consultations are complimentary. "
+                              "Would you like to come in?"),
                 ("user",      "Sure — sometime next week?"),
                 ("assistant", "Tuesday afternoon?"),
                 ("user",      "2 works."),
-                ("assistant", "Best number for a reminder?"),
+                ("assistant", "Best number for a reminder the day before?"),
                 ("user",      "This one."),
                 ("assistant", "See you Tuesday."),
             ],
@@ -1352,9 +1356,14 @@ _LEGAL_INTAKE = [
                               "broadly — discrimination, wage, contract, "
                               "or something else?"),
                 ("user",      "It's a discrimination concern."),
-                ("assistant", "Noted. Consultation fee is $250 for the "
-                              "initial hour, credited if you retain. "
-                              "Friday at 3 work?"),
+                # V13.0 — V11 persona quoted "$250 consultation fee"
+                # which contradicts the prompt's "Consultation fees
+                # and scheduling are confirmed by the attorney's
+                # office, not by you." Privilege-adjacent: an intake
+                # screener doesn't quote fees on the screening call.
+                ("assistant", "Noted. David's office will confirm "
+                              "scheduling and the consult details "
+                              "directly. Friday at 3 work?"),
                 ("user",      "Yes."),
                 ("assistant", "Booked. David will call you Friday at 3 "
                               "sharp."),

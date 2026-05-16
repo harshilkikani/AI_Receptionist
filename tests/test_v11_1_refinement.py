@@ -44,26 +44,37 @@ ALL_SLUGS = [
 
 
 def test_notification_label_for_every_industry():
-    """Per user direction ('Owner / Manager for all'), every vertical
-    has either 'Owner' or 'Manager' — nothing else."""
+    """V11.1: per user direction every vertical had 'Owner' or 'Manager'.
+    V13.0: notification labels are now role-specific so a real-estate
+    agent's phone says 'Agent', an attorney's says 'Attorney', a
+    med-spa's says 'Clinic', and the rest stay 'Owner' / 'Manager'."""
+    allowed = {"Owner", "Manager", "Agent", "Attorney", "Clinic"}
     for slug in ALL_SLUGS:
         label = industries.notification_label(slug)
-        assert label in ("Owner", "Manager"), (
+        assert label in allowed, (
             f"{slug}: unexpected notification_label {label!r}")
 
 
 def test_property_management_uses_manager():
-    """The one Manager vertical."""
+    """Property management → Manager (the one Manager vertical)."""
     assert industries.notification_label("property_management") == "Manager"
 
 
-def test_all_other_industries_use_owner():
-    """Everything else is Owner."""
-    for slug in ALL_SLUGS:
-        if slug == "property_management":
-            continue
+def test_role_specific_notification_labels():
+    """V13.0 — Real Estate, Legal Intake, and Med Spa got role-
+    specific labels that match what a real practitioner's phone
+    would say."""
+    assert industries.notification_label("real_estate") == "Agent"
+    assert industries.notification_label("legal_intake") == "Attorney"
+    assert industries.notification_label("med_spa") == "Clinic"
+    assert industries.notification_label("property_management") == "Manager"
+    # The trades (HVAC, plumbing, septic, roofing, construction,
+    # electrical, landscaping, restoration) still use Owner.
+    for slug in ("hvac", "plumbing", "septic", "roofing",
+                 "construction", "electrical", "landscaping",
+                 "restoration"):
         assert industries.notification_label(slug) == "Owner", (
-            f"{slug} should be Owner, got {industries.notification_label(slug)!r}")
+            f"{slug} should still be Owner")
 
 
 def test_notification_label_default_for_unknown_slug():

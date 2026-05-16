@@ -147,7 +147,10 @@ _REAL_ESTATE = {
     "name":               "Lawrence Realty",
     "owner_label":        "Lauren",
     "owner_role":         "agent",
-    "notification_label": "Owner",
+    # V13.0 — role-specific notification label. Pre-V13.0 was the
+    # generic "Owner" across all 12 verticals; an agent's phone never
+    # says "Owner." Real Estate uses "Agent".
+    "notification_label": "Agent",
     "customer_term":      "buyer",
     "business_noun":      "showing",
     "business_noun_plural": "showings",
@@ -198,7 +201,8 @@ _REAL_ESTATE = {
         "market value, comparable sales, or negotiation strategy — that's "
         "the agent's job. For seller inquiries (someone wanting to list), "
         "flag for a callback with CMA prep. Lockbox or access issues at "
-        "active showings are emergencies — text the agent immediately."
+        "active showings are time-sensitive emergencies — page the agent "
+        "within 90 seconds, those are happening right now."
     ),
     "portal_copy": {
         "today_headline":  "Today's leads",
@@ -867,7 +871,9 @@ _MED_SPA = {
     "name":               "Aurora Medical Spa",
     "owner_label":        "Dr. Patel",
     "owner_role":         "doctor",
-    "notification_label": "Owner",
+    # V13.0 — role-specific notification label. A med-spa
+    # provider's phone says "Clinic," not "Owner."
+    "notification_label": "Clinic",
     "customer_term":      "client",
     "business_noun":      "appointment",
     "business_noun_plural": "appointments",
@@ -947,7 +953,9 @@ _LEGAL_INTAKE = {
     "name":               "Lawler & Associates",
     "owner_label":        "David",
     "owner_role":         "attorney",
-    "notification_label": "Owner",
+    # V13.0 — role-specific notification label. An attorney's
+    # intake phone says "Attorney," not "Owner."
+    "notification_label": "Attorney",
     "customer_term":      "caller",
     "business_noun":      "consultation",
     "business_noun_plural": "consultations",
