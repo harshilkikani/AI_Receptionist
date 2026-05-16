@@ -102,13 +102,29 @@ def test_card_invalid_variant_falls_back_to_solid():
 
 
 def test_card_soft_uses_tinted_bg_not_white():
+    """V9.4: soft cards (Worth a follow-up) use a tinted background
+    rather than the white --card-bg so they de-emphasize as
+    secondary attention.
+
+    V12.0: the static --n-50 token was swapped for an adaptive
+    color-mix(muted, card-bg) blend that responds to color scheme.
+    Either form satisfies the original V9.4 intent — verify that
+    the background is *not* plain --card-bg."""
     css = design.css()
-    # The CSS rule (not the doc comment); look for the opening brace.
     idx = css.find(".card.soft {")
     assert idx > -1
     chunk = css[idx:idx + 300]
-    # Soft cards use --n-50 (light tint) not --card-bg (white)
-    assert "var(--n-50)" in chunk
+    # Must have a background declaration that's not plain --card-bg
+    import re
+    bg_match = re.search(r"background:\s*([^;]+);", chunk)
+    assert bg_match, "no background declaration in .card.soft"
+    bg_value = bg_match.group(1).strip()
+    assert bg_value != "var(--card-bg)", (
+        "soft cards must use a tinted background, not plain --card-bg")
+    # Accept either V9.4 static tint or V12.0 color-mix
+    assert ("var(--n-50)" in bg_value
+            or "color-mix" in bg_value), (
+        f"unexpected .card.soft background: {bg_value}")
 
 
 def test_card_soft_has_no_border():
