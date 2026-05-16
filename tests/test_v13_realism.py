@@ -90,17 +90,27 @@ def test_septic_marcus_renamed():
     assert "Henry Walsh" in names, "Septic emergency persona should be Henry Walsh"
 
 
-def test_owner_sms_bubble_typography_unified():
-    """V13.0 A — .owner-sms bubble vocabulary now matches the
-    customer-side .pmsg (radius 18, font 14, padding 9/14) so both
-    phones speak one chat language."""
+def test_owner_sms_bubble_uses_notification_density():
+    """V13.0 A unified .owner-sms with the customer chat bubble
+    proportions (radius 18, font 14, padding 9/14). V13.0-hotfix
+    walked that back — the owner phone is a NOTIFICATION-LIST
+    surface, not a chat surface, and chat-bubble proportions felt
+    too large. The hotfix tightens: radius 14, font 13, padding
+    9/12, line-height 1.42 (vs the customer chat's 1.45). The
+    customer chat keeps its chat proportions; the owner phone
+    keeps its notification proportions."""
     from src import design
     css = design.css()
     idx = css.find(".owner-sms {")
     chunk = css[idx:idx + 400]
-    assert "border-radius: 18px" in chunk
-    assert "font-size: 14px" in chunk
-    assert "padding: 9px 14px" in chunk
+    assert "border-radius: 14px" in chunk
+    assert "font-size: 13px" in chunk
+    assert "padding: 9px 12px" in chunk
+    # Sender row identity-weighted but not dominating
+    sender_idx = css.find(".owner-sms .sms-from {")
+    sender_chunk = css[sender_idx:sender_idx + 200]
+    assert "font-size: 12px" in sender_chunk
+    assert "font-weight: 600" in sender_chunk
 
 
 def test_chat_response_includes_owner_sms_body(app_client, monkeypatch):

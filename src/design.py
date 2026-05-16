@@ -1351,16 +1351,19 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   color: var(--muted); font-size: 12px; align-self: center;
   margin-top: 24px;
 }
-/* V11.0 / V13.0 — owner-SMS bubble. V13.0 unifies the bubble
-   vocabulary with the customer-side .pmsg (radius 18, font 14,
-   padding 9/14) so both phones speak one chat language. The two
-   shells stop reading as "Android Material vs iMessage" eight
-   inches apart on screen. */
+/* V11.0 / V13.0 / V13.0-hotfix — owner-SMS bubble. The owner phone
+   is a NOTIFICATION-LIST surface, not a chat surface — closer to
+   iOS Messages' inbox row than to an iMessage chat bubble. V13.0
+   over-unified the two; this hotfix tightens density back to a
+   notification feel. Customer-side .pmsg (chat bubbles) keeps its
+   chat proportions; the owner-phone shrinks: radius 14 (was 18),
+   font 13 (was 14), padding 9/12 (was 9/14), line-height 1.42
+   (was 1.45). */
 .owner-sms {
   background: var(--n-100); color: var(--fg);
-  padding: 9px 14px; border-radius: 18px;
+  padding: 9px 12px; border-radius: 14px;
   max-width: 92%; align-self: flex-start;
-  font-size: 14px; line-height: 1.45;
+  font-size: 13px; line-height: 1.42;
   border-bottom-left-radius: 6px;
   white-space: pre-wrap; word-wrap: break-word;
 }
@@ -1394,22 +1397,23 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   .owner-sms .sms-av { background: #243152; color: #94a3b8; }
   .owner-sms .sms-av-initial { color: #94a3b8; }
 }
-/* V13.0 — sender row carries the customer name (the person the
-   alert is about), not "AI Receptionist". Slightly weightier than
-   pre-V13 since this is now the conversation-partner identity. */
+/* V13.0 / V13.0-hotfix — sender row carries the customer name (the
+   person the alert is about), not "AI Receptionist". Identity-
+   weight without dominating: 12px, 600, --fg. Body text and sender
+   are at parity so neither shouts. */
 .owner-sms .sms-from {
-  font-size: 13px; color: var(--fg);
+  font-size: 12px; color: var(--fg);
   font-weight: 600;
   letter-spacing: -0.005em;
   flex: 0 0 auto;
 }
 .owner-sms .sms-ts {
-  font-size: 11px; color: var(--muted);
+  font-size: 10.5px; color: var(--muted);
   margin-left: auto;
   letter-spacing: 0.01em;
 }
 .owner-sms .sms-body {
-  font-size: 14px; line-height: 1.45;
+  font-size: 13px; line-height: 1.42;
 }
 .owner-sms.urgent { background: var(--danger-100);
                      color: var(--danger-500); }
