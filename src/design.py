@@ -1106,7 +1106,7 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   padding: 11px 16px;
   text-align: left;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  transition: background 120ms ease;
+  transition: background 140ms ease;
   font-family: inherit; color: var(--fg);
 }
 .conv-row:last-child { border-bottom: none; }
@@ -1247,10 +1247,17 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
    adjacent same-sender bubbles sit 3px apart (one cluster), and
    sender-change introduces a 12px gap (cluster break). Achieved by
    removing `gap` and using margin-top on each bubble with an
-   adjacent-sibling override for same-sender continuation. */
+   adjacent-sibling override for same-sender continuation.
+   V12.0 D — smooth scroll so message-append auto-scroll is fluid,
+   not a snap. overscroll-behavior contains rubber-banding inside
+   the phone shell. */
 .phone-conv { flex: 1; padding: 18px 16px 14px;
                overflow-y: auto;
-               display: flex; flex-direction: column; }
+               display: flex; flex-direction: column;
+               scroll-behavior: smooth;
+               overscroll-behavior: contain; }
+/* V12.0 D — same on the conversation list and owner-phone conv. */
+.conv-list, .owner-conv { scroll-behavior: smooth; overscroll-behavior: contain; }
 
 /* V12.0 — suggestion chips spacing refined. Pre-V12.0 used a 6px
    gap which felt cramped between pills. Bumped to 7px. Padding-top
@@ -1861,6 +1868,17 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   .live-pulse { font-size: 9.5px; padding: 1px 6px; }
   .tenant-switcher { margin-left: 8px; }
   .tenant-switcher select { font-size: 11px; }
+  /* V12.0 D — mobile stability for the V11.2 conv-list +
+     bar-thread shells. Smaller avatar, tighter row padding,
+     bar-thread typography scaled for narrow screens. */
+  .conv-row { padding: 10px 14px; gap: 10px; }
+  .conv-row-avatar { width: 38px; height: 38px; font-size: 13px; }
+  .conv-row-name { font-size: 14px; }
+  .conv-row-phone, .conv-row-when, .conv-row-preview { font-size: 11.5px; }
+  .bar-thread-avatar { width: 30px; height: 30px; }
+  .bar-thread-name { font-size: 13px; }
+  .bar-thread-phone { font-size: 11px; }
+  .demo-drawer { width: 100vw; max-width: 100vw; border-left: none; }
 }
 
 /* ── Print ─────────────────────────────────────────────────────────── */

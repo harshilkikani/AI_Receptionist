@@ -810,7 +810,7 @@ def index():
          string concatenation that emitted invalid JS to the
          browser. Switched to a single template literal. */
       const avSeed = ((caller.phone || caller.id || "") + "")
-        .replace(/\D/g, "").replace(/^1/, "") || caller.id || "x";
+        .replace(/\\D/g, "").replace(/^1/, "") || caller.id || "x";
       const avPrimary = "https://i.pravatar.cc/150?u=" + encodeURIComponent(avSeed);
       const avFallback = "https://api.dicebear.com/9.x/notionists/svg?seed=" + encodeURIComponent(avSeed);
       const avInitial = ((caller.name || "?").charAt(0)).toUpperCase();
@@ -935,7 +935,7 @@ def index():
 
     /* V11.2 — phone format helper. +15551234567 → (555) 123-4567. */
     function formatPhone(p){
-      const d = (p||"").replace(/\D/g, "").replace(/^1/, "");
+      const d = (p||"").replace(/\\D/g, "").replace(/^1/, "");
       if (d.length === 10){
         return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
       }
@@ -984,7 +984,7 @@ def index():
           /* V11.2 — Pravatar URL, identical seed across chat list +
              portal card + owner-phone alert. Phone digits (without
              country-code prefix) is the seed. */
-          const seed = (c.phone||"").replace(/\D/g, "").replace(/^1/, "")
+          const seed = (c.phone||"").replace(/\\D/g, "").replace(/^1/, "")
                        || (c.id||"x");
           const photoPrimary = `https://i.pravatar.cc/150?u=${encodeURIComponent(seed)}`;
           const photoFallback = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}`;
@@ -1065,7 +1065,7 @@ def index():
         el.classList.toggle("active", el.dataset.id === id));
       /* V11.2 — update the thread-mode phone-bar with the caller's
          avatar, name, and phone. */
-      const seed = (c.phone||"").replace(/\D/g, "").replace(/^1/, "")
+      const seed = (c.phone||"").replace(/\\D/g, "").replace(/^1/, "")
                    || (c.id||"x");
       const photoPrimary = "https://i.pravatar.cc/150?u=" + encodeURIComponent(seed);
       const photoFallback = "https://api.dicebear.com/9.x/notionists/svg?seed=" + encodeURIComponent(seed);
@@ -1144,10 +1144,13 @@ def index():
       _portalRefreshing = true;
       const slug = window.currentIndustry || "hvac";
       try {
-        /* Subtle opacity fade so the swap reads as a deliberate
-           update, not a flicker. ~140ms total. */
+        /* V9.6 / V12.0 — subtle opacity fade so the swap reads as a
+           deliberate update, not a flicker. V12.0 D: dimmed from 0.7
+           to 0.96 — the previous 30% dip was visibly obvious; 4%
+           is the threshold where the eye reads "something happened"
+           without registering a flash. */
         $portal.style.transition = "opacity 140ms ease";
-        $portal.style.opacity = "0.7";
+        $portal.style.opacity = "0.96";
         const r = await fetch("/demo/today?industry=" + encodeURIComponent(slug),
                               {cache:"no-store"});
         if (r.ok){
@@ -1330,7 +1333,7 @@ def index():
           el.classList.toggle("active", el.dataset.id === activeCaller));
         const restoredCaller = callersById[activeCaller];
         if (restoredCaller){
-          const seed = (restoredCaller.phone||"").replace(/\D/g, "").replace(/^1/, "")
+          const seed = (restoredCaller.phone||"").replace(/\\D/g, "").replace(/^1/, "")
                        || (restoredCaller.id||"x");
           const $img = document.getElementById("bar-thread-img");
           const $init = document.getElementById("bar-thread-initial");
