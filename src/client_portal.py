@@ -297,8 +297,11 @@ def _today_body(client_id: str, t: str = "", *,
         f'<div class="today-hero">'
         f'<div class="today-hero-text">'
         f'<h2 class="today-headline">{html.escape(headline)}</h2>'
-        f'<p class="today-sub">Your receptionist is online and answering. '
-        f'This page updates as calls come in.</p>'
+        # V13.0 — pre-V13.0 today-sub had a second sentence ("This
+        # page updates as calls come in.") explaining live-refresh
+        # behavior. Real SaaS apps don't tell you they update; they
+        # just do. The Live pulse already conveys it.
+        f'<p class="today-sub">Your receptionist is on the line.</p>'
         f'</div>'
         f'{invoice_action}'
         f'</div>'

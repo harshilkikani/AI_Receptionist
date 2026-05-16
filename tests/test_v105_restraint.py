@@ -93,13 +93,14 @@ def test_v105_no_window_bar_dots(app_client):
 
 
 def test_v105_no_owner_phone_status_bar(app_client):
-    """V10.5 — the owner phone is a notification view, not a phone
-    simulation. The duplicated iOS status bar (9:41 + signal + battery)
-    on the owner shell was removed; only the customer phone keeps it."""
+    """V10.5: the duplicated iOS status bar on the owner shell was
+    removed (one instance, on the customer phone).
+    V13.0: the customer-side status bar was also retired — the
+    skeuomorphic iOS imitation was the single biggest demo tell.
+    Zero instances now."""
     r = app_client.get("/")
     body = r.text
-    # Customer phone status bar still exists (one instance)
-    assert body.count('class="phone-status"') == 1
+    assert body.count('class="phone-status"') == 0
 
 
 def test_v105_dead_css_removed():
@@ -129,10 +130,17 @@ def test_v105_live_mini_dot_static():
 
 
 def test_v105_one_pulse_keyframe_retained():
-    """The canonical breathing animation (live-breathe) survives for
-    the single operator-pane Live indicator. The rest were quieted."""
+    """V10.5: a single live-breathe keyframe powered the operator-
+    pane Live indicator; the rest were quieted.
+    V13.0: even that one was retired. The static dot communicates
+    "live" by existing; the always-on halo was demo theater, real
+    SaaS apps don't tell you they're live. The .live-pulse-flash
+    filter brighten survives for actual refresh events."""
     css = design.css()
-    assert "@keyframes live-breathe" in css
+    # The retired keyframe should NOT be in the CSS rule body
+    assert "@keyframes live-breathe" not in css
+    # But the .live-pulse-flash filter brighten survives
+    assert ".live-pulse-flash" in css
 
 
 def test_v105_recording_waveform_no_longer_pulses():

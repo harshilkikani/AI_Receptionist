@@ -505,8 +505,13 @@ def index():
 
     operator_pane = f"""
     <section class="demo-pane demo-pane-operator">
+      <!-- V13.0 — pane-label copy neutralized. Pre-V13.0 said
+           "What you see" / "What your customer sees" which read as
+           tour-guide captions — labels for someone who has never
+           seen software. Replaced with chrome words a working
+           product would actually ship. -->
       <div class="pane-label">
-        <span>What you see</span>
+        <span>Today</span>
         <span class="live-pulse" id="live-pulse" aria-hidden="true">
           <span class="live-dot"></span> Live
         </span>
@@ -522,18 +527,12 @@ def index():
     # default industry (HVAC). The switcher rebuilds these on industry
     # change, so this is just the first-paint state.
     chat_inner = f"""
-        <div class="phone-status">
-          <span class="ps-time">9:41</span>
-          <span class="ps-right">
-            <span class="ps-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 10"><path d="M1 9h2V6H1zM5 9h2V4H5zM9 9h2V2H9zM13 9h2V0h-2z"/></svg>
-            </span>
-            <span class="ps-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 12"><path d="M8 12L0 4a11 11 0 0 1 16 0Z" fill="currentColor" stroke="none"/></svg>
-            </span>
-            <span class="ps-battery"><span class="ps-bat-fill"></span></span>
-          </span>
-        </div>
+        <!-- V13.0 — iOS-mimicking phone-status bar (9:41 + signal +
+             battery) removed. This was the single biggest "demo, not
+             product" element on the page — OpenPhone's web app
+             doesn't pretend to be iOS. The phone-shell is the device
+             frame; the status bar isn't needed. -->
+
         <!-- V11.2 — phone-bar has list and thread modes. List mode shows
              the brand + tagline (Messages-app-pattern: customer is
              looking at their inbox). Thread mode shows the active
@@ -648,11 +647,14 @@ def index():
     """
     customer_pane = f"""
     <section class="demo-pane demo-pane-customer">
-      <div class="pane-label">What your customer sees</div>
+      <!-- V13.0 — pane labels neutralized. "What your customer
+           sees" / "What you see on your phone" were tour-guide
+           captions; "Messages" / "Notifications" are chrome words. -->
+      <div class="pane-label">Messages</div>
       <div class="phone-shell" id="customer-phone"
            data-mode="list"
            style="position:relative;">{chat_inner}</div>
-      <div class="pane-label" style="margin-top:24px">What you see on your phone</div>
+      <div class="pane-label" style="margin-top:24px">Notifications</div>
       <div class="phone-shell owner-shell">{owner_phone_inner}</div>
     </section>
     """
@@ -1429,7 +1431,7 @@ def index():
       });
       $reset.addEventListener("click", async function(){
         $reset.disabled = true;
-        $reset.textContent = "Resetting…";
+        $reset.textContent = "Clearing…";
         try {
           await fetch("/demo/reset", {method:"POST"});
           try { sessionStorage.removeItem(SESSION_KEY); } catch(_){}
@@ -1451,9 +1453,9 @@ def index():
           document.querySelectorAll(".conv-row.active")
             .forEach(el => el.classList.remove("active"));
           refreshPortal();
-          $reset.textContent = "Reset demo";
+          $reset.textContent = "Clear inbox";
         } catch(_){
-          $reset.textContent = "Reset failed";
+          $reset.textContent = "Clear failed";
         } finally {
           $reset.disabled = false;
         }

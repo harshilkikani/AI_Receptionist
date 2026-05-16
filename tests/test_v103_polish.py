@@ -73,12 +73,18 @@ def test_call_card_has_fallback_onerror_chain():
 
 # ── 2. Phone status bar ─────────────────────────────────────────────
 
-def test_demo_page_has_phone_status_bar(app_client):
+def test_demo_page_no_longer_has_phone_status_bar(app_client):
+    """V10.3 added an iOS-mimicking status bar (9:41 + signal +
+    battery) at the top of each phone screen for skeuomorphic
+    realism. V13.0 retired it as the single biggest "this is a
+    demo, not a product" cosmetic — OpenPhone's web app doesn't
+    pretend to be iOS. The phone-shell already communicates
+    "phone surface" via its rounded chrome."""
     r = app_client.get("/")
     body = r.text
-    assert 'class="phone-status"' in body
-    assert ">9:41<" in body
-    assert 'class="ps-battery"' in body
+    assert 'class="phone-status"' not in body
+    assert ">9:41<" not in body
+    assert 'class="ps-battery"' not in body
 
 
 # ── 3. Typing dots animation ────────────────────────────────────────

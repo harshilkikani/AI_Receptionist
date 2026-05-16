@@ -955,13 +955,11 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
 }
 .demo-brand:hover .brand-mark { transform: rotate(-3deg) scale(1.04); }
 .demo-brand .brand-mark svg { width: 16px; height: 16px; }
+/* V13.0 — brand-word switched from subtle gradient to solid color.
+   Linear / Arc / OpenPhone wordmarks are solid; gradient text on a
+   wordmark is a subtle "designed-for-show" tell. */
 .demo-brand .brand-word {
-  /* Subtle gradient text — premium-mark treatment without garish color */
-  background: linear-gradient(180deg,
-              var(--fg) 0%,
-              color-mix(in srgb, var(--fg) 80%, var(--muted)) 100%);
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--fg);
 }
 @media (prefers-color-scheme: dark) {
   .demo-brand .brand-mark { background: rgba(96, 165, 250, 0.12); }
@@ -989,15 +987,22 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   gap: 36px; align-items: start;
 }
 .demo-pane { display: flex; flex-direction: column; }
+/* V13.0 — pane labels no longer uppercase-tracked. Linear / Arc /
+   OpenPhone use at most one uppercase tracking family per surface;
+   the V12 era applied it to four labels which shouted over the
+   real headlines. Now reads as quiet chrome. */
 .pane-label {
-  font-size: 12px; font-weight: 600;
-  color: var(--muted); text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 13px; font-weight: 600;
+  color: var(--muted);
+  letter-spacing: -0.005em;
   margin: 0 0 14px 6px;
   display: flex; align-items: center; gap: 10px;
 }
-/* V9.6 — small "Live" indicator on the operator pane label. Pulses
-   subtly when the pane refreshes after a chat message lands. */
+/* V9.6 → V13.0 — `.live-pulse` indicator simplified. Pre-V13.0
+   used a 2.2s infinite halo keyframe — always-on motion. Real
+   SaaS apps don't tell you they're live; they just are. Now a
+   static dot with a subtle filter brighten when the portal
+   actually refreshes (V11.0 portal-flash class). */
 .live-pulse { display: inline-flex; align-items: center; gap: 6px;
                padding: 2px 8px; border-radius: 999px;
                background: var(--success-100); color: var(--success-500);
@@ -1005,16 +1010,8 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
                font-size: 10.5px; font-weight: 600;
                transition: filter 200ms; }
 .live-pulse .live-dot { width: 6px; height: 6px; border-radius: 999px;
-                         background: var(--success-500);
-                         box-shadow: 0 0 0 0 rgba(22,163,74,0.5);
-                         animation: live-breathe 2.2s ease-in-out infinite; }
+                         background: var(--success-500); }
 .live-pulse-flash { filter: brightness(1.1); }
-.live-pulse-flash .live-dot { animation-duration: 0.6s; }
-@keyframes live-breathe {
-  0%   { box-shadow: 0 0 0 0 rgba(22,163,74,0.35); }
-  70%  { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
-  100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); }
-}
 @media (prefers-color-scheme: dark) {
   .live-pulse { background: #06291f; color: #4ade80; }
   .live-pulse .live-dot { background: #4ade80; }
@@ -1048,40 +1045,12 @@ body.demo-page { background: var(--bg); min-height: 100vh; }
   background: var(--bg);
 }
 
-/* V10.3 — iOS-style status bar at the top of each phone screen.
-   9:41 time + signal + WiFi + battery icons. Cosmetic but signals
-   "real device" subliminally to the prospect. */
-.phone-status {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 18px 6px;
-  font-size: 12px; font-weight: 600;
-  color: var(--fg); letter-spacing: -0.01em;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
-  font-variant-numeric: tabular-nums;
-}
-.phone-status .ps-time { font-weight: 700; }
-.phone-status .ps-right { display: inline-flex; align-items: center;
-                           gap: 5px; }
-.phone-status .ps-icon { display: inline-block;
-                          width: 14px; height: 10px; }
-.phone-status .ps-icon svg { width: 100%; height: 100%;
-                              stroke: currentColor; fill: currentColor; }
-.phone-status .ps-battery {
-  display: inline-flex; align-items: center;
-  width: 22px; height: 11px;
-  border: 1px solid currentColor; border-radius: 3px;
-  position: relative; padding: 1px;
-}
-.phone-status .ps-battery::after {
-  content: ""; position: absolute; top: 3px; right: -3px;
-  width: 2px; height: 5px;
-  background: currentColor; border-radius: 0 1px 1px 0;
-}
-.phone-status .ps-battery .ps-bat-fill {
-  display: block; width: 78%; height: 100%;
-  background: currentColor; border-radius: 1px;
-}
+/* V10.3 → V13.0 — `.phone-status` iOS-style status bar (9:41 +
+   signal + battery) was removed. It was the single biggest "this
+   is a demo, not a product" cosmetic — OpenPhone's web app
+   doesn't pretend to be iOS, and the .phone-shell already
+   communicates "phone surface" via its rounded chrome. ~30 lines
+   of decorative CSS deleted. */
 
 /* V11.2 — iMessage-pattern conversation list (replaces the V10.1
    horizontal .chat-chips row). Vertical list of caller rows with
@@ -2204,7 +2173,10 @@ def demo_page(*, title: str, body: str,
           <path d="M8 5v3l2 1.5"/>
         </svg>
       </span>
-      <span class="demo-drawer-title">Demo controls</span>
+      <!-- V13.0 — "Demo controls" → "Settings". If a prospect ever
+           opens the drawer themselves the word "demo" inside
+           confirms they're inside a sales tool. -->
+      <span class="demo-drawer-title">Settings</span>
     </div>
     <button class="demo-drawer-close" id="demo-drawer-close" aria-label="Close">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -2217,8 +2189,8 @@ def demo_page(*, title: str, body: str,
   <div class="demo-drawer-body">
     <div class="dd-row">
       <label class="dd-label">Industry</label>
-      <p class="dd-hint">Pick the vertical you want the demo tuned to.</p>
-      <div class="tenant-switcher" id="tenant-switcher" title="Switch demo industry">
+      <p class="dd-hint">Pick the vertical you're answering for.</p>
+      <div class="tenant-switcher" id="tenant-switcher" title="Switch industry">
         <select aria-label="Demo industry">
           {switcher_options}
         </select>
@@ -2229,7 +2201,7 @@ def demo_page(*, title: str, body: str,
       <label class="dd-label">Session</label>
       <div class="dd-actions">
         <button class="dd-btn" id="dd-pause" type="button">Pause refresh</button>
-        <button class="dd-btn dd-btn-danger" id="dd-reset" type="button">Reset demo</button>
+        <button class="dd-btn dd-btn-danger" id="dd-reset" type="button">Clear inbox</button>
       </div>
     </div>
     <div class="dd-foot">

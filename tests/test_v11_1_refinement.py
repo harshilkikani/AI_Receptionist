@@ -279,14 +279,15 @@ def test_brand_mark_uses_svg_glyph_not_plain_dot(app_client):
 
 
 def test_brand_mark_css_styled_with_accent_tinted_background(app_client):
-    """The mark sits in an accent-tinted rounded square (premium SaaS
-    pattern). Verify the CSS hooks are present."""
+    """V11.1: the SVG mark sits in an accent-tinted rounded square.
+    V13.0: the wordmark gradient (background-clip:text) was removed
+    — Linear / Arc / OpenPhone wordmarks are solid; a subtle
+    gradient on a wordmark is a "designed-for-show" tell. Only the
+    mark + wordmark hooks survive."""
     from src import design
     css = design.css()
     assert ".demo-brand .brand-mark" in css
     assert ".demo-brand .brand-word" in css
-    # Subtle gradient on the wordmark
-    assert "background-clip: text" in css
 
 
 def test_legacy_dot_removed(app_client):
